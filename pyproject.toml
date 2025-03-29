@@ -1,0 +1,30 @@
+[tool.poetry]
+name = "trading-journal"
+version = "0.1.0"
+description = ""
+authors = ["Karina Zinnatullina <16980639+karinationZ@users.noreply.github.com>"]
+readme = "README.md"
+packages = [{include = "trading_journal"}]
+
+[tool.poetry.dependencies]
+python = "^3.11"
+streamlit = "^1.43.2"
+pandas = "^2.2.3"
+plotly = "^6.0.0"
+flask = "^3.1.0"
+flask-sqlalchemy = "^3.1.1"
+werkzeug = "^3.1.3"
+uuid = "^1.30"
+python-dateutil = "^2.9.0.post0"
+pillow = "^11.1.0"
+pytz = "^2025.1"
+ccxt = "^4.4.49"
+pytest = "^8.3.5"
+loguru = "^0.7.3"
+dotenv = "^0.9.9"
+pytest-playwright = "^0.7.0"
+
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"

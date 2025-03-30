@@ -23,6 +23,7 @@ pytest = "^8.3.5"
 loguru = "^0.7.3"
 dotenv = "^0.9.9"
 pytest-playwright = "^0.7.0"
+yfinance = "^0.2.55"
 
 
 [build-system]

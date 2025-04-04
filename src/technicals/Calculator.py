@@ -3,29 +3,19 @@ Actual ATR calculates as:
 TrueRange = MAX(abs(High - Low), abs(High - Previous Close), abs(Low - Previous Close)) 
 TrueRange.mean()
 """
-import json
 import os
 import sys
 from dataclasses import dataclass
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Literal
 
-import ccxt
 import numpy as np
 import pandas as pd
-import yfinance as yf
 
 from settings import logger
+from src.brokers.BitUnixClient import BitUnixClient
 
 CURR_DIR = os.path.dirname(os.path.realpath(sys.argv[0]))
-CACHE_FILE_PATH = CURR_DIR + "/exchanges_cache.json"
-
-FORBIDDEN_BROKERS = ['alpaca', 'binance', 'binancecoinm', 'binanceusdm', 'bit2c', 'bitbank', 'bitflyer', 'bithumb',
-                     'bitpanda', 'bitvavo', 'bl3p', 'blofin', 'btcbox', 'bybit', 'coinbaseinternational', 'coincheck',
-                     'coinmetro', 'coinone', 'coinspot', 'currencycom', 'defx', 'ellipx', 'huobijp', 'hyperliquid',
-                     'idex', 'independentreserve', 'krakenfutures', 'kucoinfutures', 'kuna', 'latoken', 'lykke',
-                     'mercado', 'okcoin', 'onetrading', 'oxfun', 'paradex', 'paymium', 'poloniexfutures', 'tokocrypto',
-                     'vertex', 'wavesexchange', 'woo', 'woofipro', 'zaif', 'zonda']
 
 
 @dataclass
@@ -41,9 +31,9 @@ class Calculator:
                  perc_of_atr_stop=None, custom_sl_point=None,
                  data_source: Literal["yfinance", "ccxt"] = "ccxt"):
         self.position_size = None
-        self.instrument = asset.upper() + "/USDT"
+        self.instrument = asset.upper() + "USDT"
         self.data_source = data_source
-        self.exchange = self.select_exchange()
+        self.cl = BitUnixClient()
         self.level_price = level_price
         self.direction = direction
         self.risk_reward_ratio = risk_reward_ratio
@@ -102,112 +92,74 @@ class Calculator:
         self.take_limit_min = (self.entry_point + take_profit_min) if direction == "long" else (
                 self.entry_point - take_profit_min)
 
-    @staticmethod
-    def find_forbidden_brokers():
-        forbidden_brokers = []
-        exchanges = {exchange_name: getattr(ccxt, exchange_name)() for exchange_name in ccxt.exchanges}
-        for exchange_name, exchange in exchanges.items():
-            try:
-                exchange.fetch_ticker("BTC/USDT")
-            except Exception as e:
-                logger.info(e)
-                forbidden_brokers.append(exchange_name)
-        return forbidden_brokers
+    def get_historical_data(self, time_frame: str, time_delta_days: int = None, limit: int = 500) -> pd.DataFrame:
+        """
+        Fetch and process historical data using BitUnixClient
 
-    def lookup_broker_cache(self):
-        with open(CACHE_FILE_PATH, "r") as file:
-            cache = json.load(file)
-        for broker, instruments in cache.items():
-            if self.instrument in instruments:
-                logger.info(f"Instrument {self.instrument} is in the cache.\nBroker: {broker}")
-                return broker
-        return None
+        Args:
+            time_frame (str): Timeframe for the klines (e.g., "1m", "5m", "1h", "1d")
+            time_delta_days (int, optional): Number of days to look back
+            limit (int, optional): Maximum number of candles to fetch, default 500
 
-    def cache_instrument(self, broker_name):
-        with open(CACHE_FILE_PATH, "r") as file:
-            cache = json.load(file)
-        cache[broker_name].append(self.instrument)
-        # Save the updated dictionary back to the file
-        with open(CACHE_FILE_PATH, 'w') as file:
-            json.dump(cache, indent=2, fp=file)
-        logger.info(f"Cached {self.instrument}")
+        Returns:
+            pd.DataFrame: DataFrame with OHLCV data
+        """
+        # Convert time_frame from ccxt format to BitUnix format if needed
+        # BitUnix already uses the same format (1m, 5m, 1h, 1d, etc.)
+        interval = time_frame
 
-    def select_exchange(self):
-        broker = self.lookup_broker_cache()
-        exchanges = {exchange_name: getattr(ccxt, exchange_name)() for exchange_name in ccxt.exchanges}
-
-        if broker is None:
-            if self.data_source == "ccxt":
-                for exchange_name, exchange in exchanges.items():
-                    if exchange_name not in FORBIDDEN_BROKERS:
-                        try:
-                            # Modify to use futures market instead of spot
-                            exchange.has["swap"] = True  # Set to swap/futures market
-                            exchange.has["spot"] = False
-                            exchange.fetch_ohlcv(
-                                self.instrument,
-                                timeframe="5m",
-                                limit=1
-                            )
-                            logger.info(f"Broker: {exchange_name}")
-                            self.cache_instrument(exchange_name)
-                            return exchange
-                        except Exception as e:
-                            print(f"Error fetching markets from {exchange_name}: {e}")
-                            continue
-                raise Exception(f"Instrument '{self.instrument}' is not supported on any exchange")
-        return exchanges[broker]
-
-    def get_ccxt_data(self, time_frame: str, time_delta_days: int = None, limit: int = None) -> pd.DataFrame:
-        """Fetch and process historical data more efficiently"""
-        since = None
+        # Calculate end_time and start_time if time_delta_days is provided
+        end_time = None
         if time_delta_days:
-            end = datetime.today()
-            start = end - timedelta(days=time_delta_days)
-            since = int(start.timestamp() * 1000)
-        bars = self.exchange.fetch_ohlcv(
-            self.instrument,
-            timeframe=time_frame,
-            since=since,
+            now = datetime.now(timezone.utc)
+            start = now - timedelta(days=time_delta_days)
+            start_time = int(start.timestamp() * 1000)
+        else:
+            start_time = None
+
+        # Fetch klines from BitUnix API
+        bars = self.cl.get_klines(
+            symbol=self.instrument,
+            interval=interval,
+            start_time=start_time,
+            end_time=end_time,
             limit=limit
         )
-        assert bars, "There is no data! exchange.fetch_ohlcv() returned []"
-        if len(bars) == 1:
+
+        # Verify data is available
+        assert bars, f"There is no data! BitUnixClient.get_klines() returned empty list for {self.instrument}"
+
+        # Create a list to hold the OHLCV data
+        ohlcv_data = []
+
+        # Format data - BitUnix returns dictionary format whereas ccxt returns arrays
+        for bar in bars:
+            ohlcv_data.append([
+                int(bar["time"]),  # timestamp
+                float(bar["open"]),
+                float(bar["high"]),
+                float(bar["low"]),
+                float(bar["close"]),
+                float(bar["quoteVol"])
+            ])
+
+        # Skip the last bar if we have more than one (it might be incomplete)
+        if len(ohlcv_data) > 1:
             df = pd.DataFrame(
-                bars,
+                ohlcv_data[:-1],
                 columns=["time", "open", "high", "low", "close", "volume"]
             )
         else:
-            # Create DataFrame directly with required columns
             df = pd.DataFrame(
-                bars[:-1],
+                ohlcv_data,
                 columns=["time", "open", "high", "low", "close", "volume"]
             )
+
+        # Convert timestamp to datetime
         df["time"] = pd.to_datetime(df["time"], unit="ms")
-        return df
 
-    def get_yfinance_data(self, time_frame: str, time_delta_days: int, limit: int = None) -> pd.DataFrame:
-        """Fetch historical data using Yahoo Finance."""
-        end_date = datetime.today()
-        start_date = end_date - timedelta(days=time_delta_days) if time_delta_days else None
+        logger.info(f"Fetched {len(df)} {interval} candles for {self.instrument}")
 
-        ticker = yf.Ticker(self.instrument)
-        df = ticker.history(start=start_date, end=end_date, interval=time_frame)
-        if limit:
-            df = df.tail(limit)
-        return df
-
-    def get_historical_data(self, time_frame: str, time_delta_days: int = None, limit: int = None) -> pd.DataFrame:
-        """Fetch and process historical data"""
-        if self.data_source == "yfinance":
-            df = self.get_yfinance_data(time_frame, time_delta_days, limit)
-        elif self.data_source == "ccxt":
-            df = self.get_ccxt_data(time_frame, time_delta_days, limit)
-        else:
-            raise ValueError(f"Unsupported data source: {self.data_source}")
-
-        # Standardize column names to lowercase
-        df.columns = df.columns.str.lower()
         return df
 
     def calculate_atr(self, time_frame="1d", time_delta=10):
@@ -327,16 +279,24 @@ class Calculator:
         )
 
     def current_daily_bar_price_movement(self):
-        if self.data_source == "ccxt":
-            ticker = self.exchange.fetch_ticker(self.instrument)
-            ohlcv = self.exchange.fetch_ohlcv(self.instrument, '1d', limit=1)[0]
-            current_price = ticker['last']
-            open_price = ohlcv[1]
-        else:
-            ticker = yf.Ticker(self.instrument)
-            df = ticker.history(period="1d", interval="1d")
-            current_price = df["Close"].iloc[-1]
-            open_price = df["Open"].iloc[-1]
+        """
+        Calculate the daily price movement as a percentage of ATR
+        and determine if we should enter a trade based on that movement.
+
+        Returns:
+            tuple: (atr_percentage, should_enter)
+        """
+        # Get the daily candle data
+        daily_data = self.cl.get_klines(symbol=self.instrument, interval="1d", limit=1)
+        if not daily_data:
+            raise Exception(f"{self.instrument} Does Not Have enough Day Data - New Coin??")
+
+        # Get open price from daily candle
+        open_price = float(daily_data[0]["open"])
+
+        # Get current price from latest minute candle
+        last_min_data = self.cl.get_klines(symbol=self.instrument, interval="1m", limit=1)[0]
+        current_price = float(last_min_data["close"])
 
         # Calculate absolute price movement
         price_movement = abs(current_price - open_price)
@@ -344,8 +304,10 @@ class Calculator:
         # Calculate what percentage of ATR has been moved
         atr_percentage = round((price_movement * 100) / self.atr, 2)
 
-        # Determine if we should enter the trade (>= 75% of ATR)
+        # Determine if we should enter the trade (<= 75% of ATR)
         should_enter = atr_percentage <= 75
+
+        logger.info(f"{self.instrument} Daily Movement: {atr_percentage}% of ATR, Enter Trade: {should_enter}")
 
         return atr_percentage, should_enter
 
@@ -387,13 +349,13 @@ class Calculator:
 
 
 if __name__ == "__main__":
-    c = Calculator(asset="bera",
+    c = Calculator(asset="layer",
                    risk_reward_ratio=3,
                    risk_amount=3,
                    perc_of_atr=10,
                    # perc_of_atr_stop=15,
-                   direction="short",
-                   level_price=6.464,
-                   custom_sl_point=6.486,
+                   direction="long",
+                   level_price=1.5249,
+                   custom_sl_point=None,
                    entry_point=None)
     c.print_calculations()

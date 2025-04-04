@@ -55,7 +55,6 @@ class FuturesFilter:
                     "in_range": True,
                     "candidate": False
                 }
-                logger.info(f"❌ {symbol} is in range.")
 
             else:
                 # The five_min levels are not in range
@@ -93,25 +92,31 @@ class FuturesFilter:
             last_min_close_distance_pct_high_day = abs(last_min_close - prev_day_high) / prev_day_high * 100
             if last_min_close > prev_day_low and last_min_close_distance_pct_low_day < 0.5:
                 asset_data["status"] = "✅near-prev-day-low"
-                asset_data["candidate"]=True
+                asset_data["candidate"] = True
+                logger.info(f"✅near-prev-day-low - {symbol} ")
             elif last_min_close < prev_day_high and last_min_close_distance_pct_high_day < 0.5:
                 asset_data["status"] = "✅near-prev-day-high"
                 asset_data["candidate"] = True
+                logger.info(f"✅near-prev-day-high - {symbol} ")
 
             elif last_min_close < prev_day_low:
                 asset_data["status"] = " ❌below-prev-day-low"
                 asset_data["candidate"] = False
 
-            elif last_min_close> prev_day_high:
+            elif last_min_close > prev_day_high:
                 asset_data["status"] = " ❌above-prev-day-high"
                 asset_data["candidate"] = False
 
             elif low_distance_pct >= 4 and last_min_close_distance_pct_low_five <= 0.5:
                 asset_data["status"] = "✅near-five-min-low"
                 asset_data["candidate"] = True
+                logger.info(f"✅near-five-min-low - {symbol} ")
+
             elif high_distance_pct >= 4 and last_min_close_distance_pct_high_five <= 0.5:
                 asset_data["status"] = "✅near-five-min-high"
                 asset_data["candidate"] = True
+                logger.info(f"✅near-five-min-high - {symbol} ")
+
             else:
                 asset_data["status"] = "❌"
                 asset_data["candidate"] = False
@@ -124,13 +129,24 @@ class FuturesFilter:
 
             # Sort the DataFrame to have in_range: False at the top
             df = df.sort_values(by="candidate", ascending=False)
+
             # Add a column with numeration
             df.insert(0, 'num', range(1, len(df) + 1))
+
+            # Define the exact column order, with status after candidate
+            column_order = ['num', 'asset', 'in_range', 'candidate', 'status',
+                            'prev_day_high', 'prev_day_low', 'first_five_min_high',
+                            'first_five_min_low', 'curr_price_distance_pct',
+                            'five_min_vs_prev_day_low_distance_pct',
+                            'five_min_vs_prev_day_high_distance_pct']
+
+            # Reorder the DataFrame columns
+            df = df[column_order]
+
             logger.info("\nFiltered Assets Summary:")
             logger.info(df)
 
-            # Save to CSV with the specific column format requested
-            timestamp = datetime.now().strftime("%m-%d_%H-%M")
+            # Save to CSV with the specific column format
             filename = PROJECT_DIR + f"/artifacts/filtered_futures/filtered_futures.csv"
             df.to_csv(filename, index=False)
             logger.info(f"\nResults saved to {filename}")

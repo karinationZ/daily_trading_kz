@@ -163,7 +163,7 @@ class Calculator:
         return df
 
     def calculate_atr(self, time_frame="1d", time_delta=10):
-        df = self.get_historical_data(time_frame, time_delta + 1, limit=25)
+        df = self.get_historical_data(time_frame, time_delta, limit=25)
         # Reset the index to convert the DatetimeIndex into a column
         df = df.reset_index()
         # Rename the index column to "time"
@@ -341,7 +341,8 @@ class Calculator:
             f"Potential Profit: ${results.potential_profit:.2f}\n"
             f"Position Investment: {self.position_size * self.entry_point}"
             f"\n***"
-            f"\nCurrent Bar Price Movement is: {current_bar_atr_percentage}% of ATR"
+            f"\nATR: {self.atr}"
+            f"\n% of ATR: {current_bar_atr_percentage}%"
             f"\nShould Enter: {should_enter}"
             f"\nSelected Candles for ATR calculation:\n{self.selected_atr_candles}"
 

@@ -134,9 +134,8 @@ class FuturesFilter:
             df.insert(0, 'num', range(1, len(df) + 1))
 
             # Define the exact column order, with status after candidate
-            column_order = ['num', 'asset', 'in_range', 'candidate', 'status',
-                            'prev_day_high', 'prev_day_low', 'first_five_min_high',
-                            'first_five_min_low', 'curr_price_distance_pct',
+            column_order = ['num', 'asset', 'in_range', 'candidate', 'status', 'curr_price_distance_pct',
+                            'prev_day_high', 'prev_day_low', 'first_five_min_high','first_five_min_low',
                             'five_min_vs_prev_day_low_distance_pct',
                             'five_min_vs_prev_day_high_distance_pct']
 
@@ -144,7 +143,6 @@ class FuturesFilter:
             df = df[column_order]
 
             logger.info("\nFiltered Assets Summary:")
-            logger.info(df)
 
             # Save to CSV with the specific column format
             filename = PROJECT_DIR + f"/artifacts/filtered_futures/filtered_futures.csv"

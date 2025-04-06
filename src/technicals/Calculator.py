@@ -163,11 +163,13 @@ class Calculator:
         return df
 
     def calculate_atr(self, time_frame="1d", time_delta=10):
-        df = self.get_historical_data(time_frame, time_delta, limit=25)
+        df = self.get_historical_data(time_frame, time_delta + 2, limit=25)
         # Reset the index to convert the DatetimeIndex into a column
         df = df.reset_index()
         # Rename the index column to "time"
         df = df.rename(columns={"Date": "time"})
+        # Exclude the row at index 0
+        df = df.iloc[1:]
 
         ranges = df["high"] - df["low"]  # TR calculation
 
@@ -191,20 +193,22 @@ class Calculator:
         # Get the indices of the selected ranges
         df = df.copy()
 
-        # Map integer indices to DataFrame index
+        # Map positional indices to DataFrame index
         selected_ranges = sorted_ranges[best_group_idx:best_group_idx + n]
         selected_indices = sorted_indices[best_group_idx:best_group_idx + n]
-        df.loc[df.index[selected_indices], "true_range"] = selected_ranges
+        actual_indices = df.index[selected_indices]  # Convert positional indices to actual index labels
+        df.loc[actual_indices, "true_range"] = selected_ranges
 
         # Create a new column marking the selected ranges
         df["selected_range"] = False
-        df.loc[df.index[selected_indices], "selected_range"] = True
+        df.loc[actual_indices, "selected_range"] = True
 
         # Log the time values of the selected range
-        selected_times = df.loc[selected_indices, "time"].tolist()
+        selected_times = df.loc[actual_indices, "time"].tolist()
 
         # Format the timestamps to display only the date (YYYY-MM-DD)
-        formatted_times = "\n".join([time.strftime("%Y-%m-%d") for time in selected_times])
+        selected_times_sorted = sorted(selected_times, reverse=True)
+        formatted_times = "\n".join([time.strftime("%Y-%m-%d") for time in selected_times_sorted])
         logger.info(f"\nSelected Candles for ATR calculation:\n{formatted_times}")
         self.selected_atr_candles = formatted_times
 
@@ -342,7 +346,7 @@ class Calculator:
             f"Position Investment: {self.position_size * self.entry_point}"
             f"\n***"
             f"\nATR: {self.atr}"
-            f"\n% of ATR: {current_bar_atr_percentage}%"
+            f"\nCurrent Bar Price Movement is: {current_bar_atr_percentage}% of ATR"
             f"\nShould Enter: {should_enter}"
             f"\nSelected Candles for ATR calculation:\n{self.selected_atr_candles}"
 
@@ -350,13 +354,13 @@ class Calculator:
 
 
 if __name__ == "__main__":
-    c = Calculator(asset="layer",
+    c = Calculator(asset="ip",
+                   direction="long",
+                   level_price=1.5249,
                    risk_reward_ratio=3,
                    risk_amount=3,
                    perc_of_atr=10,
                    # perc_of_atr_stop=15,
-                   direction="long",
-                   level_price=1.5249,
                    custom_sl_point=None,
                    entry_point=None)
     c.print_calculations()

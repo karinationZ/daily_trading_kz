@@ -1,4 +1,4 @@
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 import pandas as pd
 
@@ -28,15 +28,40 @@ class FuturesFilter:
 
         logger.info("\nAnalyzing breakouts for top assets...")
         for symbol in pairs:
-            prev_day_data = self.cl.get_klines(symbol=symbol, interval="1d", limit=1)
-            if not prev_day_data:
+            # Get 2 daily candles - this should give us today's (incomplete) and yesterday's (complete) candles
+            daily_data = self.cl.get_klines(symbol=symbol, interval="1d", limit=2)
+
+            if not daily_data or len(daily_data) < 2:
                 logger.info(f"{symbol} Does Not Have enough Day Data - New Coin??")
                 continue
-            prev_day_high, prev_day_low = float(prev_day_data[0]["high"]), float(prev_day_data[0]["low"])
 
+            # The candle at index 0 should be yesterday's completed candle
+            prev_day_data = daily_data[-1]
+            prev_day_high, prev_day_low = float(prev_day_data["high"]), float(prev_day_data["low"])
+            prev_day_timestamp = int(prev_day_data["time"])
+
+            # Verify that the data is actually from the previous day
             now = datetime.now(timezone.utc)
-            midnight = now.replace(hour=0, minute=0, second=0, microsecond=0)
-            start = midnight.timestamp() * 1000
+            today_midnight = now.replace(hour=0, minute=0, second=0, microsecond=0)
+            yesterday_midnight = today_midnight - timedelta(days=1)
+
+            # Convert to millisecond timestamps
+            yesterday_timestamp = int(yesterday_midnight.timestamp() * 1000)
+            today_timestamp = int(today_midnight.timestamp() * 1000)
+
+            # Check if the timestamp is from yesterday
+            if not (yesterday_timestamp <= prev_day_timestamp < today_timestamp):
+                yesterday_date = datetime.fromtimestamp(yesterday_timestamp / 1000, tz=timezone.utc).strftime(
+                    '%Y-%m-%d')
+                data_date = datetime.fromtimestamp(prev_day_timestamp / 1000, tz=timezone.utc).strftime('%Y-%m-%d')
+                error_msg = f"Error: {symbol} data is from {data_date}, expected previous day ({yesterday_date})"
+
+                logger.error(error_msg)
+                raise ValueError(error_msg)
+
+            logger.debug(f"{symbol} prev day data: High={prev_day_high}, Low={prev_day_low}, Time={prev_day_timestamp}")
+
+            start = today_midnight.timestamp() * 1000
             first_five_min_data = self.cl.get_klines(symbol=symbol, interval="5m", limit=1, end_time=int(start))[0]
             first_five_min_high = float(first_five_min_data["high"])
             first_five_min_low = float(first_five_min_data["low"])

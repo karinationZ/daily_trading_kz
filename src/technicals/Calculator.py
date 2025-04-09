@@ -196,6 +196,10 @@ class Calculator:
         # Map positional indices to DataFrame index
         selected_ranges = sorted_ranges[best_group_idx:best_group_idx + n]
         selected_indices = sorted_indices[best_group_idx:best_group_idx + n]
+        if df.empty:
+            msg = "NEW Coin? There is NO DATA!"
+            logger.error(msg)
+            raise RuntimeError(msg)
         actual_indices = df.index[selected_indices]  # Convert positional indices to actual index labels
         df.loc[actual_indices, "true_range"] = selected_ranges
 

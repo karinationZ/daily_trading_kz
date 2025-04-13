@@ -358,13 +358,13 @@ class Calculator:
 
 
 if __name__ == "__main__":
-    c = Calculator(asset="ip",
+    c = Calculator(asset="crv",
                    direction="long",
-                   level_price=1.5249,
+                   level_price=0.6330,
                    risk_reward_ratio=3,
-                   risk_amount=3,
+                   risk_amount=10,
                    perc_of_atr=10,
-                   # perc_of_atr_stop=15,
+                   perc_of_atr_stop=10,
                    custom_sl_point=None,
                    entry_point=None)
     c.print_calculations()

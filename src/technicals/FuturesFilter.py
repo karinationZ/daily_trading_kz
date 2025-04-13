@@ -184,5 +184,5 @@ if __name__ == "__main__":
     logger.info("Starting Crypto Futures Filter...")
     cl = FuturesFilter()
     symbols = cl.get_symbols()
-    high_volume_symbols = cl.get_high_volume_symbols(symbols, threshold=30000000)
+    high_volume_symbols = cl.get_high_volume_symbols(symbols, threshold=50000000)
     cl.filter_futures(high_volume_symbols)

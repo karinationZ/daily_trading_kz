@@ -70,15 +70,30 @@ class Calculator:
             else:
                 _stop = self.custom_sl_point - self.entry_point
         else:
-            logger.info("Using Two 5_min sizes for the stop loss! ")
+            _stop_calculated = (self.atr * 10) / 100
+            if direction == "long":
+                default_calculated_stop_loss_point = self.entry_point - _stop_calculated
+            else:
+                default_calculated_stop_loss_point = self.entry_point + _stop_calculated
+
+            # 5 MIN candles stop loss
             two_five_min_sizes = self.get_last_five_min_sizes()
             if direction == "long":
                 self.custom_sl_point = self.entry_point - two_five_min_sizes
-                _stop = self.entry_point - self.custom_sl_point
+                _stop_five_min = self.entry_point - self.custom_sl_point
             else:
                 self.custom_sl_point = self.entry_point + two_five_min_sizes
-                _stop = self.custom_sl_point - self.entry_point
-            self.stop_loss_point = self.custom_sl_point
+                _stop_five_min = self.custom_sl_point - self.entry_point
+
+            # Choose between default 10% of ATR and 5 min candles sizes SL
+            if self.custom_sl_point < _stop_calculated:
+                self.stop_loss_point = self.custom_sl_point
+                _stop = _stop_five_min
+                logger.info("Using Two 5_min sizes for the stop loss!")
+            else:
+                self.stop_loss_point = default_calculated_stop_loss_point
+                _stop = _stop_calculated
+                logger.info("Using Default 10% of ATR calculated stop loss ")
 
         # Calculate TP, TL, Position Size
         self.take_profit = self.stop * self.risk_reward_ratio
@@ -162,67 +177,147 @@ class Calculator:
 
         return df
 
-    def calculate_atr(self, time_frame="1d", time_delta=10):
-        df = self.get_historical_data(time_frame, time_delta + 2, limit=25)
+    # def calculate_atr(self, time_frame="1d", time_delta=10):
+    #     df = self.get_historical_data(time_frame, time_delta + 2, limit=25)
+    #     # Reset the index to convert the DatetimeIndex into a column
+    #     df = df.reset_index()
+    #     # Rename the index column to "time"
+    #     df = df.rename(columns={"Date": "time"})
+    #     # Exclude the row at index 0
+    #     df = df.iloc[1:]
+    #
+    #     ranges = df["high"] - df["low"]  # TR calculation
+    #
+    #     # Sort the values and keep track of original indices
+    #     idx_val_pairs = sorted(enumerate(ranges), key=lambda x: x[1])
+    #     sorted_ranges = np.array([x[1] for x in idx_val_pairs])
+    #     sorted_indices = np.array([x[0] for x in idx_val_pairs])
+    #
+    #     # Find the window with minimum range
+    #     min_range = float('inf')
+    #     best_group_idx = 0
+    #     n = 5
+    #     for i in range(len(sorted_ranges) - n + 1):
+    #         window = sorted_ranges[i:i + n]
+    #         range_window = window[-1] - window[0]
+    #
+    #         if range_window < min_range:
+    #             min_range = range_window
+    #             best_group_idx = i
+    #
+    #     # Get the indices of the selected ranges
+    #     df = df.copy()
+    #
+    #     # Map positional indices to DataFrame index
+    #     selected_ranges = sorted_ranges[best_group_idx:best_group_idx + n]
+    #     selected_indices = sorted_indices[best_group_idx:best_group_idx + n]
+    #     if df.empty:
+    #         msg = "NEW Coin? There is NO DATA!"
+    #         logger.error(msg)
+    #         raise RuntimeError(msg)
+    #     actual_indices = df.index[selected_indices]  # Convert positional indices to actual index labels
+    #     df.loc[actual_indices, "true_range"] = selected_ranges
+    #
+    #     # Create a new column marking the selected ranges
+    #     df["selected_range"] = False
+    #     df.loc[actual_indices, "selected_range"] = True
+    #
+    #     # Log the time values of the selected range
+    #     selected_times = df.loc[actual_indices, "time"].tolist()
+    #
+    #     # Format the timestamps to display only the date (YYYY-MM-DD)
+    #     selected_times_sorted = sorted(selected_times, reverse=True)
+    #     formatted_times = "\n".join([time.strftime("%Y-%m-%d") for time in selected_times_sorted])
+    #     logger.info(f"\nSelected Candles for ATR calculation:\n{formatted_times}")
+    #     self.selected_atr_candles = formatted_times
+    #
+    #     # Calculate Average True Range (ATR)
+    #     atr = float(np.mean(selected_ranges))
+    #     formatted_atr = format(atr, '.10f')
+    #     formatted_atr_float = float(formatted_atr)
+    #     if formatted_atr_float < self.five_min_tr:
+    #         logger.info(f"ATR is too small -> {atr} | Using Five MIN ATR -> {self.five_min_tr}")
+    #         return round(self.five_min_tr, 10)
+    #     logger.info(f"Average True Range (ATR): {atr}")
+    #     return formatted_atr_float
+    def calculate_atr(self, time_frame="1d", time_delta=5):
+        # Get historical data
+        df = self.get_historical_data(time_frame, time_delta + 20, limit=50)
+
         # Reset the index to convert the DatetimeIndex into a column
         df = df.reset_index()
-        # Rename the index column to "time"
         df = df.rename(columns={"Date": "time"})
-        # Exclude the row at index 0
-        df = df.iloc[1:]
 
-        ranges = df["high"] - df["low"]  # TR calculation
+        # Exclude the current bar (only use completed bars)
+        df = df.iloc[1:].reset_index(drop=True)
 
-        # Sort the values and keep track of original indices
-        idx_val_pairs = sorted(enumerate(ranges), key=lambda x: x[1])
-        sorted_ranges = np.array([x[1] for x in idx_val_pairs])
-        sorted_indices = np.array([x[0] for x in idx_val_pairs])
+        # Define parameters (matching Pine Script)
+        days1 = time_delta  # Number of bars to use for ATR calculation
+        chg1 = 2.0  # Upper deviation threshold (200%)
+        chg2 = 0.5  # Lower deviation threshold (50%)
 
-        # Find the window with minimum range
-        min_range = float('inf')
-        best_group_idx = 0
-        n = 5
-        for i in range(len(sorted_ranges) - n + 1):
-            window = sorted_ranges[i:i + n]
-            range_window = window[-1] - window[0]
+        # Initialize arrays to store selected bars
+        selected_highs = []
+        selected_lows = []
+        selected_ranges = []
+        selected_times = []
 
-            if range_window < min_range:
-                min_range = range_window
-                best_group_idx = i
-
-        # Get the indices of the selected ranges
-        df = df.copy()
-
-        # Map positional indices to DataFrame index
-        selected_ranges = sorted_ranges[best_group_idx:best_group_idx + n]
-        selected_indices = sorted_indices[best_group_idx:best_group_idx + n]
-        if df.empty:
-            msg = "NEW Coin? There is NO DATA!"
+        # Step 1: Calculate initial average range to establish baseline
+        initial_ranges = df["high"].iloc[:days1] - df["low"].iloc[:days1]
+        if len(initial_ranges) < days1:
+            msg = "Not enough historical data for ATR calculation"
             logger.error(msg)
             raise RuntimeError(msg)
-        actual_indices = df.index[selected_indices]  # Convert positional indices to actual index labels
-        df.loc[actual_indices, "true_range"] = selected_ranges
 
-        # Create a new column marking the selected ranges
-        df["selected_range"] = False
-        df.loc[actual_indices, "selected_range"] = True
+        initial_atr = initial_ranges.mean()
 
-        # Log the time values of the selected range
-        selected_times = df.loc[actual_indices, "time"].tolist()
+        # Step 2: Filter bars based on volatility thresholds
+        df["range"] = df["high"] - df["low"]
+        df["is_normal"] = (df["range"] >= initial_atr * chg2) & (df["range"] <= initial_atr * chg1)
 
-        # Format the timestamps to display only the date (YYYY-MM-DD)
+        # Step 3: Collect exactly days1 "normal" bars, looking back as far as needed
+        bars_collected = 0
+        i = 0
+
+        while bars_collected < days1 and i < len(df):
+            if df["is_normal"].iloc[i]:
+                selected_highs.append(df["high"].iloc[i])
+                selected_lows.append(df["low"].iloc[i])
+                selected_ranges.append(df["range"].iloc[i])
+                selected_times.append(df["time"].iloc[i])
+                bars_collected += 1
+            i += 1
+
+            if i >= len(df) and bars_collected < days1:
+                # If we've gone through all bars and still don't have enough,
+                # use what we have or fall back to initial calculation
+                logger.warning(f"Could only find {bars_collected} 'normal' bars out of requested {days1}")
+                if bars_collected == 0:
+                    # If no "normal" bars found, use initial calculation
+                    selected_ranges = initial_ranges.tolist()[:days1]
+                    selected_times = df["time"].iloc[:days1].tolist()
+                    logger.warning(f"No 'normal' bars found, using initial {days1} bars")
+                    break
+
+        # Step 4: Calculate ATR from selected bars
+        atr = sum(selected_ranges) / len(selected_ranges)
+
+        # Format and display selected candles
         selected_times_sorted = sorted(selected_times, reverse=True)
-        formatted_times = "\n".join([time.strftime("%Y-%m-%d") for time in selected_times_sorted])
+        formatted_times = "\n".join(
+            [time.strftime("%Y-%m-%d") if hasattr(time, 'strftime') else str(time) for time in selected_times_sorted])
         logger.info(f"\nSelected Candles for ATR calculation:\n{formatted_times}")
         self.selected_atr_candles = formatted_times
 
-        # Calculate Average True Range (ATR)
-        atr = float(np.mean(selected_ranges))
+        # Format ATR value
         formatted_atr = format(atr, '.10f')
         formatted_atr_float = float(formatted_atr)
+
+        # Check if ATR is too small
         if formatted_atr_float < self.five_min_tr:
             logger.info(f"ATR is too small -> {atr} | Using Five MIN ATR -> {self.five_min_tr}")
             return round(self.five_min_tr, 10)
+
         logger.info(f"Average True Range (ATR): {atr}")
         return formatted_atr_float
 
@@ -358,11 +453,11 @@ class Calculator:
 
 
 if __name__ == "__main__":
-    c = Calculator(asset="crv",
-                   direction="long",
-                   level_price=0.6330,
+    c = Calculator(asset="kaito",
+                   direction="short",
+                   level_price=127.9001,
                    risk_reward_ratio=3,
-                   risk_amount=10,
+                   risk_amount=7,
                    perc_of_atr=10,
                    perc_of_atr_stop=10,
                    custom_sl_point=None,

@@ -82,7 +82,7 @@ class FuturesFilter:
                 }
 
             else:
-                # The five_min levels are not in range
+                # The five_min script-levels are not in range
                 asset_data = {
                     "asset": symbol,
                     "prev_day_high": prev_day_high,
@@ -94,7 +94,7 @@ class FuturesFilter:
                 }
                 logger.info(f"{symbol} Not In Range.")
 
-            # Determine the distance between last 1m close price and day/5min levels
+            # Determine the distance between last 1m close price and day/5min script-levels
             last_min_close_distance_pct_low_five = abs(last_min_close - first_five_min_low) / first_five_min_low * 100
             last_min_close_distance_pct_high_five = abs(
                 last_min_close - first_five_min_high) / first_five_min_high * 100
@@ -105,7 +105,7 @@ class FuturesFilter:
             else:
                 asset_data["curr_price_distance_pct"] = f"{last_min_close_distance_pct_low_five}"
 
-            # Determine the distance between five_min and prev_day levels
+            # Determine the distance between five_min and prev_day script-levels
             low_distance_pct = abs(first_five_min_low - prev_day_low) / prev_day_low * 100
             high_distance_pct = abs(first_five_min_high - prev_day_high) / prev_day_high * 100
 
@@ -184,5 +184,5 @@ if __name__ == "__main__":
     logger.info("Starting Crypto Futures Filter...")
     cl = FuturesFilter()
     symbols = cl.get_symbols()
-    high_volume_symbols = cl.get_high_volume_symbols(symbols, threshold=50000000)
+    high_volume_symbols = cl.get_high_volume_symbols(symbols, threshold=25000000)
     cl.filter_futures(high_volume_symbols)

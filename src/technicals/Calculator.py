@@ -453,9 +453,9 @@ class Calculator:
 
 
 if __name__ == "__main__":
-    c = Calculator(asset="kaito",
-                   direction="short",
-                   level_price=127.9001,
+    c = Calculator(asset="ltc",
+                   direction="long",
+                   level_price=76.73,
                    risk_reward_ratio=3,
                    risk_amount=7,
                    perc_of_atr=10,

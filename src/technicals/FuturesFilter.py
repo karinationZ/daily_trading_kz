@@ -132,15 +132,15 @@ class FuturesFilter:
                 asset_data["status"] = " ❌above-prev-day-high"
                 asset_data["candidate"] = False
 
-            elif low_distance_pct >= 4 and last_min_close_distance_pct_low_five <= 0.5:
-                asset_data["status"] = "✅near-five-min-low"
-                asset_data["candidate"] = True
-                logger.info(f"✅near-five-min-low - {symbol} ")
-
-            elif high_distance_pct >= 4 and last_min_close_distance_pct_high_five <= 0.5:
-                asset_data["status"] = "✅near-five-min-high"
-                asset_data["candidate"] = True
-                logger.info(f"✅near-five-min-high - {symbol} ")
+            # elif low_distance_pct >= 4 and last_min_close_distance_pct_low_five <= 0.5:
+            #     asset_data["status"] = "✅near-five-min-low"
+            #     asset_data["candidate"] = True
+            #     logger.info(f"✅near-five-min-low - {symbol} ")
+            #
+            # elif high_distance_pct >= 4 and last_min_close_distance_pct_high_five <= 0.5:
+            #     asset_data["status"] = "✅near-five-min-high"
+            #     asset_data["candidate"] = True
+            #     logger.info(f"✅near-five-min-high - {symbol} ")
 
             else:
                 asset_data["status"] = "❌"
@@ -170,7 +170,7 @@ class FuturesFilter:
             logger.info("\nFiltered Assets Summary:")
 
             # Save to CSV with the specific column format
-            filename = PROJECT_DIR + f"/artifacts/filtered_futures/filtered_futures.csv"
+            filename = PROJECT_DIR + "/artifacts/filtered_futures/filtered_futures.csv"
             df.to_csv(filename, index=False)
             logger.info(f"\nResults saved to {filename}")
 
@@ -184,5 +184,5 @@ if __name__ == "__main__":
     logger.info("Starting Crypto Futures Filter...")
     cl = FuturesFilter()
     symbols = cl.get_symbols()
-    high_volume_symbols = cl.get_high_volume_symbols(symbols, threshold=25000000)
+    high_volume_symbols = cl.get_high_volume_symbols(symbols, threshold=20000000)
     cl.filter_futures(high_volume_symbols)

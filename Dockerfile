@@ -3,6 +3,15 @@ FROM python:3.11-slim
 # Install Chromium and dependencies for Kaleido
 RUN apt-get update && apt-get install -y \
     chromium \
+    chromium-driver \
+    fonts-liberation \
+    libatk-bridge2.0-0 \
+    libatk1.0-0 \
+    libcairo2 \
+    libgbm1 \
+    libgdk-pixbuf2.0-0 \
+    libgtk-3-0 \
+    libpango-1.0-0 \
     make \
     && rm -rf /var/lib/apt/lists/*
 
@@ -15,8 +24,8 @@ COPY pyproject.toml poetry.lock ./
 COPY Makefile ./
 COPY . .
 
-# Install Python dependencies
-RUN poetry config virtualenvs.create false && poetry install --no-dev
+# Install Python dependencies (only main group)
+RUN poetry config virtualenvs.create false && poetry install
 
 # Set start command
 CMD ["make", "run_smc_bot"]

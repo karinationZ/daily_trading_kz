@@ -1,7 +1,7 @@
 from datetime import datetime, timedelta
 
-from settings import logger
-from src.brokers.BitUnixClient import BitUnixClient
+from daily_trading.settings import logger
+from daily_trading.brokers.BitUnixClient import BitUnixClient
 
 
 def date_to_unix_timestamp(date_time: datetime):
@@ -21,8 +21,8 @@ def date_to_unix_timestamp(date_time: datetime):
 if __name__ == "__main__":
     logger.info("Fetching trade history...")
     cl = BitUnixClient()
-    start_date = datetime(2025, 3, 1)
-    end_date = datetime(2025, 3, 31)
+    start_date = datetime(2025, 6, 1)
+    end_date = datetime(2025, 6, 15)
 
     all_trades = []
     # Loop through March in 3-day increments

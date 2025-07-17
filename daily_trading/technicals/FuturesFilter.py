@@ -2,10 +2,10 @@ from datetime import datetime, timedelta, timezone
 
 import pandas as pd
 
-from settings import logger, PROJECT_DIR
-from src.brokers.BitUnixClient import BitUnixClient
+from daily_trading.settings import logger, PROJECT_DIR
+from daily_trading.brokers.BitUnixClient import BitUnixClient
 
-
+INTERVAL = "15m"
 class FuturesFilter:
     def __init__(self):
         self.cl = BitUnixClient()
@@ -36,7 +36,8 @@ class FuturesFilter:
                 continue
 
             # The candle at index 0 should be yesterday's completed candle
-            prev_day_data = daily_data[-1]
+
+            prev_day_data = max(daily_data, key=lambda x: int(x['time']))
             prev_day_high, prev_day_low = float(prev_day_data["high"]), float(prev_day_data["low"])
             prev_day_timestamp = int(prev_day_data["time"])
 
@@ -62,21 +63,21 @@ class FuturesFilter:
             logger.debug(f"{symbol} prev day data: High={prev_day_high}, Low={prev_day_low}, Time={prev_day_timestamp}")
 
             start = today_midnight.timestamp() * 1000
-            first_five_min_data = self.cl.get_klines(symbol=symbol, interval="5m", limit=1, end_time=int(start))[0]
-            first_five_min_high = float(first_five_min_data["high"])
-            first_five_min_low = float(first_five_min_data["low"])
+            first_candle_data = self.cl.get_klines(symbol=symbol, interval=INTERVAL, limit=1, end_time=int(start))[0]
+            first_candle_min_high = float(first_candle_data["high"])
+            first_candle_min_low = float(first_candle_data["low"])
 
             last_min_data = self.cl.get_klines(symbol=symbol, interval="1m", limit=1)[0]
             last_min_close = float(last_min_data["close"])
 
             # Check if five-minute candle is within the range of last day
-            if prev_day_low < first_five_min_low and first_five_min_high < prev_day_high:
+            if prev_day_low < first_candle_min_low and first_candle_min_high < prev_day_high:
                 asset_data = {
                     "asset": symbol,
                     "prev_day_high": prev_day_high,
                     "prev_day_low": prev_day_low,
-                    "first_five_min_low": first_five_min_low,
-                    "first_five_min_high": first_five_min_high,
+                    "first_candle_min_low": first_candle_min_low,
+                    "first_candle_min_high": first_candle_min_high,
                     "in_range": True,
                     "candidate": False
                 }
@@ -87,17 +88,17 @@ class FuturesFilter:
                     "asset": symbol,
                     "prev_day_high": prev_day_high,
                     "prev_day_low": prev_day_low,
-                    "first_five_min_low": first_five_min_low,
-                    "first_five_min_high": first_five_min_high,
+                    "first_candle_min_low": first_candle_min_low,
+                    "first_candle_min_high": first_candle_min_high,
                     "in_range": False,
                     "candidate": True
                 }
                 logger.info(f"{symbol} Not In Range.")
 
             # Determine the distance between last 1m close price and day/5min script-levels
-            last_min_close_distance_pct_low_five = abs(last_min_close - first_five_min_low) / first_five_min_low * 100
+            last_min_close_distance_pct_low_five = abs(last_min_close - first_candle_min_low) / first_candle_min_low * 100
             last_min_close_distance_pct_high_five = abs(
-                last_min_close - first_five_min_high) / first_five_min_high * 100
+                last_min_close - first_candle_min_high) / first_candle_min_high * 100
 
             if last_min_close_distance_pct_high_five < last_min_close_distance_pct_low_five:
                 asset_data["curr_price_distance_pct"] = f"{last_min_close_distance_pct_high_five}"
@@ -106,11 +107,11 @@ class FuturesFilter:
                 asset_data["curr_price_distance_pct"] = f"{last_min_close_distance_pct_low_five}"
 
             # Determine the distance between five_min and prev_day script-levels
-            low_distance_pct = abs(first_five_min_low - prev_day_low) / prev_day_low * 100
-            high_distance_pct = abs(first_five_min_high - prev_day_high) / prev_day_high * 100
+            low_distance_pct = abs(first_candle_min_low - prev_day_low) / prev_day_low * 100
+            high_distance_pct = abs(first_candle_min_high - prev_day_high) / prev_day_high * 100
 
-            asset_data["five_min_vs_prev_day_low_distance_pct"] = low_distance_pct
-            asset_data["five_min_vs_prev_day_high_distance_pct"] = high_distance_pct
+            asset_data["first_candle_vs_prev_day_low_distance_pct"] = low_distance_pct
+            asset_data["first_candle_vs_prev_day_high_distance_pct"] = high_distance_pct
 
             # Check other criteria
             last_min_close_distance_pct_low_day = abs(last_min_close - prev_day_low) / prev_day_low * 100
@@ -132,15 +133,15 @@ class FuturesFilter:
                 asset_data["status"] = " ❌above-prev-day-high"
                 asset_data["candidate"] = False
 
-            # elif low_distance_pct >= 4 and last_min_close_distance_pct_low_five <= 0.5:
-            #     asset_data["status"] = "✅near-five-min-low"
-            #     asset_data["candidate"] = True
-            #     logger.info(f"✅near-five-min-low - {symbol} ")
-            #
-            # elif high_distance_pct >= 4 and last_min_close_distance_pct_high_five <= 0.5:
-            #     asset_data["status"] = "✅near-five-min-high"
-            #     asset_data["candidate"] = True
-            #     logger.info(f"✅near-five-min-high - {symbol} ")
+            elif low_distance_pct >= 4 and last_min_close_distance_pct_low_five <= 0.5:
+                asset_data["status"] = "✅near-first_candle-low"
+                asset_data["candidate"] = True
+                logger.info(f"✅near-first_candle-low - {symbol} ")
+
+            elif high_distance_pct >= 4 and last_min_close_distance_pct_high_five <= 0.5:
+                asset_data["status"] = "✅near-first_candle-high"
+                asset_data["candidate"] = True
+                logger.info(f"✅near-first_candle-high - {symbol} ")
 
             else:
                 asset_data["status"] = "❌"
@@ -160,9 +161,9 @@ class FuturesFilter:
 
             # Define the exact column order, with status after candidate
             column_order = ['num', 'asset', 'in_range', 'candidate', 'status', 'curr_price_distance_pct',
-                            'prev_day_high', 'prev_day_low', 'first_five_min_high','first_five_min_low',
-                            'five_min_vs_prev_day_low_distance_pct',
-                            'five_min_vs_prev_day_high_distance_pct']
+                            'prev_day_high', 'prev_day_low', 'first_candle_min_high','first_candle_min_low',
+                            'first_candle_vs_prev_day_low_distance_pct',
+                            'first_candle_vs_prev_day_high_distance_pct']
 
             # Reorder the DataFrame columns
             df = df[column_order]
@@ -184,5 +185,5 @@ if __name__ == "__main__":
     logger.info("Starting Crypto Futures Filter...")
     cl = FuturesFilter()
     symbols = cl.get_symbols()
-    high_volume_symbols = cl.get_high_volume_symbols(symbols, threshold=20000000)
+    high_volume_symbols = cl.get_high_volume_symbols(symbols, threshold=30000000)
     cl.filter_futures(high_volume_symbols)

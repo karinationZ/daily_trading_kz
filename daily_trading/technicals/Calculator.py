@@ -9,11 +9,10 @@ from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from typing import Literal
 
-import numpy as np
 import pandas as pd
 
-from settings import logger
-from src.brokers.BitUnixClient import BitUnixClient
+from daily_trading.settings import logger
+from daily_trading.brokers.BitUnixClient import BitUnixClient
 
 CURR_DIR = os.path.dirname(os.path.realpath(sys.argv[0]))
 
@@ -240,7 +239,7 @@ class Calculator:
     #         return round(self.five_min_tr, 10)
     #     logger.info(f"Average True Range (ATR): {atr}")
     #     return formatted_atr_float
-    def calculate_atr(self, time_frame="1d", time_delta=5):
+    def calculate_atr(self, time_frame="4h", time_delta=5):
         # Get historical data
         df = self.get_historical_data(time_frame, time_delta + 20, limit=50)
 
@@ -453,9 +452,9 @@ class Calculator:
 
 
 if __name__ == "__main__":
-    c = Calculator(asset="ltc",
+    c = Calculator(asset="haedal",
                    direction="long",
-                   level_price=76.73,
+                   level_price=0.155623,
                    risk_reward_ratio=3,
                    risk_amount=7,
                    perc_of_atr=10,

@@ -11,7 +11,7 @@ from random import choices
 import dotenv
 import requests
 
-from settings import logger, PROJECT_DIR
+from daily_trading.settings import logger, PROJECT_DIR
 
 dotenv.load_dotenv()
 
@@ -154,9 +154,9 @@ class BitUnixClient:
             raise Exception(f"API Error: {data['msg']}")
         return data["data"]["orderList"]
 
-    def place_buy_order(self, symbol, price, qty, tp_trigger_price, sl_trigger_price):
+    def place_order(self, symbol, side, price, qty, tp_trigger_price, sl_trigger_price):
         symbol = symbol.replace("/", "").replace("USD", "USDT")
-        body = {"symbol": symbol, "side": "BUY",
+        body = {"symbol": symbol, "side": side,
                 "price": price,
                 "qty": qty,
                 "orderType": "LIMIT",
@@ -178,16 +178,44 @@ class BitUnixClient:
             raise Exception(response.text)
         return response.json()
 
+    def get_pending_positions(self):
+        # TODO Implement
+        pass
+
+    def get_position(self, asset):
+        # TODO Implement
+        pass
+
+    def close_all_positions(self):
+        # TODO Implement
+
+        pass
+
     @staticmethod
     def save_trades_history_to_csv(trades_history):
-        """Convert trade data to CSV format"""
+        """Convert trade data to CSV format and include totals for Fee and realizedPNL"""
         filename = PROJECT_DIR + "/artifacts/history/trade_history.csv"
+
+        # Initialize totals
+        total_fee = 0
+        total_realized_pnl = 0
+
+        # Calculate totals first
+        for trade in trades_history:
+            fee = float(trade.get("fee", 0) or 0)  # Handle None or empty values
+            realized_pnl = float(trade.get("realizedPNL", 0) or 0)  # Handle None or empty values
+
+            total_fee += fee
+            total_realized_pnl += realized_pnl
+
         with open(filename, 'w', newline='') as csvfile:
             writer = csv.writer(csvfile)
 
             # Write header
-            writer.writerow(
-                ["Date", "Time", "Symbol", "Quantity", "Price", "Side", "Leverage", "Commission", "Fee", "realizedPNL"])
+            writer.writerow([
+                "Date", "Time", "Symbol", "Quantity", "Price", "Side",
+                "Leverage", "Fee", "realizedPNL"
+            ])
 
             # Write trade data
             for trade in trades_history:
@@ -198,10 +226,10 @@ class BitUnixClient:
 
                 # Determine side
                 side = "Buy" if trade.get("side", "") == "BUY" else "Sell"
-                commission = trade.get("fee", None)
-                fee = trade.get("fee", None)
+                fee = trade.get("fee", 0)
+                realized_pnl = trade.get("realizedPNL", 0)
 
-                # Write row with placeholders for additional fields
+                # Write row with correct number of columns
                 writer.writerow([
                     date_str,
                     time_str,
@@ -210,9 +238,17 @@ class BitUnixClient:
                     trade["avgPrice"],
                     side,
                     trade["leverage"],
-                    commission,
                     fee,
-                    trade["realizedPNL"]
+                    realized_pnl
                 ])
+
+            # Add a blank row to separate totals
+            writer.writerow([])
+
+            # Add totals row
+            writer.writerow([
+                "", "", "", "", "", "", "TOTALS:",
+                f"{total_fee:.8f}", f"{total_realized_pnl:.8f}"
+            ])
 
         logger.info(f"CSV file has been created: {filename}")

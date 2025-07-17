@@ -112,8 +112,8 @@ class StrategyBase(ABC):
         message = (f"📊 SMC Final Signal for {symbol}\nTime: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n"
                    f"Signal: {signal}\nTrend: {trend}\n")
         if recent_smc_events:
-            message += f"Recent SMC Events: {', '.join(recent_smc_events)}\n"
+            message += f"Recent SMC Events: {' '.join(recent_smc_events)}\n"
         cache_key = (symbol, self.lower_tf_15m)
         if cache_key in self.event_cache:
-            message += f"Cached Events: {', '.join(self.event_cache[cache_key]['events'])}\n"
+            message += f"Cached Events: {' '.join(self.event_cache[cache_key]['events'])}\n"
         await self.send_telegram_message(message, fig)

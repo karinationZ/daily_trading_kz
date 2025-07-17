@@ -233,7 +233,7 @@ class SMCTradingBot:
                         msg = (f"📊 SMC Signal Confirmation for {symbol} ({current_candle_time})\n"
                                f"Signal: {analysis['direction']}\n"
                                f"Trend: {analysis['trend']}\n"
-                               f"Recent SMC Events: {', '.join(analysis['recent_smc_events'])}")
+                               f"Recent SMC Events: {' '.join(analysis['recent_smc_events'])}")
                         logger.info(msg)
                         await self.continuation_ob_break_strategy.send_telegram_message(msg, analysis['fig'])
                     else:

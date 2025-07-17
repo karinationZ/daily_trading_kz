@@ -2,7 +2,6 @@ import pandas as pd
 import pytest
 
 from daily_trading.bots.smc_bot.clients.BosChochDetector import BosChochDetector
-from daily_trading.bots.smc_bot.clients.CandlePatternDetector import CandlePatternDetector
 from daily_trading.bots.smc_bot.clients.FakeBreakoutDetector import FakeBreakoutDetector
 from daily_trading.bots.smc_bot.clients.FvgDetector import FvgDetector
 from daily_trading.bots.smc_bot.clients.HighLowDetector import HighLowDetector
@@ -11,7 +10,6 @@ from daily_trading.bots.smc_bot.clients.LiquidityPoolDetector import LiquidityPo
 from daily_trading.bots.smc_bot.clients.LiquiditySweepDetector import LiquiditySweepDetector
 from daily_trading.bots.smc_bot.clients.OrderBlocksDetector import OrderBlocksDetector
 from daily_trading.bots.smc_bot.clients.SMCTardingBot import SMCTradingBot
-from daily_trading.bots.smc_bot.clients.TelegramBot import TelegramBot
 from daily_trading.settings import logger
 
 symbol = "PUMPFUNUSDT"
@@ -30,21 +28,6 @@ async def test_bos_detector():
 
     detector = BosChochDetector(main_tf, show_bull=True, show_bear=True)
     results = detector.calculate_bos_choch(ohlc.tail(100), plot=True)
-    fig = results["fig"]
-    fig.show()
-
-
-@pytest.mark.asyncio
-async def test_candle_patterns():
-    bot = SMCTradingBot(symbols=[symbol], lookback_days=lookback_days, main_tf=main_tf)
-    ohlc = await bot.fetch_ohlc_data(symbol, main_tf)
-
-    # with pd.option_context('display.max_rows', None, 'display.max_columns', None):
-    #     logger.info("\n{}", ohlc.tail(50).to_string())
-
-    detector = CandlePatternDetector(main_tf=main_tf, pin_body_ratio=0.15, pin_wick_ratio=0.75,
-                                     pin_opposite_wick_ratio=0.05, volume_window=14)
-    results = detector.calculate_candlestick_signals(ohlc.tail(100), plot=True)
     fig = results["fig"]
     fig.show()
 

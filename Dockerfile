@@ -25,7 +25,7 @@ COPY Makefile ./
 COPY . .
 
 # Install Python dependencies (only main group)
-RUN poetry config virtualenvs.create false && poetry install
+RUN poetry config virtualenvs.create false && poetry install --only main
 
 # Set start command
 CMD ["make", "run_smc_bot"]

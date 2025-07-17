@@ -1,12 +1,9 @@
 FROM python:3.11-slim
 
-# Install Matplotlib dependencies and Chromium for Kaleido
+# Install Chromium and dependencies for Kaleido
 RUN apt-get update && apt-get install -y \
-    libfreetype6-dev \
-    libpng-dev \
-    pkg-config \
+    chromium \
     make \
-    chromium-browser \
     && rm -rf /var/lib/apt/lists/*
 
 # Install Poetry

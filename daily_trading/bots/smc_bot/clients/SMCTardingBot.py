@@ -4,7 +4,6 @@ from datetime import datetime, timedelta
 import pandas as pd
 import pytz
 
-from daily_trading.bots.smc_bot.clients.SMCBase import Trend
 from daily_trading.bots.smc_bot.clients.strategy.ContinuationBlockOrderSweep import ContinuationBlockOrderSweepStrategy
 from daily_trading.brokers.BitUnixClient import BitUnixClient
 from daily_trading.settings import logger
@@ -18,7 +17,8 @@ class SMCTradingBot:
     1H HH/HL or LH/LL, and FVG-based entries.
     """
 
-    def __init__(self, symbols, main_tf: str = '1h', symbol_volume_threshold: float = 30000000, lookback_days: int = 1):
+    def __init__(self, symbols, main_tf: str = '1h', symbol_volume_threshold: float = 30000000, lookback_days: int = 1,
+                 debug=False):
         """
         Initialize SMCTradingBot.
 
@@ -32,9 +32,10 @@ class SMCTradingBot:
         self.main_tf = main_tf
         self.volume_threshold = symbol_volume_threshold
         self.lookback_days = lookback_days
+        self.default_symbols = ["BTCUSDT"]
         self.client = BitUnixClient()
         self.asset_finder = BitUnixDivergentAssetsFinder()
-        self.continuation_ob_break_strategy = ContinuationBlockOrderSweepStrategy(main_tf)
+        self.continuation_ob_break_strategy = ContinuationBlockOrderSweepStrategy(main_tf, debug)
         self.timezone = pytz.UTC
         self.last_symbol_update = None
         self.data_cache = {}  # Cache: {(symbol, timeframe): (ohlc, last_updated)}
@@ -174,9 +175,11 @@ class SMCTradingBot:
             df = pd.DataFrame(all_klines, columns=["time", "open", "high", "low", "close", "quoteVol"])
             df = df.rename(columns={"quoteVol": "volume"})
             df["time"] = pd.to_datetime(pd.to_numeric(df["time"]), unit="ms", utc=True)
+            df["symbol"] = symbol
             df.set_index("time", inplace=True)
-            df = df[["open", "high", "low", "close", "volume"]].astype(float)
-
+            numeric_columns = ["open", "high", "low", "close", "volume"]
+            df[numeric_columns] = df[numeric_columns].astype(float)
+            df = df[["symbol", "open", "high", "low", "close", "volume"]]
             self.data_cache[cache_key] = (df, datetime.now(self.timezone))
             logger.info(f"Cached OHLC data for {symbol} ({timeframe}): {len(df)} rows")
             return df.sort_values(by="time")
@@ -193,9 +196,12 @@ class SMCTradingBot:
         try:
             results = self.asset_finder.find_divergent_assets(
                 volume_threshold=self.volume_threshold,
-                lookback_hours=4
+                lookback_hours=2
             )
             self.symbols = [asset["symbol"] for asset in results["non_correlated"]]
+            if not self.symbols:
+                logger.info(f"Thera are no divergent assets, using default symbols - {self.default_symbols}")
+                self.symbols = self.default_symbols
             logger.info(f"Updated symbols: {self.symbols}")
             self.last_symbol_update = datetime.now(self.timezone)
         except Exception as e:
@@ -229,13 +235,16 @@ class SMCTradingBot:
                     analysis = await self.continuation_ob_break_strategy.analyze_smc(symbol, ohlc_main)
 
                     # SMCAnalyser sends step-by-step and final signals, but we send a summary for confirmation
-                    if analysis["direction"]: #!= Trend.NEUTRAL.name:
+                    events = [e for e in analysis['recent_smc_events'] if e is not None]
+                    events_str = ' '.join([event[0] if isinstance(event, list) else event for event in events])
+
+                    if analysis:  # != Trend.NEUTRAL.name:
                         msg = (f"📊 SMC Signal Confirmation for {symbol} ({current_candle_time})\n"
                                f"Signal: {analysis['direction']}\n"
                                f"Trend: {analysis['trend']}\n"
-                               f"Recent SMC Events: {' '.join(analysis['recent_smc_events'])}")
+                               f"Recent SMC Events: {events_str}")
                         logger.info(msg)
-                        await self.continuation_ob_break_strategy.send_telegram_message(msg, analysis['fig'])
+                        await self.continuation_ob_break_strategy.telegram_bot.send_message(msg, analysis['fig'])
                     else:
                         logger.info(f"No signal confirmation sent for {symbol} (NEUTRAL)")
 

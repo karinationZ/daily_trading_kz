@@ -159,6 +159,7 @@ class LiquidityPoolDetector(SMCBase):
         # Filter pivots to ensure timestamps are within ohlc.index
         pivot_high_points = [p for p in pivot_high_points if p['time'] in ohlc.index]
         pivot_low_points = [p for p in pivot_low_points if p['time'] in ohlc.index]
+        symbol = ohlc['symbol'].iloc[0] if 'symbol' in ohlc.columns else 'Unknown'
 
         fig = go.Figure()
         fig.add_trace(go.Candlestick(
@@ -273,7 +274,7 @@ class LiquidityPoolDetector(SMCBase):
                 ))
 
         fig.update_layout(
-            title="Liquidity Pools and Raids",
+            title=f"{symbol} | Liquidity Pools and Raids",
             xaxis_title="Time",
             yaxis_title="Price",
             xaxis_rangeslider_visible=False

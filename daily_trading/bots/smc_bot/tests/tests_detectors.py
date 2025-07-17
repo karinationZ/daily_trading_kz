@@ -10,13 +10,24 @@ from daily_trading.bots.smc_bot.clients.LiquidityPoolDetector import LiquidityPo
 from daily_trading.bots.smc_bot.clients.LiquiditySweepDetector import LiquiditySweepDetector
 from daily_trading.bots.smc_bot.clients.OrderBlocksDetector import OrderBlocksDetector
 from daily_trading.bots.smc_bot.clients.SMCTardingBot import SMCTradingBot
-from daily_trading.bots.smc_bot.clients.TelegramBot import TelegramBot
 from daily_trading.settings import logger
 
-symbol = "PUMPFUNUSDT"
+symbol = "THEUSDT"
 main_tf = "1h"
-higher_tf = "4h"
-lookback_days = 10
+lookback_days = 20
+
+
+@pytest.mark.asyncio
+async def test_trend():
+    bot = SMCTradingBot(symbols=[symbol], lookback_days=lookback_days, main_tf=main_tf)
+    ohlc = await bot.fetch_ohlc_data(symbol, main_tf)
+    detector = HighLowDetector(main_tf)
+
+    with pd.option_context('display.max_rows', None, 'display.max_columns', None):
+        logger.info("\n{}", ohlc.tail(50).to_string())
+
+    trend = detector.detect_trend(ohlc)
+    logger.info(trend)
 
 
 @pytest.mark.asyncio
@@ -67,13 +78,14 @@ async def test_high_low():
     ohlc = await bot.fetch_ohlc_data(symbol, main_tf)
 
     with pd.option_context('display.max_rows', None, 'display.max_columns', None):
-        logger.info("\n{}", ohlc.tail(200).to_string())
+        logger.info("\n{}", ohlc.tail(50).to_string())
     detector = HighLowDetector(main_tf)
-    results = detector.calculate_high_low_swings(ohlc, plot=True)
+    results = detector.calculate_high_low_swings(ohlc, plot=False)
 
-    trend = detector.detect_trend(results)
-    fig = results["fig"]
-    fig.show()
+    trend = detector.detect_trend(ohlc)
+    logger.info(trend)
+    # fig = results["fig"]
+    # fig.show()
 
 
 @pytest.mark.asyncio
@@ -128,8 +140,8 @@ async def test_liq_pool():
     fig = results["fig"]
     fig.show()
 
-    bot = TelegramBot()
-    await bot.send_message(
-        text="TEST TEST TEST",
-        image=fig
-    )
+    # bot = TelegramBot()
+    # await bot.send_message(
+    #     text="TEST TEST TEST",
+    #     image=fig
+    # )

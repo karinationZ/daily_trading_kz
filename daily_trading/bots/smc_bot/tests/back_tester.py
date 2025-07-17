@@ -23,8 +23,6 @@ class BackTester:
         self.lookback_days = lookback_days
         self.strategy = ContinuationBlockOrderSweepStrategy(
             main_tf,
-            telegram_token=telegram_token or "dummy_token",
-            channel_id=channel_id
         )
         self.output_dir = "./backtest_results"
         os.makedirs(self.output_dir, exist_ok=True)

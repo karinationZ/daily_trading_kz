@@ -298,9 +298,11 @@ class LevelsBreakDetector(SMCBase):
                                bear_wicks,
                                pivot_high_points,
                                pivot_low_points):
+        symbol = ohlc['symbol'].iloc[0] if 'symbol' in ohlc.columns else 'Unknown'
+
         # Create Plotly figure
         fig = make_subplots(rows=2, cols=1, shared_xaxes=True, vertical_spacing=0.03,
-                            subplot_titles=["Price Chart", "Volume Oscillator"],
+                            subplot_titles=[f"{symbol} | Price Chart", "Volume Oscillator"],
                             row_heights=[0.7, 0.3])
 
         # Plot candlesticks
@@ -321,7 +323,7 @@ class LevelsBreakDetector(SMCBase):
 
         # Update layout
         fig.update_layout(
-            title="Support and Resistance Levels with Breaks [LuxAlgo]",
+            title=f"{symbol} | Support and Resistance Levels with Breaks [LuxAlgo]",
             xaxis_rangeslider_visible=False,
             showlegend=True,
             height=800,

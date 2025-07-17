@@ -216,62 +216,29 @@ class SMCBase:
             ema[i] = alpha * series.iloc[i] + (1 - alpha) * ema[i - 1]
         return pd.Series(ema, index=series.index)
 
-    # @staticmethod
-    # def detect_trend(swings_high_low):
-    #     hh = swings_high_low['signals']['HH'][-2:]
-    #     hl = swings_high_low['signals']['HL'][-2:]
-    #     ll = swings_high_low['signals']['LL'][-2:]
-    #     lh = swings_high_low['signals']['LH'][-2:]
-    #     if hh and hl and hh[-1]['time'] > hh[-2]['time'] and hl[-1]['time'] > hl[-2]['time']:
-    #         return Trend.BULLISH.name
-    #     if ll and lh and ll[-1]['time'] > ll[-2]['time'] and lh[-1]['time'] > lh[-2]['time']:
-    #         return Trend.BEARISH.name
-    #     return Trend.NEUTRAL.name
     @staticmethod
-    def detect_trend(swings_high_low):
-        # Get all signals and sort by time
-        all_signals = []
-        for signal_type in ['HH', 'HL', 'LL', 'LH']:
-            signals = swings_high_low['signals'][signal_type]
-            for signal in signals:
-                all_signals.append({**signal, 'type': signal_type})
+    def detect_trend(ohlc_data: pd.DataFrame, lookback: int = 20):
+        """
+        Detect trend using moving average crossover and price slope.
+        ohlc_data: DataFrame with 'open', 'high', 'low', 'close' columns and datetime index.
+        lookback: Number of periods for moving averages and slope calculation.
+        """
+        # Calculate moving averages
+        short_sma = ohlc_data['close'].rolling(window=5).mean()
+        long_sma = ohlc_data['close'].rolling(window=lookback).mean()
 
-        if not all_signals:
-            return Trend.NEUTRAL.name
+        # Calculate linear regression slope of closes
+        recent_data = ohlc_data['close'].tail(lookback)
+        x = np.arange(len(recent_data))
+        slope, _ = np.polyfit(x, recent_data, 1)  # Slope of linear regression
 
-        # Sort by time to get chronological order
-        all_signals.sort(key=lambda x: x['time'])
+        # Trend conditions
+        ma_bullish = short_sma.iloc[-1] > long_sma.iloc[-1] and short_sma.iloc[-2] > long_sma.iloc[-2]
+        ma_bearish = short_sma.iloc[-1] < long_sma.iloc[-1] and short_sma.iloc[-2] < long_sma.iloc[-2]
+        slope_threshold = 0.001  # Minimum slope for trend confirmation
 
-        # Need at least 2 signals to determine trend
-        if len(all_signals) < 2:
-            return Trend.NEUTRAL.name
-
-        # Look at recent signals with time-weighted scoring
-        recent_signals = all_signals[-6:] if len(all_signals) >= 6 else all_signals
-
-        bullish_score = 0
-        bearish_score = 0
-
-        # Weight more recent signals higher
-        for i, signal in enumerate(recent_signals):
-            weight = (i + 1) / len(recent_signals)  # More recent = higher weight
-
-            if signal['type'] == 'HH':
-                bullish_score += 2 * weight  # Strong bullish
-            elif signal['type'] == 'HL':
-                bullish_score += 1.5 * weight  # Moderate bullish
-            elif signal['type'] == 'LL':
-                bearish_score += 2 * weight  # Strong bearish
-            elif signal['type'] == 'LH':
-                bearish_score += 1.5 * weight  # Moderate bearish
-
-        # Require minimum confidence threshold
-        min_threshold = 1.0
-        confidence_gap = 0.5  # Require clear winner
-
-        if bullish_score >= min_threshold and bullish_score > bearish_score + confidence_gap:
+        if ma_bullish and slope > slope_threshold:
             return Trend.BULLISH.name
-        elif bearish_score >= min_threshold and bearish_score > bullish_score + confidence_gap:
+        elif ma_bearish and slope < -slope_threshold:
             return Trend.BEARISH.name
-        else:
-            return Trend.NEUTRAL.name
+        return Trend.NEUTRAL.name

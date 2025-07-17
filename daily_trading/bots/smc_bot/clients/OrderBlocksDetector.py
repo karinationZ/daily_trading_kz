@@ -148,11 +148,12 @@ class OrderBlocksDetector(SMCBase):
         ohlc = self.validate_data(ohlc)
         # Limit to last 200 rows
         ohlc = ohlc.tail(self.plot_tail)
+        symbol = ohlc['symbol'].iloc[0] if 'symbol' in ohlc.columns else 'Unknown'
 
         # Filter order blocks to ensure timestamps are within ohlc.index
         order_blocks = [ob for ob in order_blocks if ob['time'] in ohlc.index]
 
-        fig = make_subplots(rows=1, cols=1, subplot_titles=["Price Chart with Order Blocks"])
+        fig = make_subplots(rows=1, cols=1, subplot_titles=[f"{symbol} | Price Chart with Order Blocks"])
 
         fig.add_trace(go.Candlestick(
             x=ohlc.index,
@@ -219,7 +220,7 @@ class OrderBlocksDetector(SMCBase):
             )
 
         fig.update_layout(
-            title="Order Blocks [SMC]",
+            title=f"{symbol} | Order Blocks [SMC]",
             xaxis_rangeslider_visible=False,
             showlegend=True,
             height=800,

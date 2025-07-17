@@ -49,7 +49,7 @@ class ContinuationInducementStrategy(StrategyBase):
 
         swing_1h = self.detectors['swing_1h'].calculate_high_low_swings(ohlc_1h, plot=False)
 
-        trend = self.detectors['swing_1h'].detect_trend(swing_1h)
+        trend = self.detectors['swing_1h'].detect_trend(ohlc_1h)
 
         if trend != Trend.NEUTRAL.name:
             trend_event = f"{trend} trend confirmed."

@@ -143,13 +143,11 @@ class LiquiditySweepDetector(SMCBase):
         """
         ohlc = ohlc.sort_index()
         ohlc = ohlc.tail(self.plot_tail)
-        # Filter pivots to ensure timestamps are within ohlc.index
-        pivot_high_points = [p for p in pivot_high_points if p['time'] in ohlc.index]
-        pivot_low_points = [p for p in pivot_low_points if p['time'] in ohlc.index]
+        symbol = ohlc['symbol'].iloc[0] if 'symbol' in ohlc.columns else 'Unknown'
 
         logger.info("Generating Plotly figure for liquidity sweeps")
         ohlc = self.validate_data(ohlc)
-        fig = make_subplots(rows=1, cols=1, subplot_titles=["Price Chart with Liquidity Sweeps"])
+        fig = make_subplots(rows=1, cols=1, subplot_titles=[f"{symbol} | Price Chart with Liquidity Sweeps"])
 
         # Plot candlesticks
         fig.add_trace(go.Candlestick(
@@ -183,7 +181,7 @@ class LiquiditySweepDetector(SMCBase):
             )
 
         fig.update_layout(
-            title="Liquidity Sweeps [SMC]",
+            title=f"{symbol} | Liquidity Sweeps [SMC]",
             xaxis_rangeslider_visible=False,
             showlegend=True,
             height=800,

@@ -26,7 +26,7 @@ class ContinuationBlockOrderSweepStrategy(StrategyBase):
     Sends Telegram messages with plots (OHLC.tail(100)) for each step, including FVGs in final plot for visibility.
     """
 
-    def __init__(self, main_tf: str):
+    def __init__(self, main_tf: str, debug: bool):
         """
         Initialize strategy with detectors for trend, OB, and candlestick patterns.
 
@@ -35,9 +35,10 @@ class ContinuationBlockOrderSweepStrategy(StrategyBase):
             telegram_token (str): Telegram bot token for sending signals.
             channel_id (str): Telegram channel ID for message delivery.
         """
-        super().__init__(main_tf)
+        super().__init__(main_tf, debug)
         self.ob_tap_cache = {}  # Cache: {symbol: tap_ob_timestamp}
         self.ob_fig = None
+        self.debug = debug
 
         self.detectors = {
             'swing_1h': HighLowDetector(main_tf),
@@ -53,7 +54,7 @@ class ContinuationBlockOrderSweepStrategy(StrategyBase):
         recent_smc_events = []
         swing_1h = self.detectors['swing_1h'].calculate_high_low_swings(ohlc_1h, plot=True)
         fig = swing_1h["fig"]
-        trend = self.detectors['swing_1h'].detect_trend(swing_1h)
+        trend = self.detectors['swing_1h'].detect_trend(ohlc_1h)
 
         if trend != Trend.NEUTRAL.name:
             trend_event = f"{trend} trend confirmed."
@@ -86,10 +87,9 @@ class ContinuationBlockOrderSweepStrategy(StrategyBase):
             recent_smc_events.append(new_ob_event)
             logger.info(f"Step 2: {new_ob_event} for {symbol}")
             await self.send_telegram_message(f"{symbol} | Step 2: {new_ob_event}.", fig)
-        ob_fig = ob_result["fig"]
+        self.ob_fig = ob_result["fig"]
         logger.info(f"Found OB: {ob_signals}")
         logger.info(recent_smc_events)
-        self.ob_fig = ob_fig
         expected_bias = Trend.BULLISH.name if trend == Trend.BULLISH.name else Trend.BEARISH.name
         relevant_obs = [ob for ob in ob_signals if ob['type'] == expected_bias]
         self.nearest_ob = max(relevant_obs, key=lambda x: x['time'], default=None)
@@ -107,7 +107,7 @@ class ContinuationBlockOrderSweepStrategy(StrategyBase):
                 recent_smc_events.append(new_ob_event)
                 logger.info(f"{symbol} | Step 3: {new_ob_event}.")
                 await self.send_telegram_message(f"{symbol} | Step 3: {new_ob_event}.", self.ob_fig)
-            return None, recent_smc_events
+            return recent_smc_events
 
         # Check if the current candle taps the OB
         tap_timestamp = None
@@ -126,7 +126,7 @@ class ContinuationBlockOrderSweepStrategy(StrategyBase):
                 recent_smc_events.append(new_ob_event)
                 logger.info(f"{symbol} | Step 3: {new_ob_event}")
                 await self.send_telegram_message(f"Step 3: {new_ob_event} for {symbol}.", self.ob_fig)
-            return None, recent_smc_events
+            return recent_smc_events
 
         self.nearest_ob['tap_timestamp'] = tap_timestamp
         # Update cache
@@ -219,10 +219,10 @@ class ContinuationBlockOrderSweepStrategy(StrategyBase):
 
         # Step 2: Detect OBs
         relevant_obs, step2_events = await self.detect_ob(ohlc_1h, symbol, trend, cache_key)
+        trade_signal["fig"] = self.ob_fig
         recent_smc_events.extend(step2_events)
         if not relevant_obs:
             logger.info(f"{symbol} | Step 2: No unmitigated OBs detected, stopping analysis.")
-            trade_signal["fig"] = self.ob_fig
             return trade_signal
 
         # Step 3: Confirm price taps into OB (t must happen at least 3H later after the OB formed)

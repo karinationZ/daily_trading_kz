@@ -172,8 +172,9 @@ class FvgDetector(SMCBase):
         # Filter pivots to ensure timestamps are within ohlc.index
         pivot_high_points = [p for p in pivot_high_points if p['time'] in ohlc.index]
         pivot_low_points = [p for p in pivot_low_points if p['time'] in ohlc.index]
+        symbol = ohlc['symbol'].iloc[0] if 'symbol' in ohlc.columns else 'Unknown'
 
-        fig = make_subplots(rows=1, cols=1, subplot_titles=["Price Chart with Liquidity Voids (FVG)"])
+        fig = make_subplots(rows=1, cols=1, subplot_titles=[f"{symbol} | Price Chart with Liquidity Voids (FVG)"])
 
         fig.add_trace(go.Candlestick(
             x=ohlc.index,
@@ -245,7 +246,7 @@ class FvgDetector(SMCBase):
                         ))
 
         fig.update_layout(
-            title="Liquidity Voids (FVG) [SMC]",
+            title=f"{symbol} | Liquidity Voids (FVG) [SMC]",
             xaxis_rangeslider_visible=False,
             showlegend=True,
             height=800,

@@ -207,7 +207,9 @@ class FakeBreakoutDetector(SMCBase):
         - go.Figure: Plotly figure with candlesticks and labeled false breakouts.
         """
         logger.info("Generating Plotly figure for false breakouts")
-        fig = make_subplots(rows=1, cols=1, subplot_titles=["Price Chart with False Breakouts"])
+        symbol = ohlc['symbol'].iloc[0] if 'symbol' in ohlc.columns else 'Unknown'
+
+        fig = make_subplots(rows=1, cols=1, subplot_titles=[f"{symbol} | Price Chart with False Breakouts"])
 
         fig.add_trace(go.Candlestick(
             x=ohlc.index,
@@ -251,7 +253,7 @@ class FakeBreakoutDetector(SMCBase):
             ), row=1, col=1)
 
         fig.update_layout(
-            title="False Breakouts [SMC]",
+            title=f"{symbol} | False Breakouts [SMC]",
             xaxis_rangeslider_visible=False,
             showlegend=True,
             height=600,

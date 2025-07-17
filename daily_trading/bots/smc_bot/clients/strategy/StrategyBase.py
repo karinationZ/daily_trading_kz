@@ -11,7 +11,7 @@ from daily_trading.settings import logger
 class StrategyBase(ABC):
     """Base class for trading strategies, providing reusable methods for caching, plotting, and messaging."""
 
-    def __init__(self, main_tf: str):
+    def __init__(self, main_tf: str, debug=False):
         """
         Initialize base strategy with Telegram bot and cache.
 
@@ -24,7 +24,10 @@ class StrategyBase(ABC):
         self.lower_tf_15m = '15m'  # Default 15m timeframe for finer analysis
         self.telegram_bot = TelegramBot()
         self.event_cache = {}  # Cache: {(symbol, timeframe): {'events': list, 'last_updated': datetime}}
+        self.debug = debug
         logger.info(f"StrategyBase initialized with {main_tf} and {self.lower_tf_15m}")
+        if not self.debug:
+            logger.warning("Debug Mode is Off. Intermittent Telegram messages will not be sent.")
 
     async def manage_cache_event(self, cache_key: Tuple[str, str], event: str, current_time: datetime) -> bool:
         """Manage cache for a new event, return True if event is new."""
@@ -36,11 +39,14 @@ class StrategyBase(ABC):
             return True
         return False
 
-    async def send_telegram_message(self, message: str, fig: Optional[go.Figure] = None) -> bool:
+    async def send_telegram_message(self, message: str, fig: Optional[go.Figure] = None):
         """
         Send message via Telegram bot.
         """
-        return await self.telegram_bot.send_message(message, fig)
+        if self.debug:
+            await self.telegram_bot.send_message(message, fig)
+        else:
+            logger.info("Skipped sending telegram message. Debug Mode is Off.")
 
     # def plot_step(self, ohlc: pd.DataFrame, signals: list, step: str, entry: float = None,
     #               sl: float = None, tp: float = None) -> go.Figure:

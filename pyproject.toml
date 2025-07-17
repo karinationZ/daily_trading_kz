@@ -20,9 +20,11 @@ dotenv = "^0.9.9"
 scipy = "^1.15.2"
 scikit-learn = "^1.6.1"
 python-telegram-bot = "^22.2"
-kaleido = "^1.0.0"
 pytest-asyncio = "^1.0.0"
 matplotlib = "^3.10.3"
+kaleido = "^1.0.0"
+psutil = "^7.0.0"
+requests = "^2.32.4"
 
 
 [build-system]

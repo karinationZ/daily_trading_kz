@@ -10,6 +10,7 @@ from daily_trading.bots.smc_bot.clients.LiquidityPoolDetector import LiquidityPo
 from daily_trading.bots.smc_bot.clients.LiquiditySweepDetector import LiquiditySweepDetector
 from daily_trading.bots.smc_bot.clients.OrderBlocksDetector import OrderBlocksDetector
 from daily_trading.bots.smc_bot.clients.SMCTardingBot import SMCTradingBot
+from daily_trading.bots.smc_bot.clients.TelegramBot import TelegramBot
 from daily_trading.settings import logger
 
 symbol = "PUMPFUNUSDT"
@@ -127,8 +128,8 @@ async def test_liq_pool():
     fig = results["fig"]
     fig.show()
 
-    # bot = TelegramBot()
-    # await bot.send_message(
-    #     text="Important alert: Something happened",
-    #     image=fig
-    # )
+    bot = TelegramBot()
+    await bot.send_message(
+        text="TEST TEST TEST",
+        image=fig
+    )

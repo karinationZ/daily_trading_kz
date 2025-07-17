@@ -36,7 +36,6 @@ class OrderBlocksDetector(SMCBase):
 
         for i in range(1, len(ohlc)):
             current_price = ohlc['close'].iloc[i]
-            current_time = ohlc.index[i]
 
             # Detect bullish OB: last bearish candle before breaking swing high
             for pivot in pivot_highs:

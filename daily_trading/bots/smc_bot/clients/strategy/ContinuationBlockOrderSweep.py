@@ -196,7 +196,12 @@ class ContinuationBlockOrderSweepStrategy(StrategyBase):
             step3_events = await self.confirm_ob_tap(ohlc_1h, trend, symbol, relevant_obs, cache_key, current_time)
             recent_smc_events.extend(step3_events)
             signal_summary.recent_smc_events = recent_smc_events
-            return signal_summary
+
+            if self.ob_tap_cache[symbol] is None:
+                logger.info("Current candle did not tap OB.")
+                return signal_summary
+            else:
+                logger.info("Moving on to STEP 4.")
         else:
             # Validate OB tap TTL — must be within 3H
             last_ob_tap = self.ob_tap_cache[symbol]
@@ -208,7 +213,7 @@ class ContinuationBlockOrderSweepStrategy(StrategyBase):
             else:
                 logger.info("Moving on to Step 4 - candle pattern confirmation.")
 
-        # Step 4: Generate trade signal after OB mitigation and rejection
+        # Step 4: Confirm candle pattern
         rejection_confirmed, step4_events = await self.confirm_candle_pattern(ohlc_1h, trend, symbol,
                                                                               cache_key, current_time)
         recent_smc_events.extend(step4_events)
@@ -222,6 +227,7 @@ class ContinuationBlockOrderSweepStrategy(StrategyBase):
             logger.info(f"No trading signal. Current SMC events: {json.dumps(recent_smc_events, indent=1)}")
             return signal_summary
 
+        # Step 5:  Generate trade
         # Reset OB tapping time
         ob_tap_time = self.ob_tap_cache[symbol]
         self.ob_tap_cache[symbol] = None

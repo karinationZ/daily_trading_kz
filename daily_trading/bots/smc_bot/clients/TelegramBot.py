@@ -3,6 +3,7 @@ import io
 from typing import Optional
 
 import plotly.graph_objects as go
+from retrying import retry
 from telegram import Bot, InputFile
 from telegram.error import TelegramError
 from telegram.request import HTTPXRequest
@@ -55,6 +56,7 @@ class TelegramBot:
         self.semaphore = asyncio.Semaphore(5)  # Limit concurrent sends
         logger.info("TelegramBot initialized")
 
+    @retry(stop_max_attempt_number=3, wait_fixed=1000)
     async def send_message(
             self,
             text: str,

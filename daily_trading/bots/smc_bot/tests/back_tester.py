@@ -5,7 +5,7 @@ from typing import Dict, List, Tuple
 import pandas as pd
 
 from daily_trading.bots.smc_bot.clients.SMCTardingBot import SMCTradingBot
-from daily_trading.bots.smc_bot.clients.strategy.ContinuationBlockOrderSweep import ContinuationBlockOrderSweepStrategy
+from daily_trading.bots.smc_bot.clients.strategy.OrderBlockSweep import OrderBlockSweepStrategy
 from daily_trading.settings import logger
 
 
@@ -21,7 +21,7 @@ class BackTester:
         self.symbol = symbol
         self.main_tf = main_tf
         self.lookback_days = lookback_days
-        self.strategy = ContinuationBlockOrderSweepStrategy(
+        self.strategy = OrderBlockSweepStrategy(
             main_tf, debug=False
         )
         self.output_dir = "./backtest_results"

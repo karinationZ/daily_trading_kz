@@ -21,7 +21,8 @@ class TelegramBot:
             read_timeout: int = 30,
             write_timeout: int = 30,
             parse_mode: Optional[str] = "HTML",
-            disable_notification: bool = False
+            disable_notification: bool = False,
+            chat_id=None
     ):
         """
         Initialize Telegram bot with connection pool settings.
@@ -37,6 +38,8 @@ class TelegramBot:
             disable_notification (bool): Default notification setting
         """
         self.parse_mode = parse_mode
+        self.disable_notification = disable_notification
+        self.chat_id = chat_id if chat_id else TELEGRAM_CHANNEL_CHAT_ID
         # Configure HTTPXRequest with connection pool settings
         request = HTTPXRequest(
             connection_pool_size=connection_pool_size,
@@ -52,7 +55,6 @@ class TelegramBot:
             get_updates_request=request
         )
 
-        self.channel_id = TELEGRAM_CHANNEL_CHAT_ID
         self.semaphore = asyncio.Semaphore(5)  # Limit concurrent sends
         logger.info("TelegramBot initialized")
 
@@ -61,27 +63,32 @@ class TelegramBot:
             self,
             text: str,
             image: Optional[go.Figure] = None,
-            disable_notification: bool = False,
     ) -> bool:
         """
         Send message to Telegram channel with optional image.
         """
-        if not self.channel_id:
+        if not self.chat_id:
             logger.warning("No channel ID configured, message not sent")
             return False
 
         async with self.semaphore:
             try:
                 kwargs = {
-                    'chat_id': self.channel_id,
-                    'disable_notification': disable_notification,
+                    'chat_id': self.chat_id,
+                    'disable_notification': self.disable_notification,
                     'parse_mode': self.parse_mode,
                     'write_timeout': self.bot.request.read_timeout
                 }
 
                 if image:
                     buffer = io.BytesIO()
-                    image.write_image(buffer, format="png")
+                    image.write_image(
+                        buffer,
+                        format="png",
+                        width=1600,  # Wider than default (~700–800)
+                        height=900,  # Maintain a good aspect ratio
+                        scale=2  # Double resolution (effective DPI)
+                    )
                     buffer.seek(0)
 
                     await self.bot.send_photo(

@@ -5,10 +5,10 @@ import pandas as pd
 import pytz
 
 from daily_trading.bots.smc_bot.clients.SMCBase import Trend
-from daily_trading.bots.smc_bot.clients.strategy.ContinuationBlockOrderSweep import ContinuationBlockOrderSweepStrategy, \
+from daily_trading.bots.smc_bot.clients.strategy.OrderBlockSweep import OrderBlockSweepStrategy, \
     SignalSummary
 from daily_trading.brokers.BitUnixClient import BitUnixClient
-from daily_trading.settings import logger
+from daily_trading.settings import logger, TELEGRAM_CHANNEL_CHAT_ID
 from daily_trading.technicals.DivergentAssetsFinder import BitUnixDivergentAssetsFinder
 
 
@@ -19,7 +19,9 @@ class SMCTradingBot:
     1H HH/HL or LH/LL, and FVG-based entries.
     """
 
-    def __init__(self, symbols, main_tf: str = '1h', symbol_volume_threshold: float = 30000000, lookback_days: int = 1,
+    def __init__(self, symbols, main_tf: str = '1h',
+                 symbol_volume_threshold: float = 30000000,
+                 lookback_days: int = 1,
                  debug=False):
         """
         Initialize SMCTradingBot.
@@ -37,7 +39,7 @@ class SMCTradingBot:
         self.default_symbols = ["BTCUSDT"]
         self.client = BitUnixClient()
         self.asset_finder = BitUnixDivergentAssetsFinder()
-        self.continuation_ob_break_strategy = ContinuationBlockOrderSweepStrategy(main_tf, debug)
+        self.ob_sweep_strategy = OrderBlockSweepStrategy(main_tf, debug, telegram_chat_id=TELEGRAM_CHANNEL_CHAT_ID)
         self.timezone = pytz.UTC
         self.symbols_update_timestamp = None
         self.candle_duration = {
@@ -103,7 +105,7 @@ class SMCTradingBot:
             f"Sleeping for {int(sleep_duration)} seconds ({sleep_duration / 60:.2f} minutes) until {next_candle}")
         await asyncio.sleep(sleep_duration)
 
-    def send_final_message(self, analysis: SignalSummary, current_candle_time, symbol, title):
+    async def send_final_message(self, analysis: SignalSummary, current_candle_time, symbol, title):
         events = [e for e in analysis.recent_smc_events if e is not None]
         events_str = ' '.join([event[0] if isinstance(event, list) else event for event in events])
 
@@ -113,7 +115,7 @@ class SMCTradingBot:
                f"Trend: {analysis.trend}\n"
                f"SMC Events: {events_str}")
         logger.info(msg)
-        await self.continuation_ob_break_strategy.telegram_bot.send_message(msg, analysis.fig)
+        await self.ob_sweep_strategy.telegram_bot.send_message(msg, analysis.fig)
 
     async def fetch_ohlc_data(self, symbol: str, timeframe: str, periods: int = None) -> pd.DataFrame:
         """Fetch OHLC data with caching to reduce API calls.
@@ -239,8 +241,8 @@ class SMCTradingBot:
                     continue
 
                 current_candle_time = ohlc_main.index.max()
-                analysis = await self.continuation_ob_break_strategy.analyze_smc(symbol, ohlc_main)
-                self.send_final_message(analysis, current_candle_time, symbol, title="Order Block Sweep")
+                analysis = await self.ob_sweep_strategy.analyze_smc(symbol, ohlc_main)
+                await self.send_final_message(analysis, current_candle_time, symbol, title="Order Block Sweep")
 
                 await self.sleep_until_next_hour()
             except Exception as e:

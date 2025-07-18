@@ -10,6 +10,7 @@ from daily_trading.bots.smc_bot.clients.LiquidityPoolDetector import LiquidityPo
 from daily_trading.bots.smc_bot.clients.LiquiditySweepDetector import LiquiditySweepDetector
 from daily_trading.bots.smc_bot.clients.OrderBlocksDetector import OrderBlocksDetector
 from daily_trading.bots.smc_bot.clients.SMCTardingBot import SMCTradingBot
+from daily_trading.bots.smc_bot.clients.TelegramBot import TelegramBot
 from daily_trading.settings import logger
 
 symbol = "XRPUSDT"
@@ -126,7 +127,7 @@ async def test_order_blocks():
     fig = results["fig"]
     fig.show()
 
-
+from daily_trading.settings import TELEGRAM_BOT_CHAT_ID
 @pytest.mark.asyncio
 async def test_liq_pool():
     bot = SMCTradingBot(symbols=[symbol], lookback_days=lookback_days, main_tf=main_tf)
@@ -140,8 +141,8 @@ async def test_liq_pool():
     fig = results["fig"]
     fig.show()
 
-    # bot = TelegramBot()
-    # await bot.send_message(
-    #     text="TEST TEST TEST",
-    #     image=fig
-    # )
+    bot = TelegramBot(chat_id=TELEGRAM_BOT_CHAT_ID)
+    await bot.send_message(
+        text="TEST TEST TEST",
+        image=fig
+    )

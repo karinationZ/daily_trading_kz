@@ -7,7 +7,7 @@ import plotly.graph_objects as go
 
 from daily_trading.bots.smc_bot.clients.SMCBase import SMCBase, Trend
 from daily_trading.bots.smc_bot.clients.TelegramBot import TelegramBot
-from daily_trading.settings import logger
+from daily_trading.settings import logger, TELEGRAM_BOT_CHAT_ID
 
 
 @dataclass
@@ -23,7 +23,7 @@ class SignalSummary:
 class StrategyBase(ABC):
     """Base class for trading strategies, providing reusable methods for caching, plotting, and messaging."""
 
-    def __init__(self, main_tf: str, debug=False):
+    def __init__(self, main_tf: str, debug=False, telegram_chat_id=None):
         """
         Initialize base strategy with Telegram bot and cache.
 
@@ -34,7 +34,7 @@ class StrategyBase(ABC):
         """
         self.main_tf = main_tf
         self.lower_tf_15m = '15m'  # Default 15m timeframe for finer analysis
-        self.telegram_bot = TelegramBot()
+        self.telegram_bot = TelegramBot(chat_id=telegram_chat_id)
         self.smc_base = SMCBase(self.main_tf)
         self.event_cache = {}  # Cache: {(symbol, timeframe): {'events': list, 'last_updated': datetime}}
         self.debug = debug

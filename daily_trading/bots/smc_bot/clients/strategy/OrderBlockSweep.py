@@ -13,7 +13,7 @@ from daily_trading.bots.smc_bot.clients.strategy.StrategyBase import SignalSumma
 from daily_trading.settings import logger
 
 
-class ContinuationBlockOrderSweepStrategy(StrategyBase):
+class OrderBlockSweepStrategy(StrategyBase):
     """
     Analyzes OHLC data for continuation trade signals based on block order sweeps.
     Designed for scalping in volatile crypto markets with a 4-step process:
@@ -26,16 +26,15 @@ class ContinuationBlockOrderSweepStrategy(StrategyBase):
     Sends Telegram messages with plots (OHLC.tail(100)) for each step, including FVGs in final plot for visibility.
     """
 
-    def __init__(self, main_tf: str, debug: bool):
+    def __init__(self, main_tf: str, debug: bool, telegram_chat_id=None, ):
         """
         Initialize strategy with detectors for trend, OB, and candlestick patterns.
 
         Args:
             main_tf (str): Lower timeframe (e.g., '1h') for trend and OB detection.
-            telegram_token (str): Telegram bot token for sending signals.
-            channel_id (str): Telegram channel ID for message delivery.
+            telegram_chat_id (str): Telegram channel ID for message delivery.
         """
-        super().__init__(main_tf, debug)
+        super().__init__(main_tf, debug, telegram_chat_id=telegram_chat_id)
         self.ob_tap_cache = {}  # Cache: {symbol: tap_ob_timestamp}
         self.ob_fig = None
         self.debug = debug

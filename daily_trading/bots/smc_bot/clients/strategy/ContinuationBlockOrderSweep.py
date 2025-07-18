@@ -109,6 +109,7 @@ class ContinuationBlockOrderSweepStrategy(StrategyBase):
 
         if not tap_timestamp:
             new_ob_event = f"Current candle did not tap {'Bullish' if trend == Trend.BULLISH.name else 'Bearish'} OB"
+            self.ob_tap_cache.update({symbol: None})
             if await self.manage_cache_event(cache_key, new_ob_event, current_time):
                 recent_smc_events.append(new_ob_event)
                 logger.info(f"{symbol} | Step 3: {new_ob_event}")

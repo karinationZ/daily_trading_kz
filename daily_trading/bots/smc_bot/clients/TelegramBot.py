@@ -56,7 +56,7 @@ class TelegramBot:
         self.semaphore = asyncio.Semaphore(5)  # Limit concurrent sends
         logger.info("TelegramBot initialized")
 
-    @retry(stop_max_attempt_number=3, wait_fixed=1000)
+    @retry(stop_max_attempt_number=5, wait_fixed=5000)
     async def send_message(
             self,
             text: str,

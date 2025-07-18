@@ -217,25 +217,43 @@ class SMCBase:
         return pd.Series(ema, index=series.index)
 
     @staticmethod
-    def detect_trend(ohlc_data: pd.DataFrame, lookback: int = 20):
+    def detect_trend(
+            ohlc_data: pd.DataFrame,
+            short_ma: int = 5,
+            long_ma: int = 20,
+            slope_lookback: int = 20,
+            slope_threshold_pct: float = 0.001,
+            min_confirmation: int = 2
+    ) -> str:
         """
-        Detect trend using moving average crossover and price slope.
-        ohlc_data: DataFrame with 'open', 'high', 'low', 'close' columns and datetime index.
-        lookback: Number of periods for moving averages and slope calculation.
+        Fixed version of original function with better validation and parameters.
         """
+        # Input validation
+        if len(ohlc_data) < max(long_ma, slope_lookback) + min_confirmation:
+            return Trend.NEUTRAL.name
+
         # Calculate moving averages
-        short_sma = ohlc_data['close'].rolling(window=5).mean()
-        long_sma = ohlc_data['close'].rolling(window=lookback).mean()
+        short_sma = ohlc_data['close'].rolling(window=short_ma).mean()
+        long_sma = ohlc_data['close'].rolling(window=long_ma).mean()
 
-        # Calculate linear regression slope of closes
-        recent_data = ohlc_data['close'].tail(lookback)
+        # Calculate slope
+        recent_data = ohlc_data['close'].tail(slope_lookback)
         x = np.arange(len(recent_data))
-        slope, _ = np.polyfit(x, recent_data, 1)  # Slope of linear regression
+        slope, _ = np.polyfit(x, recent_data, 1)
 
-        # Trend conditions
-        ma_bullish = short_sma.iloc[-1] > long_sma.iloc[-1] and short_sma.iloc[-2] > long_sma.iloc[-2]
-        ma_bearish = short_sma.iloc[-1] < long_sma.iloc[-1] and short_sma.iloc[-2] < long_sma.iloc[-2]
-        slope_threshold = 0.001  # Minimum slope for trend confirmation
+        # Dynamic slope threshold
+        mean_close = recent_data.mean()
+        slope_threshold = mean_close * slope_threshold_pct
+
+        # Trend conditions with confirmation
+        ma_bullish = all(
+            short_sma.iloc[-i] > long_sma.iloc[-i]
+            for i in range(1, min_confirmation + 1)
+        )
+        ma_bearish = all(
+            short_sma.iloc[-i] < long_sma.iloc[-i]
+            for i in range(1, min_confirmation + 1)
+        )
 
         if ma_bullish and slope > slope_threshold:
             return Trend.BULLISH.name

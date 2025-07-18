@@ -12,7 +12,7 @@ from daily_trading.bots.smc_bot.clients.OrderBlocksDetector import OrderBlocksDe
 from daily_trading.bots.smc_bot.clients.SMCTardingBot import SMCTradingBot
 from daily_trading.settings import logger
 
-symbol = "THEUSDT"
+symbol = "XRPUSDT"
 main_tf = "1h"
 lookback_days = 20
 

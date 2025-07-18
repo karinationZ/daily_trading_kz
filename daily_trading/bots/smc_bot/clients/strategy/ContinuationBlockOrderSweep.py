@@ -166,8 +166,9 @@ class ContinuationBlockOrderSweepStrategy(StrategyBase):
         """
         Analyze OHLC data for continuation signals based on block order sweeps.
         """
-        logger.info(f"Starting Block Order Sweep analysis for {symbol}")
         current_time = ohlc_1h.index.max()
+        logger.info(f"Starting Block Order Sweep analysis for {symbol} - {current_time}")
+
         cache_key = (symbol, self.main_tf)
         recent_smc_events = []
 

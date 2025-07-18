@@ -5,7 +5,8 @@ import pandas as pd
 import pytz
 
 from daily_trading.bots.smc_bot.clients.SMCBase import Trend
-from daily_trading.bots.smc_bot.clients.strategy.ContinuationBlockOrderSweep import ContinuationBlockOrderSweepStrategy
+from daily_trading.bots.smc_bot.clients.strategy.ContinuationBlockOrderSweep import ContinuationBlockOrderSweepStrategy, \
+    SignalSummary
 from daily_trading.brokers.BitUnixClient import BitUnixClient
 from daily_trading.settings import logger
 from daily_trading.technicals.DivergentAssetsFinder import BitUnixDivergentAssetsFinder
@@ -38,16 +39,15 @@ class SMCTradingBot:
         self.asset_finder = BitUnixDivergentAssetsFinder()
         self.continuation_ob_break_strategy = ContinuationBlockOrderSweepStrategy(main_tf, debug)
         self.timezone = pytz.UTC
-        self.last_symbol_update = None
-        self.data_cache = {}  # Cache: {(symbol, timeframe): (ohlc, last_updated)}
+        self.symbols_update_timestamp = None
         self.candle_duration = {
             "1m": 1, "3m": 3, "5m": 5, "15m": 15, "30m": 30,
             "1h": 60, "2h": 120, "4h": 240, "6h": 360, "12h": 720, "1d": 1440
         }
-        self.lookback_candles = self.lookback_converter(lookback_days)
+        self.lookback_candles = self.lookback_days_converter(lookback_days)
         logger.info(f"SMCTradingBot initialized with {len(symbols)} symbols, {main_tf} TF.")
 
-    def lookback_converter(self, num_days: int) -> dict:
+    def lookback_days_converter(self, num_days: int) -> dict:
         """Convert lookback days to candles for each timeframe.
 
         Args:
@@ -69,7 +69,8 @@ class SMCTradingBot:
                     f"15m={lookback['15m']} candles")
         return lookback
 
-    async def sleep_until_next_15min(self):
+    @staticmethod
+    async def sleep_until_next_15min():
         # Get current time in UTC
         now = datetime.now(pytz.UTC)
 
@@ -87,7 +88,8 @@ class SMCTradingBot:
         logger.info(f"Sleeping for {int(sleep_duration) / 60:.2f} minutes until {next_candle}")
         await asyncio.sleep(sleep_duration)
 
-    async def sleep_until_next_hour(self):
+    @staticmethod
+    async def sleep_until_next_hour():
         # Get current time in UTC
         now = datetime.now(pytz.UTC)
 
@@ -101,6 +103,18 @@ class SMCTradingBot:
             f"Sleeping for {int(sleep_duration)} seconds ({sleep_duration / 60:.2f} minutes) until {next_candle}")
         await asyncio.sleep(sleep_duration)
 
+    def send_final_message(self, analysis: SignalSummary, current_candle_time, symbol, title):
+        events = [e for e in analysis.recent_smc_events if e is not None]
+        events_str = ' '.join([event[0] if isinstance(event, list) else event for event in events])
+
+        action = f"Go {analysis.direction}." if analysis.direction != Trend.NEUTRAL.name else "Сидим в засаде"
+        msg = (f"📊 {title} - {symbol} {current_candle_time.strftime('%Y-%m-%d %H:%M')}\n"
+               f"Action: {action}\n"
+               f"Trend: {analysis.trend}\n"
+               f"SMC Events: {events_str}")
+        logger.info(msg)
+        await self.continuation_ob_break_strategy.telegram_bot.send_message(msg, analysis.fig)
+
     async def fetch_ohlc_data(self, symbol: str, timeframe: str, periods: int = None) -> pd.DataFrame:
         """Fetch OHLC data with caching to reduce API calls.
 
@@ -112,14 +126,6 @@ class SMCTradingBot:
         Returns:
             pd.DataFrame: OHLC data with time index and float columns.
         """
-        cache_key = (symbol, timeframe)
-        cache_timeout = self.candle_duration.get(timeframe, 60) * 60  # Cache valid for one candle
-        if cache_key in self.data_cache:
-            ohlc, last_updated = self.data_cache[cache_key]
-            if (datetime.now(self.timezone) - last_updated).total_seconds() < cache_timeout:
-                logger.info(f"Using cached OHLC data for {symbol} ({timeframe})")
-                return ohlc
-
         logger.info(f"Fetching OHLC data for {symbol} ({timeframe})")
         timeframe_mapping = {
             "1m": "1m", "3m": "3m", "5m": "5m", "15m": "15m", "30m": "30m",
@@ -181,12 +187,20 @@ class SMCTradingBot:
             numeric_columns = ["open", "high", "low", "close", "volume"]
             df[numeric_columns] = df[numeric_columns].astype(float)
             df = df[["symbol", "open", "high", "low", "close", "volume"]]
-            self.data_cache[cache_key] = (df, datetime.now(self.timezone))
             logger.info(f"Cached OHLC data for {symbol} ({timeframe}): {len(df)} rows")
             return df.sort_values(by="time")
         except Exception as e:
             logger.error(f"Error fetching OHLC for {symbol} ({timeframe}): {e}")
             raise e
+
+    def needs_symbol_refresh(self) -> bool:
+        """Check if symbols list needs to be refreshed (empty, never set, or >2h old)."""
+        if not self.symbols or self.symbols_update_timestamp is None:
+            return True
+
+        dt_now = datetime.now(self.timezone)
+        time_diff = (dt_now - self.symbols_update_timestamp).total_seconds()
+        return time_diff >= 7200  # 2 hours
 
     async def update_symbols(self):
         """Update high-volume symbols every 2 hours.
@@ -200,25 +214,20 @@ class SMCTradingBot:
                 lookback_hours=2
             )
             self.symbols = [asset["symbol"] for asset in results["non_correlated"]]
+
             if not self.symbols:
                 logger.info(f"Thera are no divergent assets, using default symbols - {self.default_symbols}")
                 self.symbols = self.default_symbols
+
             logger.info(f"Updated symbols: {self.symbols}")
-            self.last_symbol_update = datetime.now(self.timezone)
+            self.symbols_update_timestamp = datetime.now(self.timezone)
+
         except Exception as e:
             logger.error(f"Failed to update symbols: {e}")
             raise RuntimeError(f"Failed to update symbols: {e}")
 
-    async def run_symbol(self, symbol: str, last_candle_times: dict):
-        """Analyze a single symbol and generate SMC signals.
-
-        Fetches 1H, 4H, and 15m OHLC data, runs SMCAnalyser, and sends final signal via SMCAnalyser.
-        Checks for new 15m candles to avoid redundant analysis.
-
-        Args:
-            symbol (str): Trading pair (e.g., 'BTC/USDT').
-            last_candle_times (dict): Tracks last analyzed candle time per symbol.
-        """
+    async def run_symbol(self, symbol: str):
+        """Analyze a single symbol and generate SMC signals."""
         logger.info(f"Starting analysis for {symbol}")
 
         while True:
@@ -226,29 +235,12 @@ class SMCTradingBot:
                 ohlc_main = await self.fetch_ohlc_data(symbol, self.main_tf)
                 if ohlc_main.empty:
                     logger.warning(f"No data for {symbol}, skipping...")
-                    await asyncio.sleep(3600)
+                    await asyncio.sleep(60)
                     continue
 
                 current_candle_time = ohlc_main.index.max()
-                if symbol not in last_candle_times or last_candle_times[symbol] != current_candle_time:
-                    last_candle_times[symbol] = current_candle_time
-                    logger.info(f"New 1H candle for {symbol} at {current_candle_time}")
-                    analysis = await self.continuation_ob_break_strategy.analyze_smc(symbol, ohlc_main)
-
-                    # SMCAnalyser sends step-by-step and final signals, but we send a summary for confirmation
-                    events = [e for e in analysis.recent_smc_events if e is not None]
-                    events_str = ' '.join([event[0] if isinstance(event, list) else event for event in events])
-
-                    if analysis:  # != Trend.NEUTRAL.name:
-                        action = f"Go {analysis.direction}." if analysis.direction != Trend.NEUTRAL.name else "Сидим в засаде"
-                        msg = (f"📊 SMC Signal - {symbol} {current_candle_time.strftime('%Y-%m-%d %H:%M')}\n"
-                               f"Action: {action}\n"
-                               f"Trend: {analysis.trend}\n"
-                               f"SMC Events: {events_str}")
-                        logger.info(msg)
-                        await self.continuation_ob_break_strategy.telegram_bot.send_message(msg, analysis.fig)
-                    else:
-                        logger.info(f"No signal confirmation sent for {symbol} (NEUTRAL)")
+                analysis = await self.continuation_ob_break_strategy.analyze_smc(symbol, ohlc_main)
+                self.send_final_message(analysis, current_candle_time, symbol, title="Order Block Sweep")
 
                 await self.sleep_until_next_hour()
             except Exception as e:
@@ -261,11 +253,10 @@ class SMCTradingBot:
         Update symbols every 2 hours and runs analysis for each symbol concurrently.
         """
         logger.info("Starting SMCTradingBot main loop")
-        last_candle_times = {}
         while True:
             try:
-                if not self.symbols and self.last_symbol_update is None or not self.symbols and datetime.now(
-                        self.timezone) - self.last_symbol_update.total_seconds() >= 7200:
+                needs_refresh = self.needs_symbol_refresh()
+                if needs_refresh:
                     await self.update_symbols()
 
                 if not self.symbols:
@@ -273,8 +264,9 @@ class SMCTradingBot:
                     raise RuntimeError("No symbols available")
 
                 logger.info(f"Monitoring {len(self.symbols)} symbols")
-                tasks = [self.run_symbol(symbol, last_candle_times) for symbol in self.symbols]
+                tasks = [self.run_symbol(symbol) for symbol in self.symbols]
                 await asyncio.gather(*tasks, return_exceptions=True)
+
             except Exception as e:
                 logger.error(f"Error in main loop: {e}")
                 await asyncio.sleep(60)

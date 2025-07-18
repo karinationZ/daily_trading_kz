@@ -224,8 +224,8 @@ if __name__ == "__main__":
     finder = BitUnixDivergentAssetsFinder()
 
     results = finder.find_divergent_assets(
-        volume_threshold=30000000,
-        lookback_hours=4
+        volume_threshold=10000000,
+        lookback_hours=2
     )
     # Print results
     logger.info("\nNon-correlated assets (correlation between -0.3 and 0.3):")

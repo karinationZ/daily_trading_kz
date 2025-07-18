@@ -4,7 +4,11 @@ from daily_trading.bots.smc_bot.clients.SMCTardingBot import SMCTradingBot
 
 
 async def main():
-    bot = SMCTradingBot(symbols=[], lookback_days=10, main_tf="1h", symbol_volume_threshold=20000000, debug=False)
+    bot = SMCTradingBot(symbols=[],
+                        lookback_days=10,
+                        main_tf="1h",
+                        symbol_volume_threshold=10000000,
+                        debug=False)
     await bot.run()
 
 

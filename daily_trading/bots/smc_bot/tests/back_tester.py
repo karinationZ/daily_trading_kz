@@ -22,7 +22,7 @@ class BackTester:
         self.main_tf = main_tf
         self.lookback_days = lookback_days
         self.strategy = ContinuationBlockOrderSweepStrategy(
-            main_tf,
+            main_tf, debug=False
         )
         self.output_dir = "./backtest_results"
         os.makedirs(self.output_dir, exist_ok=True)

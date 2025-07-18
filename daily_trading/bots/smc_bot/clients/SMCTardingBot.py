@@ -4,6 +4,7 @@ from datetime import datetime, timedelta
 import pandas as pd
 import pytz
 
+from daily_trading.bots.smc_bot.clients.SMCBase import Trend
 from daily_trading.bots.smc_bot.clients.strategy.ContinuationBlockOrderSweep import ContinuationBlockOrderSweepStrategy
 from daily_trading.brokers.BitUnixClient import BitUnixClient
 from daily_trading.settings import logger
@@ -235,16 +236,17 @@ class SMCTradingBot:
                     analysis = await self.continuation_ob_break_strategy.analyze_smc(symbol, ohlc_main)
 
                     # SMCAnalyser sends step-by-step and final signals, but we send a summary for confirmation
-                    events = [e for e in analysis['recent_smc_events'] if e is not None]
+                    events = [e for e in analysis.recent_smc_events if e is not None]
                     events_str = ' '.join([event[0] if isinstance(event, list) else event for event in events])
 
                     if analysis:  # != Trend.NEUTRAL.name:
-                        msg = (f"📊 SMC Signal Confirmation for {symbol} ({current_candle_time})\n"
-                               f"Signal: {analysis['direction']}\n"
-                               f"Trend: {analysis['trend']}\n"
-                               f"Recent SMC Events: {events_str}")
+                        action = f"Go {analysis.direction}." if analysis.direction != Trend.NEUTRAL.name else "Сидим в засаде"
+                        msg = (f"📊 SMC Signal - {symbol} {current_candle_time.strftime('%Y-%m-%d %H:%M')}\n"
+                               f"Action: {action}\n"
+                               f"Trend: {analysis.trend}\n"
+                               f"SMC Events: {events_str}")
                         logger.info(msg)
-                        await self.continuation_ob_break_strategy.telegram_bot.send_message(msg, analysis['fig'])
+                        await self.continuation_ob_break_strategy.telegram_bot.send_message(msg, analysis.fig)
                     else:
                         logger.info(f"No signal confirmation sent for {symbol} (NEUTRAL)")
 

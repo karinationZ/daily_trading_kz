@@ -1,15 +1,13 @@
 import asyncio
 import io
-from datetime import timezone
 from typing import Optional
 
 import plotly.graph_objects as go
 from telegram import Bot, InputFile
 from telegram.error import TelegramError
-from telegram.ext import Defaults
 from telegram.request import HTTPXRequest
 
-from daily_trading.settings import logger, TELEGRAM_CHAT_ID, TELEGRAM_TOKEN
+from daily_trading.settings import logger, TELEGRAM_CHANNEL_CHAT_ID, TELEGRAM_TOKEN
 
 
 class TelegramBot:
@@ -37,6 +35,7 @@ class TelegramBot:
             parse_mode (str): Default parse mode for messages
             disable_notification (bool): Default notification setting
         """
+        self.parse_mode = parse_mode
         # Configure HTTPXRequest with connection pool settings
         request = HTTPXRequest(
             connection_pool_size=connection_pool_size,
@@ -52,19 +51,7 @@ class TelegramBot:
             get_updates_request=request
         )
 
-        # Store defaults separately since they can't be passed to Bot directly
-        self.defaults = Defaults(
-            parse_mode=parse_mode,
-            disable_notification=disable_notification,
-            tzinfo=timezone.utc,
-            block=True,
-            allow_sending_without_reply=None,
-            protect_content=None,
-            link_preview_options=None,
-            do_quote=None
-        )
-
-        self.channel_id = TELEGRAM_CHAT_ID
+        self.channel_id = TELEGRAM_CHANNEL_CHAT_ID
         self.semaphore = asyncio.Semaphore(5)  # Limit concurrent sends
         logger.info("TelegramBot initialized")
 
@@ -73,7 +60,6 @@ class TelegramBot:
             text: str,
             image: Optional[go.Figure] = None,
             disable_notification: bool = False,
-            parse_mode: Optional[str] = None
     ) -> bool:
         """
         Send message to Telegram channel with optional image.
@@ -87,7 +73,7 @@ class TelegramBot:
                 kwargs = {
                     'chat_id': self.channel_id,
                     'disable_notification': disable_notification,
-                    'parse_mode': parse_mode or self.defaults.parse_mode,
+                    'parse_mode': self.parse_mode,
                     'write_timeout': self.bot.request.read_timeout
                 }
 
@@ -117,3 +103,13 @@ class TelegramBot:
             except Exception as e:
                 logger.error(f"Unexpected error sending message: {e}")
                 return False
+
+    async def get_channel_id_from_updates(self):
+        updates = await self.bot.get_updates()
+        for update in updates:
+            if update.channel_post:
+                channel_id = update.channel_post.chat.id
+                logger.info(f"Detected channel ID: {channel_id}")
+                return channel_id
+        logger.warning("No channel posts found in updates.")
+        return None

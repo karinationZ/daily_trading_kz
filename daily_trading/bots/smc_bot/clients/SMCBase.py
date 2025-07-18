@@ -18,7 +18,7 @@ class Trend(Enum):
 
 
 class SMCBase:
-    def __init__(self, main_tf, left_bars=None, right_bars=None, plot_tail=200):
+    def __init__(self, main_tf, left_bars=None, right_bars=None, plot_tail=100):
         self.lower_tf = main_tf
         self.swing_length_map = {
             "15m": 8,

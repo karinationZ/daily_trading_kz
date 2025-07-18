@@ -1,11 +1,23 @@
 from abc import ABC
+from dataclasses import dataclass
 from datetime import datetime
-from typing import List, Optional, Tuple
+from typing import Optional, Tuple
 
 import plotly.graph_objects as go
 
+from daily_trading.bots.smc_bot.clients.SMCBase import SMCBase, Trend
 from daily_trading.bots.smc_bot.clients.TelegramBot import TelegramBot
 from daily_trading.settings import logger
+
+
+@dataclass
+class SignalSummary:
+    direction: str
+    trend: str
+    trend_signal: Optional[list] = None
+    recent_smc_events: Optional[list] = None
+    fig: Optional[go.Figure] = None
+    nearest_ob: Optional[dict] = None
 
 
 class StrategyBase(ABC):
@@ -23,6 +35,7 @@ class StrategyBase(ABC):
         self.main_tf = main_tf
         self.lower_tf_15m = '15m'  # Default 15m timeframe for finer analysis
         self.telegram_bot = TelegramBot()
+        self.smc_base = SMCBase(self.main_tf)
         self.event_cache = {}  # Cache: {(symbol, timeframe): {'events': list, 'last_updated': datetime}}
         self.debug = debug
         logger.info(f"StrategyBase initialized with {main_tf} and {self.lower_tf_15m}")
@@ -48,78 +61,21 @@ class StrategyBase(ABC):
         else:
             logger.info("Skipped sending telegram message. Debug Mode is Off.")
 
-    # def plot_step(self, ohlc: pd.DataFrame, signals: list, step: str, entry: float = None,
-    #               sl: float = None, tp: float = None) -> go.Figure:
-    #     """
-    #     Generate a Plotly figure for a specific step, showing the last 100 candles.
-    #
-    #     Args:
-    #         ohlc (pd.DataFrame): OHLC data (1H or 15m, tail 100 candles used).
-    #         signals (list): Detected signals (e.g., HH, BOS, liquidity pool) for the step.
-    #         step (str): Step description (e.g., 'Step 1: Trend Detection').
-    #         entry (float, optional): Entry price for signal visualization.
-    #         sl (float, optional): Stop loss price for visualization.
-    #         tp (float, optional): Take profit price for visualization.
-    #
-    #     Returns:
-    #         go.Figure: Plotly figure with candlesticks and signals.
-    #     """
-    #     fig = make_subplots(rows=1, cols=1)
-    #     ohlc_tail = ohlc.tail(100)  # Show last 100 candles for clarity
-    #     fig.add_trace(go.Candlestick(
-    #         x=ohlc_tail.index,
-    #         open=ohlc_tail['open'],
-    #         high=ohlc_tail['high'],
-    #         low=ohlc_tail['low'],
-    #         close=ohlc_tail['close'],
-    #         name="OHLC"
-    #     ))
-    #
-    #     for signal in signals:
-    #         marker_color = 'blue' if signal.get('bias') == 'BULLISH' else 'red'
-    #         marker_symbol = 'triangle-up' if signal.get('bias') == 'BULLISH' else 'triangle-down'
-    #         y_level = signal.get('level',
-    #                              (signal.get('top') + signal.get('bottom')) / 2 if 'top' in signal else
-    #                              signal.get('high', signal.get('low')))
-    #         fig.add_trace(go.Scatter(
-    #             x=[signal['time']],
-    #             y=[y_level * (1.002 if signal.get('bias') == 'BULLISH' else 0.998)],
-    #             mode='markers+text',
-    #             text=[signal['type']],
-    #             textposition='top center' if signal.get('bias') == 'BULLISH' else 'bottom center',
-    #             marker=dict(symbol=marker_symbol, size=10, color=marker_color),
-    #             name=signal['type'],
-    #             showlegend=True
-    #         ))
-    #
-    #     if entry and sl and tp:
-    #         last_time = ohlc_tail.index[-1]
-    #         fig.add_shape(type="line", x0=last_time, x1=last_time, y0=entry, y1=entry,
-    #                       line=dict(color="yellow", width=2, dash="dash"), name="Entry")
-    #         fig.add_shape(type="line", x0=last_time, x1=last_time, y0=sl, y1=sl,
-    #                       line=dict(color="red", width=2, dash="dash"), name="Stop Loss")
-    #         fig.add_shape(type="line", x0=last_time, x1=last_time, y0=tp, y1=tp,
-    #                       line=dict(color="green", width=2, dash="dash"), name="Take Profit")
-    #
-    #     fig.update_layout(
-    #         title=f"{step} Analysis",
-    #         xaxis_rangeslider_visible=False,
-    #         showlegend=True,
-    #         height=800,
-    #         xaxis=dict(type='date', tickformat='%Y-%m-%d %H:%M'),
-    #         yaxis=dict(title="Price"),
-    #         margin=dict(t=100, b=100, l=50, r=50)
-    #     )
-    #     return fig
+    async def get_trend(self, ohlc_1h, symbol: str, cache_key: Tuple[str, str], current_time: datetime, fig=None):
+        """Step 1: Identify Trend on 1H TF."""
+        recent_smc_events = []
+        trend = self.smc_base.detect_trend(ohlc_1h)
 
-    async def compile_results(self, trend: str, signal: str, recent_smc_events: List[str],
-                              symbol: str, fig: go.Figure = None):
-        """Compile and return analysis results, send final Telegram message."""
-        message = (f"📊 SMC Final Signal for {symbol}\nTime: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n"
-                   f"Signal: {signal}\nTrend: {trend}\n")
-        if recent_smc_events:
-            message += f"Recent SMC Events: {' '.join(recent_smc_events)}\n"
-        cache_key = (symbol, self.lower_tf_15m)
-        if cache_key in self.event_cache:
-            message += f"Cached Events: {' '.join(self.event_cache[cache_key]['events'])}\n"
-        await self.send_telegram_message(message, fig)
+        trend_event = f"{trend} trend confirmed."
+        recent_smc_events.append(trend_event)
+
+        if trend != Trend.NEUTRAL.name:
+            if await self.manage_cache_event(cache_key, trend_event, current_time):
+                await self.send_telegram_message(f"{symbol} | Step 1: {trend_event}", fig)
+        else:
+            logger.info(f"Trend is {trend}.")
+            if cache_key in self.event_cache:
+                self.event_cache[cache_key]['events'] = []
+            await self.send_telegram_message(f"{symbol} | Step 1: Neutral trend detected.", fig)
+
+        return trend, recent_smc_events

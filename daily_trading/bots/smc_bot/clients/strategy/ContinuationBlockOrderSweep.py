@@ -9,7 +9,7 @@ from daily_trading.bots.smc_bot.clients.FvgDetector import FvgDetector
 from daily_trading.bots.smc_bot.clients.HighLowDetector import HighLowDetector
 from daily_trading.bots.smc_bot.clients.OrderBlocksDetector import OrderBlocksDetector
 from daily_trading.bots.smc_bot.clients.SMCBase import Trend
-from daily_trading.bots.smc_bot.clients.strategy.StrategyBase import StrategyBase
+from daily_trading.bots.smc_bot.clients.strategy.StrategyBase import SignalSummary, StrategyBase
 from daily_trading.settings import logger
 
 
@@ -51,22 +51,9 @@ class ContinuationBlockOrderSweepStrategy(StrategyBase):
 
     async def confirm_trend(self, ohlc_1h, symbol: str, cache_key: Tuple[str, str], current_time: datetime):
         """Step 1: Identify Trend on 1H (last 24 candles)."""
-        recent_smc_events = []
         swing_1h = self.detectors['swing_1h'].calculate_high_low_swings(ohlc_1h, plot=True)
         fig = swing_1h["fig"]
-        trend = self.detectors['swing_1h'].detect_trend(ohlc_1h)
-
-        if trend != Trend.NEUTRAL.name:
-            trend_event = f"{trend} trend confirmed."
-            if await self.manage_cache_event(cache_key, trend_event, current_time):
-                recent_smc_events.append(trend_event)
-                await self.send_telegram_message(f"{symbol} | Step 1: {trend_event}", fig)
-        else:
-            logger.info(f"Trend is {trend}.")
-            if cache_key in self.event_cache:
-                self.event_cache[cache_key]['events'] = []
-            await self.send_telegram_message(f"{symbol} | Step 1: Neutral trend detected.", fig)
-
+        trend, recent_smc_events = await self.get_trend(ohlc_1h, symbol, cache_key, current_time, fig)
         return trend, recent_smc_events, fig
 
     async def detect_ob(self, ohlc_1h: pd.DataFrame, symbol: str, trend: str, cache_key: Tuple[str, str]):
@@ -87,7 +74,7 @@ class ContinuationBlockOrderSweepStrategy(StrategyBase):
             recent_smc_events.append(new_ob_event)
             logger.info(f"Step 2: {new_ob_event} for {symbol}")
             await self.send_telegram_message(f"{symbol} | Step 2: {new_ob_event}.", fig)
-        self.ob_fig = ob_result["fig"]
+        self.ob_fig = fig
         logger.info(f"Found OB: {ob_signals}")
         logger.info(recent_smc_events)
         expected_bias = Trend.BULLISH.name if trend == Trend.BULLISH.name else Trend.BEARISH.name
@@ -140,11 +127,10 @@ class ContinuationBlockOrderSweepStrategy(StrategyBase):
 
         return recent_smc_events
 
-    async def confirm_candle_pattern(self, ohlc_1h: pd.DataFrame, trend: str, nearest_ob: Dict,
+    async def confirm_candle_pattern(self, ohlc_1h: pd.DataFrame, trend: str,
                                      symbol: str, cache_key: Tuple[str, str],
                                      current_time: datetime):
         """Step 4: Generate trade signal after OB mitigation and rejection confirmed by 15m candlestick patterns."""
-        trade_signal = None
         recent_smc_events = []
 
         pattern_type, pattern_name = self.detectors['candle_1h'].detect_single_candle_pattern(ohlc_1h.tail(1))
@@ -163,35 +149,19 @@ class ContinuationBlockOrderSweepStrategy(StrategyBase):
             if await self.manage_cache_event(cache_key, new_signal_event, current_time):
                 recent_smc_events.append(new_signal_event)
                 logger.info(f"Step 4: {new_signal_event} for {symbol}")
-                await self.send_telegram_message(f"Step 4: {new_signal_event} for {symbol}.")
-            return trade_signal, recent_smc_events
-
-        if trend == Trend.BULLISH.name:
-            direction = "LONG"
-        else:
-            direction = "SHORT"
-
-        ob_tap_time = self.ob_tap_cache.get(symbol)
-        trade_signal = {
-            'type': 'TradeSignal',
-            'direction': direction,
-            'time': current_time,
-            'rejection_pattern': pattern_name,
-            'ob_tap_time': ob_tap_time,
-            'fig': None
-        }
+                await self.send_telegram_message(f"Step 4: {new_signal_event} for {symbol}.", self.ob_fig)
+            return recent_smc_events
 
         new_signal_event = f"{'Bullish' if trend == Trend.BULLISH.name else 'Bearish'} signal generated at {current_time} with {pattern_name}"
         if await self.manage_cache_event(cache_key, new_signal_event, current_time):
             recent_smc_events.append(new_signal_event)
-            message = f"{symbol} | Step 4: {direction} signal.. Liquidity swept at {ob_tap_time}," \
-                      f" Rejection Candle: {pattern_name} - {current_time}."
+            message = f"{symbol} | Step 4: Rejection Candle: {pattern_name} - {current_time}."
             logger.info(message)
             await self.send_telegram_message(message, self.ob_fig)
 
-        return trade_signal, recent_smc_events
+        return rejection_confirmed, recent_smc_events
 
-    async def analyze_smc(self, symbol: str, ohlc_1h: pd.DataFrame) -> Dict:
+    async def analyze_smc(self, symbol: str, ohlc_1h: pd.DataFrame) -> SignalSummary:
         """
         Analyze OHLC data for continuation signals based on block order sweeps.
         """
@@ -203,85 +173,67 @@ class ContinuationBlockOrderSweepStrategy(StrategyBase):
         # Step 1: Confirm trend alignment
         trend, step1_events, high_low_fig = await self.confirm_trend(ohlc_1h, symbol, cache_key, current_time)
         recent_smc_events.extend(step1_events)
-
-        trade_signal = {
-            'direction': Trend.NEUTRAL.name,
-            'trend': trend,
-            'trend_signal': None,
-            'recent_smc_events': recent_smc_events,
-            'fig': None,
-            'nearest_ob': self.nearest_ob
-        }
+        signal_summary = SignalSummary(direction=Trend.NEUTRAL.name,
+                                       trend=trend,
+                                       recent_smc_events=recent_smc_events,
+                                       nearest_ob=self.nearest_ob)
         if trend == Trend.NEUTRAL.name:
             logger.info(f"{symbol} | Step 1: Neutral trend detected, stopping analysis.")
-            trade_signal["fig"] = high_low_fig
-            return trade_signal
+            signal_summary.fig = high_low_fig
+            return signal_summary
 
         # Step 2: Detect OBs
         relevant_obs, step2_events = await self.detect_ob(ohlc_1h, symbol, trend, cache_key)
-        trade_signal["fig"] = self.ob_fig
         recent_smc_events.extend(step2_events)
+        signal_summary.recent_smc_events = recent_smc_events
+        signal_summary.fig = self.ob_fig
         if not relevant_obs:
             logger.info(f"{symbol} | Step 2: No unmitigated OBs detected, stopping analysis.")
-            return trade_signal
+            return signal_summary
 
-        # Step 3: Confirm price taps into OB (t must happen at least 3H later after the OB formed)
-        if symbol in self.ob_tap_cache and self.ob_tap_cache[symbol] is not None:
-            last_ob_tap = self.ob_tap_cache[symbol]
-            if int((current_time - last_ob_tap).total_seconds() / 3600) <= 3:
-                logger.info(f"Skipping Step 3. OB Tab has happened less than 1h ago - {last_ob_tap}")
-            else:
-                self.ob_tap_cache.update({symbol: None})
-                logger.info(
-                    f"Step 3: {symbol} | Resetting OB Tap. "
-                    f"Previous OB tap was not confirmed by a rejection pattern in Step 4.")
-                return trade_signal
-
-        else:
-            self.ob_tap_cache.update({symbol: None})
+        # Step 3: Confirm price taps into OB
+        if symbol not in self.ob_tap_cache or self.ob_tap_cache[symbol] is None:
             step3_events = await self.confirm_ob_tap(ohlc_1h, trend, symbol, relevant_obs, cache_key, current_time)
             recent_smc_events.extend(step3_events)
-            # If OB tap is still None, exit and start again.
-            if not self.ob_tap_cache[symbol]:
-                logger.info(f"Step 3: {symbol} | No OB tap confirmed, waiting for the next candle.")
-                return trade_signal
+            signal_summary.recent_smc_events = recent_smc_events
+            return signal_summary
+        else:
+            # Validate OB tap TTL — must be within 3H
+            last_ob_tap = self.ob_tap_cache[symbol]
+            if int((current_time - last_ob_tap).total_seconds() / 3600) > 3:
+                logger.info("OB Tap expired after 3H without confirmation. Resetting.")
+                self.ob_tap_cache.update({symbol: None})
+                recent_smc_events.extend("OB Tap Expired – No Rejection Signal within 3H after OB Tap.")
+                return signal_summary
+            else:
+                logger.info("Moving on to Step 4 - candle pattern confirmation.")
 
         # Step 4: Generate trade signal after OB mitigation and rejection
-        trade_signal, step4_events = await self.confirm_candle_pattern(ohlc_1h, trend, self.nearest_ob, symbol,
-                                                                       cache_key, current_time)
+        rejection_confirmed, step4_events = await self.confirm_candle_pattern(ohlc_1h, trend, symbol,
+                                                                              cache_key, current_time)
         recent_smc_events.extend(step4_events)
-
-        if not trade_signal:
+        signal_summary.recent_smc_events = recent_smc_events
+        if rejection_confirmed:
+            if trend == Trend.BULLISH.name:
+                signal_summary.direction = "LONG"
+            else:
+                signal_summary.direction = "SHORT"
+        else:
             logger.info(f"No trading signal. Current SMC events: {json.dumps(recent_smc_events, indent=1)}")
-            return {
-                'direction': Trend.NEUTRAL.name,
-                'trend': trend,
-                'trend_signal': trade_signal,
-                'recent_smc_events': recent_smc_events,
-                'fig': self.ob_fig,
-                'nearest_ob': self.nearest_ob
-            }
+            return signal_summary
 
         # Reset OB tapping time
+        ob_tap_time = self.ob_tap_cache[symbol]
         self.ob_tap_cache[symbol] = None
-
         message = f"""
                     📊 SMC Final Signal for {symbol}
-                    Time: {trade_signal['time']}
-                    Direction: {trade_signal['direction']}
+                    Time: {current_time}
+                    Direction: {signal_summary.direction}
                     Trend: {trend}
-                    Candle Pattern: {trade_signal['rejection_pattern']}
-                    Tapped at: {trade_signal['ob_tap_time']}
+                    SMC Last Event: {signal_summary.recent_smc_events[-1]}
+                    Tapped at: {ob_tap_time}
                     """
         logger.info(message)
         fvg_result = self.detectors['fvg_1h'].calculate_fvg(ohlc_1h, plot=True)
         await self.send_telegram_message(message, self.ob_fig)
-
-        return {
-            'direction': {trade_signal['direction']},
-            'trend': trend,
-            'trend_signal': trade_signal,
-            'recent_smc_events': recent_smc_events,
-            'fig': self.ob_fig,
-            'nearest_ob': self.nearest_ob
-        }
+        return signal_summary

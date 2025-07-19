@@ -8,7 +8,7 @@ from daily_trading.bots.smc_bot.clients.SMCBase import Trend
 from daily_trading.bots.smc_bot.clients.strategy.OrderBlockSweep import OrderBlockSweepStrategy, \
     SignalSummary
 from daily_trading.brokers.BitUnixClient import BitUnixClient
-from daily_trading.settings import logger, TELEGRAM_CHANNEL_CHAT_ID
+from daily_trading.settings import logger, TELEGRAM_CHANNEL_CHAT_ID, TELEGRAM_BOT_CHAT_ID
 from daily_trading.technicals.DivergentAssetsFinder import BitUnixDivergentAssetsFinder
 
 
@@ -95,8 +95,8 @@ class SMCTradingBot:
         # Get current time in UTC
         now = datetime.now(pytz.UTC)
 
-        # Next full hour + 1 minute
-        next_candle = now.replace(minute=0, second=0, microsecond=0) + timedelta(hours=1, minutes=1)
+        # Next full hour + 3 minute
+        next_candle = now.replace(minute=0, second=0, microsecond=0) + timedelta(hours=1, minutes=3)
 
         # Time to sleep (in seconds)
         sleep_duration = (next_candle - now).total_seconds()
@@ -110,7 +110,7 @@ class SMCTradingBot:
         events_str = ' '.join([event[0] if isinstance(event, list) else event for event in events])
 
         action = f"Go {analysis.direction}." if analysis.direction != Trend.NEUTRAL.name else "Сидим в засаде"
-        msg = (f"📊 {title} - {symbol} {current_candle_time.strftime('%Y-%m-%d %H:%M')}\n"
+        msg = (f"📊 {title} - {symbol} {current_candle_time}\n"
                f"Action: {action}\n"
                f"Trend: {analysis.trend}\n"
                f"SMC Events: {events_str}")
@@ -218,7 +218,7 @@ class SMCTradingBot:
             self.symbols = [asset["symbol"] for asset in results["non_correlated"]]
 
             if not self.symbols:
-                logger.info(f"Thera are no divergent assets, using default symbols - {self.default_symbols}")
+                logger.info(f"There are no divergent assets, using default symbols - {self.default_symbols}")
                 self.symbols = self.default_symbols
 
             logger.info(f"Updated symbols: {self.symbols}")
@@ -231,24 +231,18 @@ class SMCTradingBot:
     async def run_symbol(self, symbol: str):
         """Analyze a single symbol and generate SMC signals."""
         logger.info(f"Starting analysis for {symbol}")
+        try:
+            ohlc_main = await self.fetch_ohlc_data(symbol, self.main_tf)
+            if ohlc_main.empty:
+                logger.error(f"No data for {symbol}, skipping...")
+                return
 
-        while True:
-            try:
-                ohlc_main = await self.fetch_ohlc_data(symbol, self.main_tf)
-                if ohlc_main.empty:
-                    logger.warning(f"No data for {symbol}, skipping...")
-                    await asyncio.sleep(60)
-                    continue
+            analysis = await self.ob_sweep_strategy.analyze_smc(symbol, ohlc_main)
+            last_candle = ohlc_main.index.max().tz_convert('US/Pacific').strftime('%Y-%m-%d %H:%M')
+            await self.send_final_message(analysis, last_candle, symbol, title="Order Block Sweep")
 
-                current_candle_time = ohlc_main.index.max()
-                analysis = await self.ob_sweep_strategy.analyze_smc(symbol, ohlc_main)
-                await self.send_final_message(analysis, current_candle_time, symbol, title="Order Block Sweep")
-
-                await self.sleep_until_next_hour()
-            except Exception as e:
-                logger.error(f"Error processing {symbol}: {e}")
-                await asyncio.sleep(60)
-                continue
+        except Exception as e:
+            logger.error(f"Error processing {symbol}: {e}")
 
     async def run(self):
         """Main loop for monitoring all symbols.
@@ -260,16 +254,12 @@ class SMCTradingBot:
                 needs_refresh = self.needs_symbol_refresh()
                 if needs_refresh:
                     await self.update_symbols()
-
-                if not self.symbols:
-                    logger.error("No symbols to monitor")
-                    raise RuntimeError("No symbols available")
-
                 logger.info(f"Monitoring {len(self.symbols)} symbols")
                 tasks = [self.run_symbol(symbol) for symbol in self.symbols]
                 await asyncio.gather(*tasks, return_exceptions=True)
+                await self.sleep_until_next_hour()
 
             except Exception as e:
                 logger.error(f"Error in main loop: {e}")
-                await asyncio.sleep(60)
+                await self.sleep_until_next_hour()
                 continue

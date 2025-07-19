@@ -1,3 +1,4 @@
+import pandas as pd
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 
@@ -69,7 +70,7 @@ class BosChochDetector(SMCBase):
             if next_close > self.Major_HighLevel or close > self.Major_HighLevel:
                 signal_type = "BOS" if self.ExternalTrend in ['No Trend', 'Up Trend'] else "CHoCH"
                 signals.append({
-                    "type": f"Major {signal_type}",
+                    "type": f"{signal_type}",
                     "bias": BULLISH,
                     "time": time,
                     "level": self.Major_HighLevel,
@@ -81,7 +82,7 @@ class BosChochDetector(SMCBase):
                 self.ExternalTrend = 'Up Trend'
                 self.LockBreak_M = self.Major_HighIndex
                 self.LastSignalIndex = i
-                logger.info(f"Bullish Major {signal_type} detected: level={self.Major_HighLevel:.6f}, time={time}")
+                logger.info(f"Bullish {signal_type} detected: level={self.Major_HighLevel:.6f}, time={time}")
                 # Update Major_HighLevel after BOS
                 self.Major_HighLevel = high
                 self.Major_HighIndex = i
@@ -106,7 +107,7 @@ class BosChochDetector(SMCBase):
             if next_close < self.Major_LowLevel or close < self.Major_LowLevel:
                 signal_type = "BOS" if self.ExternalTrend in ['No Trend', 'Down Trend'] else "CHoCH"
                 signals.append({
-                    "type": f"Major {signal_type}",
+                    "type": f"{signal_type}",
                     "bias": BEARISH,
                     "time": time,
                     "level": self.Major_LowLevel,
@@ -118,7 +119,7 @@ class BosChochDetector(SMCBase):
                 self.ExternalTrend = 'Down Trend'
                 self.LockBreak_M = self.Major_LowIndex
                 self.LastSignalIndex = i
-                logger.info(f"Bearish Major {signal_type} detected: level={self.Major_LowLevel:.6f}, time={time}")
+                logger.info(f"Bearish {signal_type} detected: level={self.Major_LowLevel:.6f}, time={time}")
                 # Update Major_LowLevel after BOS
                 self.Major_LowLevel = low
                 self.Major_LowIndex = i
@@ -205,7 +206,7 @@ class BosChochDetector(SMCBase):
             if last_close > self.Major_HighLevel:
                 signal_type = "BOS" if self.ExternalTrend in ['No Trend', 'Up Trend'] else "CHoCH"
                 signals.append({
-                    "type": f"Major {signal_type}",
+                    "type": f"{signal_type}",
                     "bias": BULLISH,
                     "time": ohlc.index[last_index],
                     "level": self.Major_HighLevel,
@@ -232,7 +233,7 @@ class BosChochDetector(SMCBase):
             if last_close < self.Major_LowLevel:
                 signal_type = "BOS" if self.ExternalTrend in ['No Trend', 'Down Trend'] else "CHoCH"
                 signals.append({
-                    "type": f"Major {signal_type}",
+                    "type": f"{signal_type}",
                     "bias": BEARISH,
                     "time": ohlc.index[last_index],
                     "level": self.Major_LowLevel,
@@ -259,10 +260,10 @@ class BosChochDetector(SMCBase):
             fig = self._plot_signals(ohlc, signals, pivot_high_points, pivot_low_points)
 
         alert_conditions = {
-            "BULLISH_BOS": [s for s in signals if s["type"] == "Major BOS" and s["bias"] == BULLISH],
-            "BEARISH_BOS": [s for s in signals if s["type"] == "Major BOS" and s["bias"] == BEARISH],
-            "BULLISH_CHoCH": [s for s in signals if s["type"] == "Major CHoCH" and s["bias"] == BULLISH],
-            "BEARISH_CHoCH": [s for s in signals if s["type"] == "Major CHoCH" and s["bias"] == BEARISH]
+            "BULLISH_BOS": [s for s in signals if s["type"] == "BOS" and s["bias"] == BULLISH],
+            "BEARISH_BOS": [s for s in signals if s["type"] == "BOS" and s["bias"] == BEARISH],
+            "BULLISH_CHoCH": [s for s in signals if s["type"] == "CHoCH" and s["bias"] == BULLISH],
+            "BEARISH_CHoCH": [s for s in signals if s["type"] == "CHoCH" and s["bias"] == BEARISH]
         }
 
         logger.info(f"Completed BOS and CHoCH calculation: "
@@ -273,15 +274,33 @@ class BosChochDetector(SMCBase):
         return {"fig": fig, "signals": signals, "alert_conditions": alert_conditions}
 
     def _plot_signals(self, ohlc, signals, pivot_high_points, pivot_low_points):
+        """
+        Generate Plotly figure for BOS and CHoCH signals.
+
+        Parameters:
+        - ohlc (pd.DataFrame): OHLCV DataFrame with pandas.Timestamp index.
+        - signals (list): List of BOS/CHoCH signals with bias, time, fractal_time, level, type.
+        - pivot_high_points (list): List of pivot high points with time, level, type.
+        - pivot_low_points (list): List of pivot low points with time, level, type.
+
+        Returns:
+        - go.Figure: Plotly figure with candlesticks, pivots, and BOS/CHoCH signals.
+        """
         logger.info("Generating Plotly figure for BOS and CHoCH signals")
         ohlc = ohlc.sort_index()
+
+        # Log sample of index values for debugging
+        logger.info(f"Sample ohlc.index values: {ohlc.index[-5:].tolist()}")
+
+        # Limit to last 100 rows
         ohlc = ohlc.tail(self.plot_tail)
+
         # Filter pivots to ensure timestamps are within ohlc.index
         pivot_high_points = [p for p in pivot_high_points if p['time'] in ohlc.index]
         pivot_low_points = [p for p in pivot_low_points if p['time'] in ohlc.index]
 
         symbol = ohlc['symbol'].iloc[0] if 'symbol' in ohlc.columns else 'Unknown'
-        fig = make_subplots(rows=1, cols=1, subplot_titles=[f"{symbol} - Price Chart with BOS and CHoCH Signals"])
+        fig = go.Figure()  # Use go.Figure for larger plot area
 
         # Add OHLC candlestick
         fig.add_trace(go.Candlestick(
@@ -291,7 +310,7 @@ class BosChochDetector(SMCBase):
             low=ohlc['low'],
             close=ohlc['close'],
             name="OHLC"
-        ), row=1, col=1)
+        ))
 
         # Add pivot high points
         for pivot in pivot_high_points:
@@ -304,7 +323,7 @@ class BosChochDetector(SMCBase):
                 marker=dict(symbol='triangle-down', size=8, color='#8E2043'),
                 name=pivot['type'],
                 showlegend=False
-            ), row=1, col=1)
+            ))
 
         # Add pivot low points
         for pivot in pivot_low_points:
@@ -317,7 +336,8 @@ class BosChochDetector(SMCBase):
                 marker=dict(symbol='triangle-up', size=8, color='#027C5E'),
                 name=pivot['type'],
                 showlegend=False
-            ), row=1, col=1)
+            ))
+
         # Add signals
         for signal in signals:
             if (signal['bias'] == BULLISH and self.show_bull) or (signal['bias'] == BEARISH and self.show_bear):
@@ -331,16 +351,25 @@ class BosChochDetector(SMCBase):
                     line=dict(color=color, dash='solid'),
                     name=signal['type'],
                     showlegend=False
-                ), row=1, col=1)
+                ))
 
+        last_candle = ohlc.index.max().tz_convert('US/Pacific').strftime('%Y-%m-%d %H:%M')
+        candle_time_str = f"Last Candle: {last_candle} (PT)"
         fig.update_layout(
-            title=f"{symbol} | Break of Structure (BOS) and Change of Character (CHoCH) [SMC]",
+            title=f"{symbol} - BOS and CHoCH Signals | {candle_time_str}",
+            xaxis_title="Time",
+            yaxis_title="Price",
             xaxis_rangeslider_visible=False,
             showlegend=True,
-            height=600,
-            xaxis=dict(type='category', showticklabels=False),
-            yaxis=dict(title="Price")
+            xaxis=dict(range=[ohlc.index[0], ohlc.index[-1] + pd.Timedelta(minutes=45)])
         )
-        fig.update_xaxes(title_text="Time", row=1, col=1)
+        fig.update_xaxes(
+            title_text="Time",
+            type='date',  # Ensure datetime handling
+            tickformat="%H:%M",  # Show only time (HH:MM)
+            tickmode='linear',  # Enforce strict dtick intervals
+            dtick=7200000,  # 2-hour intervals
+            tickangle=45,  # Rotate for readability
+        )
         logger.info("Plotly figure generated successfully")
         return fig

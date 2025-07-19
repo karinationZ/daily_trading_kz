@@ -18,6 +18,7 @@ class SignalSummary:
     recent_smc_events: Optional[list] = None
     fig: Optional[go.Figure] = None
     nearest_ob: Optional[dict] = None
+    recent_bos_time: Optional[str] = None
 
 
 class StrategyBase(ABC):

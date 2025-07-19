@@ -1,3 +1,4 @@
+import pandas as pd
 import plotly.graph_objects as go
 
 from daily_trading.bots.smc_bot.clients.SMCBase import BEARISH, BULLISH, SMCBase
@@ -153,12 +154,37 @@ class LiquidityPoolDetector(SMCBase):
         return {"fig": fig, "signals": signals, "swing_signals": swing_signals}
 
     def _plot_liquidity_pools(self, ohlc, pivot_high_points, pivot_low_points, signals):
-        """Generate Plotly figure with candlesticks, swing points, liquidity pools, and signals."""
+        """
+        Generate Plotly figure with candlesticks, swing points, liquidity pools, and signals.
+
+        Parameters:
+        - ohlc (pd.DataFrame): OHLCV DataFrame with pandas.Timestamp index.
+        - pivot_high_points (list): List of pivot high points with time, level, index.
+        - pivot_low_points (list): List of pivot low points with time, level, index.
+        - signals (list): List of signals with type, bias, time, high, low.
+
+        Returns:
+        - go.Figure: Plotly figure with candlesticks, pivots, liquidity pools, and signals.
+        """
+        logger.info("Generating Plotly figure for liquidity pools")
         ohlc = ohlc.sort_index()
+
+        # Log sample of index values for debugging
+        logger.info(f"Sample ohlc.index values: {ohlc.index[-5:].tolist()}")
+
+        # Limit to last 200 rows
         ohlc = ohlc.tail(self.plot_tail)
-        # Filter pivots to ensure timestamps are within ohlc.index
-        pivot_high_points = [p for p in pivot_high_points if p['time'] in ohlc.index]
-        pivot_low_points = [p for p in pivot_low_points if p['time'] in ohlc.index]
+        ohlc_reset = ohlc.reset_index()  # Create a copy with integer indices for lookup
+
+        # Filter pivots and recompute indices to match sliced ohlc
+        pivot_high_points = [
+            {**p, "index": ohlc_reset.index[ohlc_reset['time'] == p['time']].tolist()[0]}
+            for p in pivot_high_points if p['time'] in ohlc.index
+        ]
+        pivot_low_points = [
+            {**p, "index": ohlc_reset.index[ohlc_reset['time'] == p['time']].tolist()[0]}
+            for p in pivot_low_points if p['time'] in ohlc.index
+        ]
         symbol = ohlc['symbol'].iloc[0] if 'symbol' in ohlc.columns else 'Unknown'
 
         fig = go.Figure()
@@ -174,25 +200,31 @@ class LiquidityPoolDetector(SMCBase):
         # Plot swing highs/lows
         if self.show_swing:
             for pivot in pivot_high_points:
-                fig.add_trace(go.Scatter(
-                    x=[ohlc.index[pivot["index"]]],
-                    y=[pivot["level"]],
-                    mode="markers+text",
-                    text=["SH"],
-                    textposition="top center",
-                    marker=dict(size=8, color="gray", symbol="triangle-down"),
-                    showlegend=False
-                ))
+                if pivot["index"] < len(ohlc):
+                    fig.add_trace(go.Scatter(
+                        x=[ohlc.index[pivot["index"]]],
+                        y=[pivot["level"]],
+                        mode="markers+text",
+                        text=["SH"],
+                        textposition="top center",
+                        marker=dict(size=8, color="gray", symbol="triangle-down"),
+                        showlegend=False
+                    ))
+                else:
+                    logger.warning(f"Invalid pivot index {pivot['index']} for high pivot at {pivot['time']}")
             for pivot in pivot_low_points:
-                fig.add_trace(go.Scatter(
-                    x=[ohlc.index[pivot["index"]]],
-                    y=[pivot["level"]],
-                    mode="markers+text",
-                    text=["SL"],
-                    textposition="bottom center",
-                    marker=dict(size=8, color="gray", symbol="triangle-up"),
-                    showlegend=False
-                ))
+                if pivot["index"] < len(ohlc):
+                    fig.add_trace(go.Scatter(
+                        x=[ohlc.index[pivot["index"]]],
+                        y=[pivot["level"]],
+                        mode="markers+text",
+                        text=["SL"],
+                        textposition="bottom center",
+                        marker=dict(size=8, color="gray", symbol="triangle-up"),
+                        showlegend=False
+                    ))
+                else:
+                    logger.warning(f"Invalid pivot index {pivot['index']} for low pivot at {pivot['time']}")
 
         # Plot liquidity pools
         if self.show_liquidity:
@@ -201,57 +233,60 @@ class LiquidityPoolDetector(SMCBase):
             buy_side_color = 'rgba(255,82,82,0.35)'
             sell_side_color = 'rgba(14,243,14,0.35)'
             for pivot in pivot_high_points:
-                # Buy-side liquidity pool (LSH to LSH * threshold)
-                x0 = ohlc.index[max(0, pivot["index"] - self.left_bars)]
-                x1 = ohlc.index[pivot["index"]]
-                y_lower = pivot["level"]
-                y_upper = pivot["level"] * self.threshold
-                fig.add_shape(
-                    type="line",
-                    x0=x0, y0=y_lower, x1=x1, y1=y_lower,
-                    line=dict(color=buy_side_color, width=line_width, dash=line_style)
-                )
-                fig.add_shape(
-                    type="line",
-                    x0=x0, y0=y_upper, x1=x1, y1=y_upper,
-                    line=dict(color=buy_side_color, width=line_width, dash=line_style)
-                )
-                # Fill between lines
-                fig.add_shape(
-                    type="rect",
-                    x0=x0, y0=y_lower, x1=x1, y1=y_upper,
-                    fillcolor=buy_side_color, opacity=0.35, line_width=0
-                )
-
+                if pivot["index"] < len(ohlc):
+                    x0 = ohlc.index[max(0, pivot["index"] - self.left_bars)]
+                    x1 = ohlc.index[pivot["index"]]
+                    y_lower = pivot["level"]
+                    y_upper = pivot["level"] * self.threshold
+                    fig.add_shape(
+                        type="line",
+                        x0=x0, y0=y_lower, x1=x1, y1=y_lower,
+                        line=dict(color=buy_side_color, width=line_width, dash=line_style)
+                    )
+                    fig.add_shape(
+                        type="line",
+                        x0=x0, y0=y_upper, x1=x1, y1=y_upper,
+                        line=dict(color=buy_side_color, width=line_width, dash=line_style)
+                    )
+                    fig.add_shape(
+                        type="rect",
+                        x0=x0, y0=y_lower, x1=x1, y1=y_upper,
+                        fillcolor=buy_side_color, opacity=0.35, line_width=0
+                    )
+                else:
+                    logger.warning(
+                        f"Skipping liquidity pool for high pivot at {pivot['time']} due to invalid index {pivot['index']}")
             for pivot in pivot_low_points:
-                # Sell-side liquidity pool (LSL * threshold_lower to LSL)
-                x0 = ohlc.index[max(0, pivot["index"] - self.left_bars)]
-                x1 = ohlc.index[pivot["index"]]
-                y_lower = pivot["level"] * self.threshold_lower
-                y_upper = pivot["level"]
-                fig.add_shape(
-                    type="line",
-                    x0=x0, y0=y_lower, x1=x1, y1=y_lower,
-                    line=dict(color=sell_side_color, width=line_width, dash=line_style)
-                )
-                fig.add_shape(
-                    type="line",
-                    x0=x0, y0=y_upper, x1=x1, y1=y_upper,
-                    line=dict(color=sell_side_color, width=line_width, dash=line_style)
-                )
-                # Fill between lines
-                fig.add_shape(
-                    type="rect",
-                    x0=x0, y0=y_lower, x1=x1, y1=y_upper,
-                    fillcolor=sell_side_color, opacity=0.35, line_width=0
-                )
+                if pivot["index"] < len(ohlc):
+                    x0 = ohlc.index[max(0, pivot["index"] - self.left_bars)]
+                    x1 = ohlc.index[pivot["index"]]
+                    y_lower = pivot["level"] * self.threshold_lower
+                    y_upper = pivot["level"]
+                    fig.add_shape(
+                        type="line",
+                        x0=x0, y0=y_lower, x1=x1, y1=y_lower,
+                        line=dict(color=sell_side_color, width=line_width, dash=line_style)
+                    )
+                    fig.add_shape(
+                        type="line",
+                        x0=x0, y0=y_upper, x1=x1, y1=y_upper,
+                        line=dict(color=sell_side_color, width=line_width, dash=line_style)
+                    )
+                    fig.add_shape(
+                        type="rect",
+                        x0=x0, y0=y_lower, x1=x1, y1=y_upper,
+                        fillcolor=sell_side_color, opacity=0.35, line_width=0
+                    )
+                else:
+                    logger.warning(
+                        f"Skipping liquidity pool for low pivot at {pivot['time']} due to invalid index {pivot['index']}")
 
         # Plot liquidity pools and raids as markers
         for signal in signals:
             if signal["type"] == "LiquidityPool":
                 color = "red" if signal["bias"] == BEARISH else "green"
                 text = "Buy Pool" if signal["bias"] == BEARISH else "Sell Pool"
-                y_level = (signal["high"] + signal["low"]) / 2  # Plot at midpoint of pool
+                y_level = (signal["high"] + signal["low"]) / 2
                 fig.add_trace(go.Scatter(
                     x=[signal["time"]],
                     y=[y_level],
@@ -261,23 +296,23 @@ class LiquidityPoolDetector(SMCBase):
                     marker=dict(size=10, color=color, symbol="square"),
                     showlegend=False
                 ))
-            elif signal["type"] == "LiquidityRaid":
-                color = "red" if signal["bias"] == BEARISH else "green"
-                fig.add_trace(go.Scatter(
-                    x=[signal["time"]],
-                    y=[signal["level"]],
-                    mode="markers+text",
-                    text=["Raid"],
-                    textposition="top center" if signal["bias"] == BEARISH else "bottom center",
-                    marker=dict(size=10, color=color, symbol="circle"),
-                    showlegend=False
-                ))
 
+        last_candle = ohlc.index.max().tz_convert('US/Pacific').strftime('%Y-%m-%d %H:%M')
+        candle_time_str = f"Last Candle: {last_candle} (PT)"
         fig.update_layout(
-            title=f"{symbol} | Liquidity Pools and Raids",
+            title=f"{symbol} | Liquidity Pools | {candle_time_str}",
             xaxis_title="Time",
             yaxis_title="Price",
-            xaxis_rangeslider_visible=False
+            xaxis_rangeslider_visible=False,
+            xaxis=dict(range=[ohlc.index[0], ohlc.index[-1] + pd.Timedelta(minutes=15)])
+        )
+        fig.update_xaxes(
+            title_text="Time",
+            type='date',
+            tickformat="%H:%M",
+            tickmode='linear',
+            dtick=7200000,
+            tickangle=45
         )
         logger.info("Plotly figure generated successfully")
         return fig

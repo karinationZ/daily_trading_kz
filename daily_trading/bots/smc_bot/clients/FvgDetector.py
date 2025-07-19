@@ -1,4 +1,5 @@
 import numpy as np
+import pandas as pd
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 
@@ -165,10 +166,29 @@ class FvgDetector(SMCBase):
                     f"{len(alert_conditions['BEARISH_FVG_FULFILLED'])} bearish fulfilled")
         return {"fig": fig, "signals": signals, "alert_conditions": alert_conditions}
 
+
     def _plot_fvg(self, ohlc, signals, pivot_high_points, pivot_low_points):
+        """
+        Plot candlesticks, pivot points, and FVG signals for the last 200 candles.
+
+        Parameters:
+        - ohlc (pd.DataFrame): OHLCV DataFrame with pandas.Timestamp index.
+        - signals (list): List of FVG signals with bias, time, top, bottom, mitigated, mitigated_time.
+        - pivot_high_points (list): List of pivot high points with labels.
+        - pivot_low_points (list): List of pivot low points with labels.
+
+        Returns:
+        - go.Figure: Plotly figure with candlesticks, pivots, and FVG rectangles.
+        """
         logger.info("Generating Plotly figure for FVG signals")
         ohlc = ohlc.sort_index()
+
+        # Log sample of index values for debugging
+        logger.info(f"Sample ohlc.index values: {ohlc.index[-5:].tolist()}")
+
+        # Limit to last 200 rows
         ohlc = ohlc.tail(self.plot_tail)
+
         # Filter pivots to ensure timestamps are within ohlc.index
         pivot_high_points = [p for p in pivot_high_points if p['time'] in ohlc.index]
         pivot_low_points = [p for p in pivot_low_points if p['time'] in ohlc.index]
@@ -176,6 +196,7 @@ class FvgDetector(SMCBase):
 
         fig = make_subplots(rows=1, cols=1, subplot_titles=[f"{symbol} | Price Chart with Liquidity Voids (FVG)"])
 
+        # Plot candlesticks
         fig.add_trace(go.Candlestick(
             x=ohlc.index,
             open=ohlc['open'],
@@ -185,6 +206,7 @@ class FvgDetector(SMCBase):
             name="OHLC"
         ), row=1, col=1)
 
+        # Plot pivot highs
         for pivot in pivot_high_points:
             fig.add_trace(go.Scatter(
                 x=[pivot['time']],
@@ -197,6 +219,7 @@ class FvgDetector(SMCBase):
                 showlegend=False
             ), row=1, col=1)
 
+        # Plot pivot lows
         for pivot in pivot_low_points:
             fig.add_trace(go.Scatter(
                 x=[pivot['time']],
@@ -209,6 +232,7 @@ class FvgDetector(SMCBase):
                 showlegend=False
             ), row=1, col=1)
 
+        # Plot FVG rectangles
         for signal in signals:
             if (signal["bias"] == BULLISH and self.show_bull) or (signal["bias"] == BEARISH and self.show_bear):
                 if not signal["mitigated"] or self.show_fulfilled:
@@ -217,7 +241,7 @@ class FvgDetector(SMCBase):
                         color = 'rgba(169, 169, 169, 0.6)'
                     end_time = signal["mitigated_time"] if signal["mitigated"] else ohlc.index[-1]
                     if signal["mitigated"] and end_time not in ohlc.index:
-                        end_time = ohlc.index[ohlc.index.get_loc(end_time, method='nearest')]
+                        end_time = ohlc.index[ohlc.index.get_indexer([end_time], method='nearest')[0]]
                         logger.info(f"Adjusted end_time to nearest OHLC index: {end_time} for FVG at {signal['time']}")
                     logger.info(
                         f"Adding FVG rectangle: x0={signal['time']}, x1={end_time}, y0={signal['bottom']:.6f}, y1={signal['top']:.6f}, color={color}")
@@ -245,15 +269,24 @@ class FvgDetector(SMCBase):
                             showlegend=False
                         ))
 
+        # Update layout
+        last_candle = ohlc.index.max().tz_convert('US/Pacific').strftime('%Y-%m-%d %H:%M')
+        candle_time_str = f"Last Candle: {last_candle} (PT)"
         fig.update_layout(
-            title=f"{symbol} | Liquidity Voids (FVG) [SMC]",
+            title=f"{symbol} | FVG | {candle_time_str}",
             xaxis_rangeslider_visible=False,
             showlegend=True,
-            height=800,
-            xaxis=dict(type='date', tickformat='%Y-%m-%d %H:%M', showticklabels=True),
             yaxis=dict(title="Price"),
-            margin=dict(t=100, b=100, l=50, r=50)
+            xaxis=dict(range=[ohlc.index[0], ohlc.index[-1] + pd.Timedelta(minutes=60)])  # Extend range by 15 minutes
         )
-        fig.update_xaxes(title_text="Time", row=1, col=1)
+        fig.update_xaxes(
+            title_text="Time",
+            type='date',  # Ensure datetime handling
+            tickformat="%H:%M",  # Show only time (HH:MM)
+            tickmode='linear',  # Enforce strict dtick intervals
+            dtick=7200000,  # 2-hour intervals
+            tickangle=45,  # Rotate for readability
+            row=1, col=1
+        )
         logger.info("Plotly figure generated successfully")
         return fig

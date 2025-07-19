@@ -7,12 +7,11 @@ from daily_trading.settings import logger
 
 
 class OrderBlocksDetector(SMCBase):
-    def __init__(self, main_tf, left_bars=5, right_bars=5, tap_back_ratio=0.1, plot_tail=200):
+    def __init__(self, main_tf, left_bars=5, right_bars=5, tap_back_ratio=0.1):
         super().__init__(main_tf=main_tf, left_bars=left_bars, right_bars=right_bars)
         self.tap_back_ratio = tap_back_ratio
-        self.plot_tail = plot_tail
         logger.info(
-            f"Initialized OrderBlocksDetector with main_tf={main_tf}, tap_back_ratio={tap_back_ratio}, plot_tail={plot_tail}")
+            f"Initialized OrderBlocksDetector with main_tf={main_tf}, tap_back_ratio={tap_back_ratio}.")
 
     def detect_order_block(self, ohlc: pd.DataFrame) -> list:
         """
@@ -219,15 +218,23 @@ class OrderBlocksDetector(SMCBase):
                 name=ob["type"]
             )
 
+        last_candle = ohlc.index.max().tz_convert('US/Pacific').strftime('%Y-%m-%d %H:%M')
+        candle_time_str = f"Last Candle: {last_candle} (PT)"
         fig.update_layout(
-            title=f"{symbol} | Order Blocks [SMC]",
+            title=f"{symbol} | Order Blocks | {candle_time_str}",
             xaxis_rangeslider_visible=False,
             showlegend=True,
-            height=800,
-            xaxis=dict(type='date', tickformat='%Y-%m-%d %H:%M', showticklabels=True),
             yaxis=dict(title="Price"),
-            margin=dict(t=100, b=100, l=50, r=50)
+            xaxis=dict(range=[ohlc.index[0], ohlc.index[-1] + pd.Timedelta(minutes=60)])  # Extend range by 15 minutes
         )
-        fig.update_xaxes(title_text="Time", row=1, col=1)
+        fig.update_xaxes(
+            title_text="Time",
+            type='date',  # Ensure datetime handling
+            tickformat="%H:%M",  # Show only time (HH:MM)
+            tickmode='linear',  # Enforce strict dtick intervals
+            dtick=7200000,  # 2-hour intervals
+            tickangle=45,  # Rotate for readability
+            row=1, col=1
+        )
         logger.info("Plotly figure generated successfully")
         return fig

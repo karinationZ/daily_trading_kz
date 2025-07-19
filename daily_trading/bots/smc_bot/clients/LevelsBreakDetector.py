@@ -1,7 +1,6 @@
 import numpy as np
 import pandas as pd
 import plotly.graph_objects as go
-from plotly.subplots import make_subplots
 
 from daily_trading.bots.smc_bot.clients.SMCBase import SMCBase
 from daily_trading.settings import logger
@@ -188,45 +187,56 @@ class LevelsBreakDetector(SMCBase):
 
         Parameters:
         - fig (go.Figure): Plotly figure object.
-        - pivot_high_points (list): List of pivot high points.
-        - pivot_low_points (list): List of pivot low points.
-        - ohlc (pd.DataFrame): OHLCV DataFrame.
+        - pivot_high_points (list): List of pivot high points with time, level.
+        - pivot_low_points (list): List of pivot low points with time, level.
+        - ohlc (pd.DataFrame): OHLCV DataFrame with pandas.Timestamp index.
         """
-        ohlc = ohlc.sort_index()
-        ohlc = ohlc.tail(self.plot_tail)
-        # Filter pivots to ensure timestamps are within ohlc.index
-        pivot_high_points = [p for p in pivot_high_points if p['time'] in ohlc.index]
-        pivot_low_points = [p for p in pivot_low_points if p['time'] in ohlc.index]
+        ohlc_reset = ohlc.reset_index()  # Create copy with integer indices
+        # Filter pivots and recompute indices
+        pivot_high_points = [
+            {**p, "index": ohlc_reset.index[ohlc_reset['time'] == p['time']].tolist()[0]}
+            for p in pivot_high_points if p['time'] in ohlc.index
+        ]
+        pivot_low_points = [
+            {**p, "index": ohlc_reset.index[ohlc_reset['time'] == p['time']].tolist()[0]}
+            for p in pivot_low_points if p['time'] in ohlc.index
+        ]
 
         for pivot in pivot_high_points:
-            start_time = pd.Timestamp(pivot['time'])
-            end_idx = min(ohlc.index.get_loc(start_time) + self.right_bars, len(ohlc.index) - 1)
-            end_time = ohlc.index[end_idx]
-            fig.add_trace(go.Scatter(
-                x=[start_time, end_time],
-                y=[pivot['level'], pivot['level']],
-                mode='lines+text',
-                text=['', "Resistance"],
-                textposition='top center',
-                line=dict(color='#FF0000', width=1, dash='solid'),
-                name='Resistance',
-                showlegend=False
-            ), row=1, col=1)
+            if pivot["index"] < len(ohlc):
+                start_time = ohlc.index[pivot["index"]]
+                end_idx = min(pivot["index"] + self.right_bars, len(ohlc) - 1)
+                end_time = ohlc.index[end_idx]
+                fig.add_trace(go.Scatter(
+                    x=[start_time, end_time],
+                    y=[pivot['level'], pivot['level']],
+                    mode='lines+text',
+                    text=['', "Resistance"],
+                    textposition='top center',
+                    line=dict(color='#FF0000', width=1, dash='solid'),
+                    name='Resistance',
+                    showlegend=False
+                ))
+            else:
+                logger.warning(f"Invalid pivot index {pivot['index']} for high pivot at {pivot['time']}")
 
         for pivot in pivot_low_points:
-            start_time = pd.Timestamp(pivot['time'])
-            end_idx = min(ohlc.index.get_loc(start_time) + self.right_bars, len(ohlc.index) - 1)
-            end_time = ohlc.index[end_idx]
-            fig.add_trace(go.Scatter(
-                x=[start_time, end_time],
-                y=[pivot['level'], pivot['level']],
-                mode='lines+text',
-                text=['', "Support"],
-                textposition='bottom center',
-                line=dict(color='#233dee', width=1, dash='solid'),
-                name='Support',
-                showlegend=False
-            ), row=1, col=1)
+            if pivot["index"] < len(ohlc):
+                start_time = ohlc.index[pivot["index"]]
+                end_idx = min(pivot["index"] + self.right_bars, len(ohlc) - 1)
+                end_time = ohlc.index[end_idx]
+                fig.add_trace(go.Scatter(
+                    x=[start_time, end_time],
+                    y=[pivot['level'], pivot['level']],
+                    mode='lines+text',
+                    text=['', "Support"],
+                    textposition='bottom center',
+                    line=dict(color='#233dee', width=1, dash='solid'),
+                    name='Support',
+                    showlegend=False
+                ))
+            else:
+                logger.warning(f"Invalid pivot index {pivot['index']} for low pivot at {pivot['time']}")
 
     def _plot_support_resistance_breaks(self, fig, support_breaks, resistance_breaks, bull_wicks, bear_wicks, ohlc):
         """
@@ -234,76 +244,125 @@ class LevelsBreakDetector(SMCBase):
 
         Parameters:
         - fig (go.Figure): Plotly figure object.
+        - support_breaks (list): List of support break events with time, level, text, type.
+        - resistance_breaks (list): List of resistance break events with time, level, text, type.
+        - bull_wicks (list): List of bullish wick events with time, level, text, type.
+        - bear_wicks (list): List of bearish wick events with time, level, text, type.
+        - ohlc (pd.DataFrame): OHLCV DataFrame with pandas.Timestamp index.
+        """
+        ohlc_reset = ohlc.reset_index()  # Create copy with integer indices
+        # Filter events and recompute indices
+        support_breaks = [
+            {**b, "index": ohlc_reset.index[ohlc_reset['time'] == b['time']].tolist()[0]}
+            for b in support_breaks if b['time'] in ohlc.index
+        ]
+        resistance_breaks = [
+            {**b, "index": ohlc_reset.index[ohlc_reset['time'] == b['time']].tolist()[0]}
+            for b in resistance_breaks if b['time'] in ohlc.index
+        ]
+        bull_wicks = [
+            {**w, "index": ohlc_reset.index[ohlc_reset['time'] == w['time']].tolist()[0]}
+            for w in bull_wicks if w['time'] in ohlc.index
+        ]
+        bear_wicks = [
+            {**w, "index": ohlc_reset.index[ohlc_reset['time'] == w['time']].tolist()[0]}
+            for w in bear_wicks if w['time'] in ohlc.index
+        ]
+
+        for break_event in support_breaks:
+            if break_event["index"] < len(ohlc):
+                fig.add_trace(go.Scatter(
+                    x=[ohlc.index[break_event["index"]]],
+                    y=[break_event['level'] * 1.001],
+                    mode='markers+text',
+                    text=[break_event['text']],
+                    textposition='top center',
+                    marker=dict(symbol='triangle-down', size=8, color='red'),
+                    name=break_event['type'],
+                    showlegend=False
+                ))
+            else:
+                logger.warning(f"Invalid index {break_event['index']} for support break at {break_event['time']}")
+
+        for break_event in resistance_breaks:
+            if break_event["index"] < len(ohlc):
+                fig.add_trace(go.Scatter(
+                    x=[ohlc.index[break_event["index"]]],
+                    y=[break_event['level'] * 0.999],
+                    mode='markers+text',
+                    text=[break_event['text']],
+                    textposition='bottom center',
+                    marker=dict(symbol='triangle-up', size=8, color='green'),
+                    name=break_event['type'],
+                    showlegend=False
+                ))
+            else:
+                logger.warning(f"Invalid index {break_event['index']} for resistance break at {break_event['time']}")
+
+        for wick in bull_wicks:
+            if wick["index"] < len(ohlc):
+                end_idx = min(wick["index"] + 1, len(ohlc) - 1)
+                end_time = ohlc.index[end_idx]
+                fig.add_trace(go.Scatter(
+                    x=[ohlc.index[wick["index"]], end_time],
+                    y=[wick['level'] * 0.999, wick['level'] * 0.999],
+                    mode='lines+text',
+                    text=['', wick['text']],
+                    textposition='bottom center',
+                    line=dict(color='green', width=2, dash='solid'),
+                    name=wick['type'],
+                    showlegend=False
+                ))
+            else:
+                logger.warning(f"Invalid index {wick['index']} for bull wick at {wick['time']}")
+
+        for wick in bear_wicks:
+            if wick["index"] < len(ohlc):
+                end_idx = min(wick["index"] + 1, len(ohlc) - 1)
+                end_time = ohlc.index[end_idx]
+                fig.add_trace(go.Scatter(
+                    x=[ohlc.index[wick["index"]], end_time],
+                    y=[wick['level'] * 1.001, wick['level'] * 1.001],
+                    mode='lines+text',
+                    text=['', wick['text']],
+                    textposition='top center',
+                    line=dict(color='red', width=2, dash='solid'),
+                    name=wick['type'],
+                    showlegend=False
+                ))
+            else:
+                logger.warning(f"Invalid index {wick['index']} for bear wick at {wick['time']}")
+
+    def plot_levels_and_breaks(self, ohlc, support_breaks, resistance_breaks, bull_wicks, bear_wicks, pivot_high_points,
+                               pivot_low_points):
+        """
+        Generate Plotly figure with candlesticks, support/resistance levels, breaks, and wicks.
+
+        Parameters:
+        - ohlc (pd.DataFrame): OHLCV DataFrame with pandas.Timestamp index.
         - support_breaks (list): List of support break events.
         - resistance_breaks (list): List of resistance break events.
         - bull_wicks (list): List of bullish wick events.
         - bear_wicks (list): List of bearish wick events.
-        - ohlc (pd.DataFrame): OHLCV DataFrame.
+        - pivot_high_points (list): List of pivot high points.
+        - pivot_low_points (list): List of pivot low points.
+
+        Returns:
+        - go.Figure: Plotly figure with candlesticks, support/resistance levels, breaks, and wicks.
         """
-        for break_event in support_breaks:
-            fig.add_trace(go.Scatter(
-                x=[break_event['time']],
-                y=[break_event['level'] * 1.001],
-                mode='markers+text',
-                # text=[break_event['text']],
-                textposition='top center',
-                marker=dict(symbol='triangle-down', size=8, color='red'),
-                name=break_event['type'],
-                showlegend=False
-            ), row=1, col=1)
+        logger.info("Generating Plotly figure for support and resistance levels")
+        ohlc = ohlc.sort_index()
 
-        for break_event in resistance_breaks:
-            fig.add_trace(go.Scatter(
-                x=[break_event['time']],
-                y=[break_event['level'] * 0.999],
-                mode='markers+text',
-                # text=[break_event['text']],
-                textposition='bottom center',
-                marker=dict(symbol='triangle-up', size=8, color='green'),
-                name=break_event['type'],
-                showlegend=False
-            ), row=1, col=1)
+        # Log sample of index values for debugging
+        logger.info(f"Sample ohlc.index values: {ohlc.index[-5:].tolist()}")
 
-        for wick in bull_wicks:
-            end_idx = min(ohlc.index.get_loc(wick['time']) + 1, len(ohlc.index) - 1)
-            end_time = ohlc.index[end_idx]
-            fig.add_trace(go.Scatter(
-                x=[wick['time'], end_time],
-                y=[wick['level'] * 0.999, wick['level'] * 0.999],
-                mode='lines+text',
-                text=['', wick['text']],
-                textposition='bottom center',
-                line=dict(color='green', width=2, dash='solid'),
-                name=wick['type'],
-                showlegend=False
-            ), row=1, col=1)
-
-        for wick in bear_wicks:
-            end_idx = min(ohlc.index.get_loc(wick['time']) + 1, len(ohlc.index) - 1)
-            end_time = ohlc.index[end_idx]
-            fig.add_trace(go.Scatter(
-                x=[wick['time'], end_time],
-                y=[wick['level'] * 1.001, wick['level'] * 1.001],
-                mode='lines+text',
-                text=['', wick['text']],
-                textposition='top center',
-                line=dict(color='red', width=2, dash='solid'),
-                name=wick['type'],
-                showlegend=False
-            ), row=1, col=1)
-
-    def plot_levels_and_breaks(self, ohlc, support_breaks,
-                               resistance_breaks,
-                               bull_wicks,
-                               bear_wicks,
-                               pivot_high_points,
-                               pivot_low_points):
+        # Limit to last 200 rows
+        self.plot_tail = 200  # Ensure consistent 200 rows
+        ohlc = ohlc.tail(self.plot_tail)
         symbol = ohlc['symbol'].iloc[0] if 'symbol' in ohlc.columns else 'Unknown'
 
         # Create Plotly figure
-        fig = make_subplots(rows=2, cols=1, shared_xaxes=True, vertical_spacing=0.03,
-                            subplot_titles=[f"{symbol} | Price Chart", "Volume Oscillator"],
-                            row_heights=[0.7, 0.3])
+        fig = go.Figure()
 
         # Plot candlesticks
         fig.add_trace(go.Candlestick(
@@ -313,7 +372,7 @@ class LevelsBreakDetector(SMCBase):
             low=ohlc['low'],
             close=ohlc['close'],
             name="OHLC"
-        ), row=1, col=1)
+        ))
 
         # Plot support and resistance levels
         self._plot_support_resistance(fig, pivot_high_points, pivot_low_points, ohlc)
@@ -322,16 +381,23 @@ class LevelsBreakDetector(SMCBase):
         self._plot_support_resistance_breaks(fig, support_breaks, resistance_breaks, bull_wicks, bear_wicks, ohlc)
 
         # Update layout
+        last_candle = ohlc.index.max().tz_convert('US/Pacific').strftime('%Y-%m-%d %H:%M')
+        candle_time_str = f"Last Candle: {last_candle} (PT)"
         fig.update_layout(
-            title=f"{symbol} | Support and Resistance Levels with Breaks [LuxAlgo]",
+            title=f"{symbol} | Support and Resistance Levels | {candle_time_str}",
+            xaxis_title="Time",
+            yaxis_title="Price",
             xaxis_rangeslider_visible=False,
             showlegend=True,
-            height=800,
-            xaxis=dict(type='category', showticklabels=False),
-            xaxis2=dict(type='category', showticklabels=False)
+            xaxis=dict(range=[ohlc.index[0], ohlc.index[-1] + pd.Timedelta(minutes=45)])
         )
-        fig.update_xaxes(title_text="Time", row=1, col=1)
-        fig.update_yaxes(title_text="Price", row=1, col=1)
-        fig.update_xaxes(title_text="Time", row=2, col=1)
-        fig.update_yaxes(title_text="Volume Oscillator (%)", row=2, col=1)
+        fig.update_xaxes(
+            title_text="Time",
+            type='date',
+            tickformat="%H:%M",
+            tickmode='linear',
+            dtick=7200000,
+            tickangle=45
+        )
+        logger.info("Plotly figure generated successfully")
         return fig

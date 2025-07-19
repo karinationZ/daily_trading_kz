@@ -12,10 +12,11 @@ from daily_trading.bots.smc_bot.clients.OrderBlocksDetector import OrderBlocksDe
 from daily_trading.bots.smc_bot.clients.SMCTardingBot import SMCTradingBot
 from daily_trading.bots.smc_bot.clients.TelegramBot import TelegramBot
 from daily_trading.settings import logger
+from daily_trading.settings import TELEGRAM_BOT_CHAT_ID
 
-symbol = "XRPUSDT"
+symbol = "LDOUSDT"
 main_tf = "1h"
-lookback_days = 20
+lookback_days = 10
 
 
 @pytest.mark.asyncio
@@ -36,11 +37,11 @@ async def test_bos_detector():
     bot = SMCTradingBot(symbols=[symbol], lookback_days=lookback_days, main_tf=main_tf)
     ohlc = await bot.fetch_ohlc_data(symbol, main_tf)
 
-    with pd.option_context('display.max_rows', None, 'display.max_columns', None):
-        logger.info("\n{}", ohlc.tail(50).to_string())
+    # with pd.option_context('display.max_rows', None, 'display.max_columns', None):
+    #     logger.info("\n{}", ohlc.tail(50).to_string())
 
     detector = BosChochDetector(main_tf, show_bull=True, show_bear=True)
-    results = detector.calculate_bos_choch(ohlc.tail(100), plot=True)
+    results = detector.calculate_bos_choch(ohlc, plot=True)
     fig = results["fig"]
     fig.show()
 
@@ -54,7 +55,7 @@ async def test_fake_breakout_detector():
         logger.info("\n{}", ohlc.tail(60).to_string())
 
     detector = FakeBreakoutDetector(main_tf=main_tf)
-    results = detector.calculate_false_breakouts(ohlc.tail(250), plot=True)
+    results = detector.calculate_false_breakouts(ohlc, plot=True)
     fig = results["fig"]
     fig.show()
 
@@ -81,12 +82,9 @@ async def test_high_low():
     with pd.option_context('display.max_rows', None, 'display.max_columns', None):
         logger.info("\n{}", ohlc.tail(50).to_string())
     detector = HighLowDetector(main_tf)
-    results = detector.calculate_high_low_swings(ohlc, plot=False)
-
-    trend = detector.detect_trend(ohlc)
-    logger.info(trend)
-    # fig = results["fig"]
-    # fig.show()
+    results = detector.calculate_high_low_swings(ohlc, plot=True)
+    fig = results["fig"]
+    fig.show()
 
 
 @pytest.mark.asyncio
@@ -127,7 +125,7 @@ async def test_order_blocks():
     fig = results["fig"]
     fig.show()
 
-from daily_trading.settings import TELEGRAM_BOT_CHAT_ID
+
 @pytest.mark.asyncio
 async def test_liq_pool():
     bot = SMCTradingBot(symbols=[symbol], lookback_days=lookback_days, main_tf=main_tf)
@@ -137,12 +135,12 @@ async def test_liq_pool():
         logger.info("\n{}", ohlc.tail(50).to_string())
 
     detector = LiquidityPoolDetector(main_tf="1h")
-    results = detector.calculate_liquidity_pools(ohlc.tail(100), plot=True)
+    results = detector.calculate_liquidity_pools(ohlc, plot=True)
     fig = results["fig"]
     fig.show()
 
-    bot = TelegramBot(chat_id=TELEGRAM_BOT_CHAT_ID)
-    await bot.send_message(
-        text="TEST TEST TEST",
-        image=fig
-    )
+    # bot = TelegramBot(chat_id=TELEGRAM_BOT_CHAT_ID)
+    # await bot.send_message(
+    #     text="TEST TEST TEST",
+    #     image=fig
+    # )

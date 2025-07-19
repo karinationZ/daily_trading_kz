@@ -252,11 +252,12 @@ class FakeBreakoutDetector(SMCBase):
                 textfont=dict(color=marker_color, size=10)
             ), row=1, col=1)
 
+        last_candle = ohlc.index.max().tz_convert('US/Pacific').strftime('%Y-%m-%d %H:%M')
+        candle_time_str = f"Last Candle: {last_candle} (PT)"
         fig.update_layout(
-            title=f"{symbol} | False Breakouts [SMC]",
+            title=f"{symbol} | False Breakouts [SMC]\n{candle_time_str}",
             xaxis_rangeslider_visible=False,
             showlegend=True,
-            height=600,
             xaxis=dict(type='category', showticklabels=False),
             yaxis=dict(title="Price")
         )

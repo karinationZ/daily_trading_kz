@@ -1,3 +1,4 @@
+import pandas as pd
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 
@@ -67,7 +68,7 @@ class HighLowDetector(SMCBase):
         Plot candlesticks and labeled pivot points (HH, HL, LH, LL) for the last 200 candles.
 
         Parameters:
-        - ohlc (pd.DataFrame): OHLCV DataFrame.
+        - ohlc (pd.DataFrame): OHLCV DataFrame with pandas.Timestamp index.
         - pivot_high_points (list): List of pivot high points with labels.
         - pivot_low_points (list): List of pivot low points with labels.
 
@@ -76,6 +77,9 @@ class HighLowDetector(SMCBase):
         """
         logger.info("Generating Plotly figure for pivot points")
         ohlc = ohlc.sort_index()
+
+        # Log sample of index values for debugging
+        logger.info(f"Sample ohlc.index values: {ohlc.index[-5:].tolist()}")
 
         # Limit to last 200 rows
         ohlc = ohlc.tail(self.plot_tail)
@@ -125,14 +129,22 @@ class HighLowDetector(SMCBase):
             ), row=1, col=1)
 
         # Update layout
+        last_candle = ohlc.index.max().tz_convert('US/Pacific').strftime('%Y-%m-%d %H:%M')
+        candle_time_str = f"Last Candle: {last_candle} (PT)"
         fig.update_layout(
-            title=f"{symbol} | Higher Highs, Higher Lows, Lower Highs, Lower Lows [SMC]",
+            title=f"{symbol} | Higher Highs, Higher Lows, Lower Highs, Lower Lows | {candle_time_str}",
             xaxis_rangeslider_visible=False,
             showlegend=True,
-            height=600,
-            xaxis=dict(type='category', showticklabels=False),
             yaxis=dict(title="Price")
         )
-        fig.update_xaxes(title_text="Time", row=1, col=1)
+        fig.update_xaxes(
+            title_text="Time",
+            type='date',  # Ensure datetime handling
+            tickformat="%H:%M",  # Show only time (HH:MM)
+            ticklabelmode="period",  # Align ticks with period start
+            dtick=7200000,  # 2-hour intervals
+            tickangle=45,  # Rotate for readability
+            row=1, col=1
+        )
         logger.info("Plotly figure generated successfully")
         return fig

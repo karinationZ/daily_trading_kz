@@ -178,10 +178,10 @@ class OrderBlockSweepStrategy(StrategyBase):
                                        trend=trend,
                                        recent_smc_events=recent_smc_events,
                                        nearest_ob=self.nearest_ob)
-        if trend == Trend.NEUTRAL.name:
-            logger.info(f"{symbol} | Step 1: Neutral trend detected, stopping analysis.")
-            signal_summary.fig = high_low_fig
-            return signal_summary
+        # if trend == Trend.NEUTRAL.name:
+        #     logger.info(f"{symbol} | Step 1: Neutral trend detected, stopping analysis.")
+        #     signal_summary.fig = high_low_fig
+        #     return signal_summary
 
         # Step 2: Detect OBs
         relevant_obs, step2_events = await self.detect_ob(ohlc_1h, symbol, trend, cache_key)

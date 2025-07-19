@@ -180,11 +180,12 @@ class LiquiditySweepDetector(SMCBase):
                 opacity=0.7
             )
 
+        last_candle = ohlc.index.max().tz_convert('US/Pacific').strftime('%Y-%m-%d %H:%M')
+        candle_time_str = f"Last Candle: {last_candle} (PT)"
         fig.update_layout(
-            title=f"{symbol} | Liquidity Sweeps [SMC]",
+            title=f"{symbol} | Liquidity Sweeps | {candle_time_str}",
             xaxis_rangeslider_visible=False,
             showlegend=True,
-            height=800,
             xaxis=dict(type='date', tickformat='%Y-%m-%d %H:%M', showticklabels=True),
             yaxis=dict(title="Price"),
             margin=dict(t=100, b=100, l=50, r=50)

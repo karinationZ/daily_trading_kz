@@ -168,10 +168,10 @@ class BreakOfStructureStrategy(StrategyBase):
             recent_smc_events.append(price_touched_event)
 
         if not fvg_mitigated:
-            event = f"Price did not  mitigated 50% {trend} FVG."
+            event = f"Price did not mitigated 80% {trend} FVG."
             recent_smc_events.append(event)
         else:
-            event = f"Price mitigated {trend} FVG by 50% or more."
+            event = f"Price mitigated {trend} FVG by 80% or more."
             recent_smc_events.append(event)
 
         return fvg_mitigated, recent_smc_events

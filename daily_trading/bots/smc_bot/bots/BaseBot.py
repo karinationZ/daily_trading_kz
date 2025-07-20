@@ -244,7 +244,7 @@ class SMCBotBase:
                       f"******"
                 logger.info(msg)
                 # TODO - DELETE IT
-                # if analysis.direction == Trend.NEUTRAL.name:
-                #     await self.telegram_bot_debug.send_message(msg, analysis.fig)
+                if analysis.direction == Trend.NEUTRAL.name:
+                    await self.telegram_bot_debug.send_message(msg, analysis.fig)
         except Exception as e:
             logger.error(f"Error processing {symbol}: {e}")

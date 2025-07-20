@@ -19,10 +19,14 @@ class SMCOrderBlockSweepBot(SMCBotBase):
     """
 
     def __init__(self, symbols, main_tf: str = '1h', symbol_volume_threshold: float = 30000000, lookback_days: int = 1,
-                 debug=False):
+                 debug=False, telegram_chat_id=TELEGRAM_CHANNEL_CHAT_ID):
 
-        super().__init__(symbols, main_tf, symbol_volume_threshold, lookback_days)
-        self.ob_sweep_strategy = OrderBlockSweepStrategy(main_tf, debug, telegram_chat_id=TELEGRAM_CHANNEL_CHAT_ID)
+        super().__init__(symbols,
+                         main_tf,
+                         symbol_volume_threshold,
+                         lookback_days,
+                         telegram_chat_id=telegram_chat_id)
+        self.ob_sweep_strategy = OrderBlockSweepStrategy(main_tf, debug, telegram_chat_id=telegram_chat_id)
         logger.info(f"SMCOrderBlockSweepBot initialized with {len(symbols)} symbols, {main_tf} TF.")
 
     async def run_symbol(self, symbol: str):

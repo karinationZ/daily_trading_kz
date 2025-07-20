@@ -2,7 +2,7 @@ import asyncio
 
 from daily_trading.bots.smc_bot.bots.BaseBot import SMCBotBase
 from daily_trading.bots.smc_bot.strategy.BreakOfStructureStrategy import BreakOfStructureStrategy
-from daily_trading.settings import logger, TELEGRAM_BOT_CHAT_ID, TELEGRAM_CHANNEL_CHAT_ID
+from daily_trading.settings import logger, TELEGRAM_CHANNEL_CHAT_ID, TELEGRAM_BOT_CHAT_ID
 
 
 class SMCBosFvgTapBot(SMCBotBase):
@@ -19,8 +19,13 @@ class SMCBosFvgTapBot(SMCBotBase):
     def __init__(self, symbols, main_tf: str = '1h', symbol_volume_threshold: float = 30000000, lookback_days: int = 1,
                  debug=False, telegram_chat_id=TELEGRAM_BOT_CHAT_ID):
 
-        super().__init__(symbols, main_tf, symbol_volume_threshold, lookback_days, telegram_chat_id=telegram_chat_id)
-        self.bos_strategy = BreakOfStructureStrategy(main_tf, debug, telegram_chat_id=TELEGRAM_BOT_CHAT_ID)
+        super().__init__(symbols, main_tf,
+                         symbol_volume_threshold,
+                         lookback_days,
+                         telegram_chat_id=telegram_chat_id)
+
+        self.chat_id = telegram_chat_id
+        self.bos_strategy = BreakOfStructureStrategy(main_tf, debug, telegram_chat_id=self.chat_id)
 
     async def run_symbol(self, symbol: str):
         """Analyze a single symbol and generate SMC signals."""

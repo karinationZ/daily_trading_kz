@@ -214,9 +214,9 @@ class SMCBotBase:
         """
         logger.info("Updating high-volume symbols")
         try:
-            results = self.asset_finder.find_divergent_assets(
-                volume_threshold=self.volume_threshold,
-                lookback_hours=2
+            results = await self.asset_finder.find_divergent_assets(
+                volume_threshold=10000000,
+                lookback_hours=3
             )
             self.symbols = [asset["symbol"] for asset in results["non_correlated"]]
 

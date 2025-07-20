@@ -6,7 +6,6 @@ import pandas as pd
 from daily_trading.bots.smc_bot.detectors.BosChochDetector import BosChochDetector
 from daily_trading.bots.smc_bot.detectors.FvgDetector import FvgDetector
 from daily_trading.bots.smc_bot.detectors.HighLowDetector import HighLowDetector
-from daily_trading.bots.smc_bot.detectors.LiquidityPoolDetector import LiquidityPoolDetector
 from daily_trading.bots.smc_bot.detectors.SMCBase import Trend
 from daily_trading.bots.smc_bot.strategy.StrategyBase import SignalSummary, StrategyBase
 from daily_trading.settings import logger
@@ -37,6 +36,8 @@ class BreakOfStructureStrategy(StrategyBase):
         self.recent_bos_signal = None
         self.bos_choch_fig = None
         self.fvg_fig = None
+        self.last_mitigated_fvg = None  # Track last mitigated FVG
+        self.last_bos_time = None  # Track last BOS time
 
     async def confirm_trend(self, ohlc_1h, symbol: str, cache_key: Tuple[str, str], current_time: datetime):
         """Step 1: Identify Trend on 1H (last 24 candles)."""
@@ -148,6 +149,7 @@ class BreakOfStructureStrategy(StrategyBase):
         # Check last 5 candles for FVG interaction
         lookback_candles = min(5, len(ohlc_15m))
         fvg_mitigated = False
+        price_touched_event = None
 
         for i in range(1, lookback_candles + 1):
             candle_low = ohlc_15m['low'].iloc[-i]
@@ -155,13 +157,14 @@ class BreakOfStructureStrategy(StrategyBase):
 
             # Check if candle overlaps with FVG range
             if candle_low <= fvg_top and candle_high >= fvg_bottom:
-                event = f"Price touched {trend} FVG at candle {-i}."
-                recent_smc_events.append(event)
+                price_touched_event = f"Price touched {trend} FVG."
                 # Check for 50% mitigation
                 if trend == Trend.BULLISH.name and candle_high >= fvg_midpoint:
                     fvg_mitigated = True
                 elif trend == Trend.BEARISH.name and candle_low <= fvg_midpoint:
                     fvg_mitigated = True
+        if price_touched_event:
+            recent_smc_events.append(price_touched_event)
 
         if not fvg_mitigated:
             event = f"Price did not  mitigated 50% {trend} FVG."
@@ -187,13 +190,18 @@ class BreakOfStructureStrategy(StrategyBase):
         # Step 2: Detect BOS & ChoCH signals
         bos_events = await self.detect_bos_choch(ohlc_1h, trend, symbol)
         recent_smc_events.extend(bos_events)
-        signal_summary = SignalSummary(direction=Trend.NEUTRAL.name,
-                                       trend=trend,
-                                       recent_smc_events=recent_smc_events,
-                                       recent_bos_signal=self.recent_bos_signal,
-                                       fig=self.bos_choch_fig)
+        signal_summary = SignalSummary(
+            direction=Trend.NEUTRAL.name,
+            trend=trend,
+            recent_smc_events=recent_smc_events,
+            recent_bos_signal=self.recent_bos_signal,
+            fig=self.bos_choch_fig
+        )
         if self.recent_bos_signal is None:
             return signal_summary
+
+        # Update last BOS time
+        self.last_bos_time = self.recent_bos_signal.get('time')
 
         # Step 3: Find nearest FVG
         nearest_fvg, step_3_events = await self.get_nearest_fvg(ohlc_15m, trend)
@@ -203,7 +211,7 @@ class BreakOfStructureStrategy(StrategyBase):
             signal_summary.recent_smc_events = recent_smc_events
             return signal_summary
 
-        # Step 4: Confirm Pull Back - FVG touch
+        # Step 4: Confirm Pull Back - FVG mitigation
         fvg_mitigated, step_4_events = await self.confirm_fvg_mitigation(ohlc_15m, trend, nearest_fvg)
         recent_smc_events.extend(step_4_events)
 
@@ -211,8 +219,23 @@ class BreakOfStructureStrategy(StrategyBase):
             signal_summary.recent_smc_events = recent_smc_events
             return signal_summary
 
-        # Step 5: generate final signal
+        # Check if this FVG was already mitigated and if a new BOS has occurred
+        if (self.last_mitigated_fvg and
+                self.last_mitigated_fvg.get('time') == nearest_fvg.get('time') and
+                (self.last_bos_time is None or
+                 self.last_bos_time <= self.last_mitigated_fvg.get('time'))):
+            event = f"Skipping signal: FVG at {nearest_fvg['time']} already mitigated, no new BOS."
+            recent_smc_events.append(event)
+            signal_summary.recent_smc_events = recent_smc_events
+            return signal_summary
+
+        # Update last mitigated FVG
+        self.last_mitigated_fvg = nearest_fvg
+
+        # Step 5: Generate final signal
         signal = "LONG" if trend == Trend.BULLISH.name else "SHORT"
+        event = f"Generated {signal} signal for {symbol} based on FVG mitigation."
+        recent_smc_events.append(event)
         signal_summary.direction = signal
         signal_summary.recent_smc_events = recent_smc_events
         return signal_summary

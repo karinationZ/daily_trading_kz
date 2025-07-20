@@ -17,7 +17,7 @@ class SMCBosFvgTapBot(SMCBotBase):
     """
 
     def __init__(self, symbols, main_tf: str = '1h', symbol_volume_threshold: float = 30000000, lookback_days: int = 1,
-                 debug=False, telegram_chat_id=TELEGRAM_CHANNEL_CHAT_ID):
+                 debug=False, telegram_chat_id=TELEGRAM_BOT_CHAT_ID):
 
         super().__init__(symbols, main_tf, symbol_volume_threshold, lookback_days, telegram_chat_id=telegram_chat_id)
         self.bos_strategy = BreakOfStructureStrategy(main_tf, debug, telegram_chat_id=TELEGRAM_BOT_CHAT_ID)

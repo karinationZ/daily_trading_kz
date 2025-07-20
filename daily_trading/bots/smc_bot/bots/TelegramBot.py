@@ -2,62 +2,66 @@ import asyncio
 import io
 from typing import Optional
 
+import aiohttp
 import plotly.graph_objects as go
-from retrying import retry
-from telegram import Bot, InputFile
-from telegram.error import TelegramError
-from telegram.request import HTTPXRequest
+from aiogram import Bot
+from aiogram.client.default import DefaultBotProperties
+from aiogram.client.session.aiohttp import AiohttpSession
+from aiogram.exceptions import TelegramAPIError
+from aiogram.types import BufferedInputFile
+from tenacity import retry, stop_after_attempt, wait_exponential
 
-from daily_trading.settings import logger, TELEGRAM_CHANNEL_CHAT_ID, TELEGRAM_TOKEN
+from daily_trading.settings import *
 
 
 class TelegramBot:
-    """Handles all Telegram bot operations with connection pooling and rate limiting."""
+    """Handles all Telegram bot operations with async support and rate limiting."""
 
     def __init__(
             self,
-            connection_pool_size: int = 10,
-            pool_timeout: int = 60,
-            read_timeout: int = 60,
-            write_timeout: int = 60,
+            connection_pool_size: int = 20,
+            read_timeout: int = 90,
+            write_timeout: int = 90,
             parse_mode: Optional[str] = "HTML",
             disable_notification: bool = False,
-            chat_id=None
+            chat_id: Optional[str] = None
     ):
         """
         Initialize Telegram bot with connection pool settings.
 
         Args:
-            token (str): Telegram bot token
-            channel_id (str): Target channel ID for messages
             connection_pool_size (int): Number of concurrent connections
-            pool_timeout (int): Connection pool timeout in seconds
             read_timeout (int): Socket read timeout
-            write_timeout (int): Socket write timeout
+            write_timeout (int): Socket connect timeout
             parse_mode (str): Default parse mode for messages
             disable_notification (bool): Default notification setting
+            chat_id (str): Target channel ID for messages
         """
         self.parse_mode = parse_mode
         self.disable_notification = disable_notification
         self.chat_id = chat_id if chat_id else TELEGRAM_CHANNEL_CHAT_ID
-        # Configure HTTPXRequest with connection pool settings
-        request = HTTPXRequest(
-            connection_pool_size=connection_pool_size,
-            pool_timeout=pool_timeout,
-            read_timeout=read_timeout,
-            write_timeout=write_timeout
-        )
-
-        # Initialize bot with custom request configuration
         self.bot = Bot(
             token=TELEGRAM_TOKEN,
-            request=request,
-            get_updates_request=request
+            default=DefaultBotProperties(
+                parse_mode=parse_mode,
+                disable_notification=disable_notification
+            ),
+            session=AiohttpSession(
+                limit=connection_pool_size,
+                timeout=aiohttp.ClientTimeout(
+                    total=None,
+                    sock_read=read_timeout,
+                    sock_connect=write_timeout
+                )
+            )
         )
+        self.semaphore = asyncio.Semaphore(3)
 
-        self.semaphore = asyncio.Semaphore(5)  # Limit concurrent sends
-
-    @retry(stop_max_attempt_number=10, wait_fixed=5000)
+    @retry(
+        stop=stop_after_attempt(10),
+        wait=wait_exponential(multiplier=1, min=5, max=60),
+        retry=lambda e: isinstance(e, TelegramAPIError) and "Too Many Requests" in str(e)
+    )
     async def send_message(
             self,
             text: str,
@@ -72,52 +76,57 @@ class TelegramBot:
 
         async with self.semaphore:
             try:
-                kwargs = {
-                    'chat_id': self.chat_id,
-                    'disable_notification': self.disable_notification,
-                    'parse_mode': self.parse_mode,
-                    'write_timeout': self.bot.request.read_timeout
-                }
-
+                text = text[:4096]
                 if image:
                     buffer = io.BytesIO()
                     image.write_image(
                         buffer,
                         format="png",
-                        width=1600,  # Wider than default (~700–800)
-                        height=900,  # Maintain a good aspect ratio
-                        scale=2  # Double resolution (effective DPI)
+                        width=1600,
+                        height=900,
+                        scale=2
                     )
                     buffer.seek(0)
-
                     await self.bot.send_photo(
-                        photo=InputFile(buffer, filename="chart.png"),
-                        caption=text,
-                        **kwargs
+                        chat_id=self.chat_id,
+                        photo=BufferedInputFile(file=buffer.read(), filename="chart.png"),
+                        caption=text
                     )
                 else:
                     await self.bot.send_message(
-                        text=text,
-                        **kwargs
+                        chat_id=self.chat_id,
+                        text=text
                     )
 
-                logger.debug(f"Telegram message sent: {text[:100]}...")
+                logger.info(f"Telegram message sent successfully.")
                 return True
 
-            except TelegramError as e:
-                logger.error(f"Telegram failed to send {text}\n{e}")
-                await asyncio.sleep(5)
+            except TelegramAPIError as e:
+                if "Too Many Requests" in str(e):
+                    retry_after = int(str(e).split("retry after ")[-1]) if "retry after" in str(e) else 5
+                    logger.warning(f"Rate limit hit, retry after {retry_after}s")
+                    await asyncio.sleep(retry_after)
+                    raise
+                logger.error(f"Telegram API error: {e}")
                 return False
             except Exception as e:
-                logger.error(f"Unexpected error sending message: {e}")
+                logger.error(f"Unexpected error sending message: {str(e)}")
                 return False
 
     async def get_channel_id_from_updates(self):
-        updates = await self.bot.get_updates()
-        for update in updates:
-            if update.channel_post:
-                channel_id = update.channel_post.chat.id
-                logger.info(f"Detected channel ID: {channel_id}")
-                return channel_id
-        logger.warning("No channel posts found in updates.")
-        return None
+        try:
+            updates = await self.bot.get_updates(timeout=30)
+            for update in updates:
+                if update.channel_post:
+                    channel_id = update.channel_post.chat.id
+                    logger.info(f"Detected channel ID: {channel_id}")
+                    return channel_id
+            logger.warning("No channel posts found in updates.")
+            return None
+        except TelegramAPIError as e:
+            logger.error(f"Failed to get updates: {e}")
+            return None
+
+    async def close(self):
+        """Close the bot session to release resources."""
+        await self.bot.session.close()

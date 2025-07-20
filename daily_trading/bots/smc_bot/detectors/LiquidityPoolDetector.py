@@ -85,7 +85,7 @@ class LiquidityPoolDetector(SMCBase):
             - signals (list): List of detected liquidity pool and raid signals.
             - swing_signals (list): List of swing high/low creation signals.
         """
-        logger.debug(f"Starting liquidity pool calculation with lower_tf={self.lower_tf}, left_bars={self.left_bars}, "
+        logger.debug(f"Starting liquidity pool calculation, left_bars={self.left_bars}, "
                     f"right_bars={self.right_bars}, show_swing={self.show_swing}, show_liquidity={self.show_liquidity}")
         if len(ohlc) < self.left_bars * 2 + 1:
             logger.error(f"OHLC data too short ({len(ohlc)} rows) for left_bars={self.left_bars}")

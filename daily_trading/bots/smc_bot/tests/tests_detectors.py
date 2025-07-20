@@ -1,6 +1,10 @@
+import time
+
 import pandas as pd
 import pytest
 
+from daily_trading.bots.smc_bot.bots.TelegramBot import TelegramBot
+from daily_trading.bots.smc_bot.bots.BaseBot import SMCBotBase
 from daily_trading.bots.smc_bot.detectors.BosChochDetector import BosChochDetector
 from daily_trading.bots.smc_bot.detectors.FakeBreakoutDetector import FakeBreakoutDetector
 from daily_trading.bots.smc_bot.detectors.FvgDetector import FvgDetector
@@ -9,8 +13,7 @@ from daily_trading.bots.smc_bot.detectors.LevelsBreakDetector import LevelsBreak
 from daily_trading.bots.smc_bot.detectors.LiquidityPoolDetector import LiquidityPoolDetector
 from daily_trading.bots.smc_bot.detectors.LiquiditySweepDetector import LiquiditySweepDetector
 from daily_trading.bots.smc_bot.detectors.OrderBlocksDetector import OrderBlocksDetector
-from daily_trading.bots.smc_bot.bots.SMCOrderBlockSweepBot import SMCTradingBot
-from daily_trading.settings import logger
+from daily_trading.settings import logger, TELEGRAM_BOT_CHAT_ID
 
 symbol = "CUSDT"
 main_tf = "1h"
@@ -19,7 +22,7 @@ lookback_days = 10
 
 @pytest.mark.asyncio
 async def test_trend():
-    bot = SMCTradingBot(symbols=[symbol], lookback_days=lookback_days, main_tf=main_tf)
+    bot = SMCBotBase(symbols=[symbol], lookback_days=lookback_days, main_tf=main_tf)
     ohlc = await bot.fetch_ohlc_data(symbol, main_tf)
     detector = HighLowDetector(main_tf)
 
@@ -32,7 +35,7 @@ async def test_trend():
 
 @pytest.mark.asyncio
 async def test_bos_detector():
-    bot = SMCTradingBot(symbols=[symbol], lookback_days=lookback_days, main_tf=main_tf)
+    bot = SMCBotBase(symbols=[symbol], lookback_days=lookback_days, main_tf=main_tf)
     ohlc = await bot.fetch_ohlc_data(symbol, main_tf)
 
     # with pd.option_context('display.max_rows', None, 'display.max_columns', None):
@@ -46,7 +49,7 @@ async def test_bos_detector():
 
 @pytest.mark.asyncio
 async def test_fake_breakout_detector():
-    bot = SMCTradingBot(symbols=[symbol], lookback_days=lookback_days, main_tf=main_tf)
+    bot = SMCBotBase(symbols=[symbol], lookback_days=lookback_days, main_tf=main_tf)
     ohlc = await bot.fetch_ohlc_data(symbol, main_tf)
 
     with pd.option_context('display.max_rows', None, 'display.max_columns', None):
@@ -60,7 +63,7 @@ async def test_fake_breakout_detector():
 
 @pytest.mark.asyncio
 async def test_fvg_detector():
-    bot = SMCTradingBot(symbols=[symbol], lookback_days=lookback_days, main_tf=main_tf)
+    bot = SMCBotBase(symbols=[symbol], lookback_days=lookback_days, main_tf=main_tf)
     ohlc = await bot.fetch_ohlc_data(symbol, main_tf)
 
     with pd.option_context('display.max_rows', None, 'display.max_columns', None):
@@ -74,7 +77,7 @@ async def test_fvg_detector():
 
 @pytest.mark.asyncio
 async def test_high_low():
-    bot = SMCTradingBot(symbols=[symbol], lookback_days=lookback_days, main_tf=main_tf)
+    bot = SMCBotBase(symbols=[symbol], lookback_days=lookback_days, main_tf=main_tf)
     ohlc = await bot.fetch_ohlc_data(symbol, main_tf)
 
     with pd.option_context('display.max_rows', None, 'display.max_columns', None):
@@ -87,7 +90,7 @@ async def test_high_low():
 
 @pytest.mark.asyncio
 async def test_levels_break():
-    bot = SMCTradingBot(symbols=[symbol], lookback_days=lookback_days, main_tf=main_tf)
+    bot = SMCBotBase(symbols=[symbol], lookback_days=lookback_days, main_tf=main_tf)
     ohlc = await bot.fetch_ohlc_data(symbol, main_tf)
 
     detector = LevelsBreakDetector(main_tf)
@@ -98,7 +101,7 @@ async def test_levels_break():
 
 @pytest.mark.asyncio
 async def test_liquidity_sweep():
-    bot = SMCTradingBot(symbols=[symbol], lookback_days=lookback_days, main_tf=main_tf)
+    bot = SMCBotBase(symbols=[symbol], lookback_days=lookback_days, main_tf=main_tf)
     ohlc = await bot.fetch_ohlc_data(symbol, main_tf)
 
     with pd.option_context('display.max_rows', None, 'display.max_columns', None):
@@ -112,7 +115,7 @@ async def test_liquidity_sweep():
 
 @pytest.mark.asyncio
 async def test_order_blocks():
-    bot = SMCTradingBot(symbols=[symbol], lookback_days=lookback_days, main_tf=main_tf)
+    bot = SMCBotBase(symbols=[symbol], lookback_days=lookback_days, main_tf=main_tf)
     ohlc = await bot.fetch_ohlc_data(symbol, main_tf)
 
     with pd.option_context('display.max_rows', None, 'display.max_columns', None):
@@ -126,27 +129,29 @@ async def test_order_blocks():
 
 @pytest.mark.asyncio
 async def test_liq_pool():
-    bot = SMCTradingBot(symbols=[symbol], lookback_days=lookback_days, main_tf=main_tf)
+    bot = SMCBotBase(symbols=[symbol], lookback_days=lookback_days, main_tf=main_tf)
     ohlc = await bot.fetch_ohlc_data(symbol, main_tf)
 
-    with pd.option_context('display.max_rows', None, 'display.max_columns', None):
-        logger.info("\n{}", ohlc.tail(50).to_string())
+    # with pd.option_context('display.max_rows', None, 'display.max_columns', None):
+    #     logger.info("\n{}", ohlc.tail(50).to_string())
 
     detector = LiquidityPoolDetector(main_tf="1h")
     results = detector.calculate_liquidity_pools(ohlc, plot=True)
     fig = results["fig"]
     fig.show()
+    bot = TelegramBot(chat_id=TELEGRAM_BOT_CHAT_ID)
 
-    # bot = TelegramBot(chat_id=TELEGRAM_BOT_CHAT_ID)
-    # await bot.send_message(
-    #     text="TEST TEST TEST",
-    #     image=fig
-    # )
+    for i in range(10):
+        await bot.send_message(
+            text="TEST TEST TEST",
+            image=fig
+        )
+        time.sleep(1)
 
 
 @pytest.mark.asyncio
 async def test_fvg_bos_merge():
-    bot = SMCTradingBot(symbols=[symbol], lookback_days=lookback_days, main_tf=main_tf)
+    bot = SMCBotBase(symbols=[symbol], lookback_days=lookback_days, main_tf=main_tf)
     ohlc = await bot.fetch_ohlc_data(symbol, main_tf)
 
     detector_fvg = FvgDetector(main_tf=main_tf, pivot_period=5, left_bars=5)

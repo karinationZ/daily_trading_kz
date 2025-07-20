@@ -1,7 +1,7 @@
 import pandas as pd
 import plotly.graph_objects as go
 
-from daily_trading.bots.smc_bot.clients.SMCBase import BEARISH, BULLISH, SMCBase
+from daily_trading.bots.smc_bot.detectors.SMCBase import BEARISH, BULLISH, SMCBase
 from daily_trading.settings import logger
 
 
@@ -28,7 +28,7 @@ class LiquidityPoolDetector(SMCBase):
         self.show_liquidity = show_liquidity
         self.threshold = threshold
         self.threshold_lower = threshold_lower
-        logger.info(f"Initialized LiquidityPoolDetector with lower_tf={main_tf}, left_bars={left_bars}, "
+        logger.debug(f"Initialized LiquidityPoolDetector with lower_tf={main_tf}, left_bars={left_bars}, "
                     f"right_bars={right_bars}, show_swing={show_swing}, threshold={threshold}, "
                     f"threshold_lower={threshold_lower}")
 
@@ -56,7 +56,7 @@ class LiquidityPoolDetector(SMCBase):
                 "level": upper["value"],
                 "fractal_time": upper["loc"]
             })
-            logger.info(f"Buy-side Liquidity Raid detected: level={upper['value']:.6f}, time={ohlc.index[i]}")
+            logger.debug(f"Buy-side Liquidity Raid detected: level={upper['value']:.6f}, time={ohlc.index[i]}")
 
         # Sell-side liquidity raid (price crosses below swing low)
         if lower["value"] is not None and ohlc['low'].iloc[i] < lower["value"]:
@@ -67,7 +67,7 @@ class LiquidityPoolDetector(SMCBase):
                 "level": lower["value"],
                 "fractal_time": lower["loc"]
             })
-            logger.info(f"Sell-side Liquidity Raid detected: level={lower['value']:.6f}, time={ohlc.index[i]}")
+            logger.debug(f"Sell-side Liquidity Raid detected: level={lower['value']:.6f}, time={ohlc.index[i]}")
 
         return signals
 
@@ -85,7 +85,7 @@ class LiquidityPoolDetector(SMCBase):
             - signals (list): List of detected liquidity pool and raid signals.
             - swing_signals (list): List of swing high/low creation signals.
         """
-        logger.info(f"Starting liquidity pool calculation with lower_tf={self.lower_tf}, left_bars={self.left_bars}, "
+        logger.debug(f"Starting liquidity pool calculation with lower_tf={self.lower_tf}, left_bars={self.left_bars}, "
                     f"right_bars={self.right_bars}, show_swing={self.show_swing}, show_liquidity={self.show_liquidity}")
         if len(ohlc) < self.left_bars * 2 + 1:
             logger.error(f"OHLC data too short ({len(ohlc)} rows) for left_bars={self.left_bars}")
@@ -103,14 +103,14 @@ class LiquidityPoolDetector(SMCBase):
                 "time": pivot["time"],
                 "level": pivot["level"]
             })
-            logger.info(f"Swing High detected: level={pivot['level']:.6f}, time={pivot['time']}")
+            logger.debug(f"Swing High detected: level={pivot['level']:.6f}, time={pivot['time']}")
         for pivot in pivot_low_points:
             swing_signals.append({
                 "type": "SwingLow",
                 "time": pivot["time"],
                 "level": pivot["level"]
             })
-            logger.info(f"Swing Low detected: level={pivot['level']:.6f}, time={pivot['time']}")
+            logger.debug(f"Swing Low detected: level={pivot['level']:.6f}, time={pivot['time']}")
 
         # Generate liquidity pool signals
         for pivot in pivot_high_points:
@@ -123,7 +123,7 @@ class LiquidityPoolDetector(SMCBase):
                 "low": pivot["level"],
                 "index": pivot["index"]
             })
-            logger.info(
+            logger.debug(
                 f"Buy-side Liquidity Pool detected: high={pivot['level'] * self.threshold:.6f}, low={pivot['level']:.6f}, time={pivot['time']}")
         for pivot in pivot_low_points:
             # Sell-side liquidity pool (LSL * threshold_lower to LSL)
@@ -135,7 +135,7 @@ class LiquidityPoolDetector(SMCBase):
                 "low": pivot["level"] * self.threshold_lower,
                 "index": pivot["index"]
             })
-            logger.info(
+            logger.debug(
                 f"Sell-side Liquidity Pool detected: high={pivot['level']:.6f}, low={pivot['level'] * self.threshold_lower:.6f}, time={pivot['time']}")
 
         # Detect liquidity raids
@@ -147,7 +147,7 @@ class LiquidityPoolDetector(SMCBase):
         if plot:
             fig = self._plot_liquidity_pools(ohlc, pivot_high_points, pivot_low_points, signals)
 
-        logger.info(
+        logger.debug(
             f"Detected {len(signals)} signals: {sum(1 for s in signals if s['bias'] == BULLISH)} bullish, "
             f"{sum(1 for s in signals if s['bias'] == BEARISH)} bearish; "
             f"{len(swing_signals)} swing signals")
@@ -166,11 +166,11 @@ class LiquidityPoolDetector(SMCBase):
         Returns:
         - go.Figure: Plotly figure with candlesticks, pivots, liquidity pools, and signals.
         """
-        logger.info("Generating Plotly figure for liquidity pools")
+        logger.debug("Generating Plotly figure for liquidity pools")
         ohlc = ohlc.sort_index()
 
         # Log sample of index values for debugging
-        logger.info(f"Sample ohlc.index values: {ohlc.index[-5:].tolist()}")
+        logger.debug(f"Sample ohlc.index values: {ohlc.index[-5:].tolist()}")
 
         # Limit to last 200 rows
         ohlc = ohlc.tail(self.plot_tail)
@@ -314,5 +314,5 @@ class LiquidityPoolDetector(SMCBase):
             dtick=7200000,
             tickangle=45
         )
-        logger.info("Plotly figure generated successfully")
+        logger.debug("Plotly figure generated successfully")
         return fig

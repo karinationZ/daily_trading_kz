@@ -1,20 +1,18 @@
 import pandas as pd
 import pytest
 
-from daily_trading.bots.smc_bot.clients.BosChochDetector import BosChochDetector
-from daily_trading.bots.smc_bot.clients.FakeBreakoutDetector import FakeBreakoutDetector
-from daily_trading.bots.smc_bot.clients.FvgDetector import FvgDetector
-from daily_trading.bots.smc_bot.clients.HighLowDetector import HighLowDetector
-from daily_trading.bots.smc_bot.clients.LevelsBreakDetector import LevelsBreakDetector
-from daily_trading.bots.smc_bot.clients.LiquidityPoolDetector import LiquidityPoolDetector
-from daily_trading.bots.smc_bot.clients.LiquiditySweepDetector import LiquiditySweepDetector
-from daily_trading.bots.smc_bot.clients.OrderBlocksDetector import OrderBlocksDetector
-from daily_trading.bots.smc_bot.clients.SMCTardingBot import SMCTradingBot
-from daily_trading.bots.smc_bot.clients.TelegramBot import TelegramBot
+from daily_trading.bots.smc_bot.detectors.BosChochDetector import BosChochDetector
+from daily_trading.bots.smc_bot.detectors.FakeBreakoutDetector import FakeBreakoutDetector
+from daily_trading.bots.smc_bot.detectors.FvgDetector import FvgDetector
+from daily_trading.bots.smc_bot.detectors.HighLowDetector import HighLowDetector
+from daily_trading.bots.smc_bot.detectors.LevelsBreakDetector import LevelsBreakDetector
+from daily_trading.bots.smc_bot.detectors.LiquidityPoolDetector import LiquidityPoolDetector
+from daily_trading.bots.smc_bot.detectors.LiquiditySweepDetector import LiquiditySweepDetector
+from daily_trading.bots.smc_bot.detectors.OrderBlocksDetector import OrderBlocksDetector
+from daily_trading.bots.smc_bot.bots.SMCOrderBlockSweepBot import SMCTradingBot
 from daily_trading.settings import logger
-from daily_trading.settings import TELEGRAM_BOT_CHAT_ID
 
-symbol = "LDOUSDT"
+symbol = "CUSDT"
 main_tf = "1h"
 lookback_days = 10
 
@@ -144,3 +142,16 @@ async def test_liq_pool():
     #     text="TEST TEST TEST",
     #     image=fig
     # )
+
+
+@pytest.mark.asyncio
+async def test_fvg_bos_merge():
+    bot = SMCTradingBot(symbols=[symbol], lookback_days=lookback_days, main_tf=main_tf)
+    ohlc = await bot.fetch_ohlc_data(symbol, main_tf)
+
+    detector_fvg = FvgDetector(main_tf=main_tf, pivot_period=5, left_bars=5)
+    detector_bos = BosChochDetector(main_tf, show_bull=True, show_bear=True)
+    bos_results = detector_bos.calculate_bos_choch(ohlc, plot=False)
+    fvg_results = detector_fvg.calculate_fvg(ohlc, plot=False)
+    fig = detector_fvg.merge_bos_fvg_plots(ohlc, bos_signals=bos_results["signals"], fvg_signals=fvg_results["signals"])
+    fig.show()

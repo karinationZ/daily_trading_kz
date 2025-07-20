@@ -2,7 +2,7 @@ import pandas as pd
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 
-from daily_trading.bots.smc_bot.clients.SMCBase import SMCBase
+from daily_trading.bots.smc_bot.detectors.SMCBase import SMCBase
 from daily_trading.settings import logger
 
 
@@ -10,7 +10,7 @@ class OrderBlocksDetector(SMCBase):
     def __init__(self, main_tf, left_bars=5, right_bars=5, tap_back_ratio=0.1):
         super().__init__(main_tf=main_tf, left_bars=left_bars, right_bars=right_bars)
         self.tap_back_ratio = tap_back_ratio
-        logger.info(
+        logger.debug(
             f"Initialized OrderBlocksDetector with main_tf={main_tf}, tap_back_ratio={tap_back_ratio}.")
 
     def detect_order_block(self, ohlc: pd.DataFrame) -> list:
@@ -24,7 +24,7 @@ class OrderBlocksDetector(SMCBase):
         Returns:
         - List of dicts: {"type": str, "top": float, "bottom": float, "time": Timestamp, "index": int, "breaker": bool, "break_loc": Timestamp/None}
         """
-        logger.info(f"Detecting Order Blocks (OB) on OHLC data with {len(ohlc)} rows")
+        logger.debug(f"Detecting Order Blocks (OB) on OHLC data with {len(ohlc)} rows")
         ohlc = self.validate_data(ohlc)
         pivot_highs, pivot_lows = self.calculate_pivots(ohlc)
         bullish_ob = []
@@ -129,7 +129,7 @@ class OrderBlocksDetector(SMCBase):
         # Remove bullish OBs if latest close is beyond block
         bullish_ob = [ob for ob in bullish_ob if not (ob["breaker"] and ohlc['close'].iloc[-1] > ob["top"])]
         order_blocks = bullish_ob + bearish_ob
-        logger.info(f"Detected {len(order_blocks)} OBs: {len(bullish_ob)} bullish, {len(bearish_ob)} bearish")
+        logger.debug(f"Detected {len(order_blocks)} OBs: {len(bullish_ob)} bullish, {len(bearish_ob)} bearish")
         return order_blocks
 
     def calculate_order_blocks(self, ohlc, plot=True):
@@ -138,11 +138,11 @@ class OrderBlocksDetector(SMCBase):
         if plot:
             fig = self._plot_order_blocks(ohlc, order_blocks)
 
-        logger.info(f"OB: {order_blocks}")
+        logger.debug(f"OB: {order_blocks}")
         return {"fig": fig, "order_blocks": order_blocks}
 
     def _plot_order_blocks(self, ohlc, order_blocks):
-        logger.info("Generating Plotly figure for Order Blocks")
+        logger.debug("Generating Plotly figure for Order Blocks")
 
         ohlc = self.validate_data(ohlc)
         # Limit to last 200 rows
@@ -236,5 +236,5 @@ class OrderBlocksDetector(SMCBase):
             tickangle=45,  # Rotate for readability
             row=1, col=1
         )
-        logger.info("Plotly figure generated successfully")
+        logger.debug("Plotly figure generated successfully")
         return fig

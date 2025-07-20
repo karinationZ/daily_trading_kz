@@ -2,7 +2,7 @@ import numpy as np
 import pandas as pd
 import plotly.graph_objects as go
 
-from daily_trading.bots.smc_bot.clients.SMCBase import SMCBase
+from daily_trading.bots.smc_bot.detectors.SMCBase import SMCBase
 from daily_trading.settings import logger
 
 
@@ -350,11 +350,11 @@ class LevelsBreakDetector(SMCBase):
         Returns:
         - go.Figure: Plotly figure with candlesticks, support/resistance levels, breaks, and wicks.
         """
-        logger.info("Generating Plotly figure for support and resistance levels")
+        logger.debug("Generating Plotly figure for support and resistance levels")
         ohlc = ohlc.sort_index()
 
         # Log sample of index values for debugging
-        logger.info(f"Sample ohlc.index values: {ohlc.index[-5:].tolist()}")
+        logger.debug(f"Sample ohlc.index values: {ohlc.index[-5:].tolist()}")
 
         # Limit to last 200 rows
         self.plot_tail = 200  # Ensure consistent 200 rows
@@ -399,5 +399,5 @@ class LevelsBreakDetector(SMCBase):
             dtick=7200000,
             tickangle=45
         )
-        logger.info("Plotly figure generated successfully")
+        logger.debug("Plotly figure generated successfully")
         return fig

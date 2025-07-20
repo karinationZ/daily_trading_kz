@@ -4,12 +4,12 @@ from typing import Dict, List, Tuple
 
 import pandas as pd
 
-from daily_trading.bots.smc_bot.clients.CandlePatternDetector import CandlePatternDetector
-from daily_trading.bots.smc_bot.clients.FvgDetector import FvgDetector
-from daily_trading.bots.smc_bot.clients.HighLowDetector import HighLowDetector
-from daily_trading.bots.smc_bot.clients.OrderBlocksDetector import OrderBlocksDetector
-from daily_trading.bots.smc_bot.clients.SMCBase import Trend
-from daily_trading.bots.smc_bot.clients.strategy.StrategyBase import SignalSummary, StrategyBase
+from daily_trading.bots.smc_bot.detectors.CandlePatternDetector import CandlePatternDetector
+from daily_trading.bots.smc_bot.detectors.FvgDetector import FvgDetector
+from daily_trading.bots.smc_bot.detectors.HighLowDetector import HighLowDetector
+from daily_trading.bots.smc_bot.detectors.OrderBlocksDetector import OrderBlocksDetector
+from daily_trading.bots.smc_bot.detectors.SMCBase import Trend
+from daily_trading.bots.smc_bot.strategy.StrategyBase import SignalSummary, StrategyBase
 from daily_trading.settings import logger
 
 
@@ -68,7 +68,7 @@ class OrderBlockSweepStrategy(StrategyBase):
 
         ob_signals = [ob for ob in ob_result['order_blocks'] if not ob['breaker']]
 
-        new_ob_event = f"Detected {len(ob_signals)} unmitigated Order Blocks"
+        new_ob_event = f"Detected {len(ob_signals)} unmitigated Order Blocks."
         if await self.manage_cache_event(cache_key, new_ob_event, current_time):
             recent_smc_events.append(new_ob_event)
             logger.info(f"Step 2: {new_ob_event} for {symbol}")
@@ -88,7 +88,7 @@ class OrderBlockSweepStrategy(StrategyBase):
         recent_smc_events = []
 
         if not relevant_obs or (current_time - self.nearest_ob["time"]).total_seconds() / 3600 < 5:
-            new_ob_event = f"No valid {'Bullish' if trend == Trend.BULLISH.name else 'Bearish'} OB found (formed at least 5 candles ago)"
+            new_ob_event = f"No valid {trend} OB found (formed at least 5 candles ago)."
             if await self.manage_cache_event(cache_key, new_ob_event, current_time):
                 recent_smc_events.append(new_ob_event)
                 logger.info(f"{symbol} | Step 3: {new_ob_event}.")
@@ -107,7 +107,7 @@ class OrderBlockSweepStrategy(StrategyBase):
                 tap_timestamp = current_time
 
         if not tap_timestamp:
-            new_ob_event = f"Current candle did not tap {'Bullish' if trend == Trend.BULLISH.name else 'Bearish'} OB"
+            new_ob_event = f"Current candle did not tap {trend} OB."
             self.ob_tap_cache.update({symbol: None})
             if await self.manage_cache_event(cache_key, new_ob_event, current_time):
                 recent_smc_events.append(new_ob_event)
@@ -119,7 +119,7 @@ class OrderBlockSweepStrategy(StrategyBase):
         # Update cache
         self.ob_tap_cache.update({symbol: tap_timestamp})
 
-        new_ob_event = f"Current candle tapped {'Bullish' if trend == Trend.BULLISH.name else 'Bearish'} OB at {tap_timestamp}"
+        new_ob_event = f"Current candle tapped {trend} OB at {tap_timestamp}."
         if await self.manage_cache_event(cache_key, new_ob_event, current_time):
             recent_smc_events.append(new_ob_event)
             logger.info(f"Step 3: {new_ob_event} for {symbol}")
@@ -144,15 +144,14 @@ class OrderBlockSweepStrategy(StrategyBase):
             rejection_confirmed = True
 
         if not rejection_confirmed:
-            new_signal_event = f"No {'Bullish' if trend == Trend.BULLISH.name else 'Bearish'}" \
-                               f" rejection pattern after OB tap"
+            new_signal_event = f"No {trend} rejection pattern after OB tap."
             if await self.manage_cache_event(cache_key, new_signal_event, current_time):
                 recent_smc_events.append(new_signal_event)
                 logger.info(f"Step 4: {new_signal_event} for {symbol}")
                 await self.send_telegram_message(f"Step 4: {new_signal_event} for {symbol}.", self.ob_fig)
             return recent_smc_events
 
-        new_signal_event = f"{'Bullish' if trend == Trend.BULLISH.name else 'Bearish'} signal generated at {current_time} with {pattern_name}"
+        new_signal_event = f"{trend} signal generated at {current_time} with {pattern_name}."
         if await self.manage_cache_event(cache_key, new_signal_event, current_time):
             recent_smc_events.append(new_signal_event)
             message = f"{symbol} | Step 4: Rejection Candle: {pattern_name} - {current_time}."

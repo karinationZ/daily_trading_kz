@@ -28,4 +28,4 @@ COPY . .
 RUN poetry config virtualenvs.create false && poetry install --only main
 
 # Set start command
-CMD ["make", "run_smc_bot"]
+CMD ["make", "run_bos_fvg_tap_bot"]

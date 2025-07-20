@@ -4,8 +4,8 @@ from typing import Dict, List, Tuple
 
 import pandas as pd
 
-from daily_trading.bots.smc_bot.clients.SMCTardingBot import SMCTradingBot
-from daily_trading.bots.smc_bot.clients.strategy.OrderBlockSweep import OrderBlockSweepStrategy
+from daily_trading.bots.smc_bot.bots.SMCOrderBlockSweepBot import SMCTradingBot
+from daily_trading.bots.smc_bot.strategy.OrderBlockSweep import OrderBlockSweepStrategy
 from daily_trading.settings import logger
 
 

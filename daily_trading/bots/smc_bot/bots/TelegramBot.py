@@ -16,10 +16,10 @@ class TelegramBot:
 
     def __init__(
             self,
-            connection_pool_size: int = 8,
-            pool_timeout: int = 30,
-            read_timeout: int = 30,
-            write_timeout: int = 30,
+            connection_pool_size: int = 10,
+            pool_timeout: int = 60,
+            read_timeout: int = 60,
+            write_timeout: int = 60,
             parse_mode: Optional[str] = "HTML",
             disable_notification: bool = False,
             chat_id=None
@@ -58,7 +58,7 @@ class TelegramBot:
         self.semaphore = asyncio.Semaphore(5)  # Limit concurrent sends
         logger.info("TelegramBot initialized")
 
-    @retry(stop_max_attempt_number=5, wait_fixed=5000)
+    @retry(stop_max_attempt_number=10, wait_fixed=5000)
     async def send_message(
             self,
             text: str,
@@ -106,8 +106,8 @@ class TelegramBot:
                 return True
 
             except TelegramError as e:
-                logger.error(f"Telegram send failed: {e}")
-                await asyncio.sleep(2)
+                logger.error(f"Telegram failed to send {text}\n{e}")
+                await asyncio.sleep(5)
                 return False
             except Exception as e:
                 logger.error(f"Unexpected error sending message: {e}")

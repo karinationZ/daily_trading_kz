@@ -2,7 +2,7 @@ import pandas as pd
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 
-from daily_trading.bots.smc_bot.clients.SMCBase import SMCBase
+from daily_trading.bots.smc_bot.detectors.SMCBase import SMCBase
 from daily_trading.settings import logger
 
 
@@ -22,7 +22,7 @@ class FakeBreakoutDetector(SMCBase):
         - lower_tf (str): Lower timeframe for analysis (e.g., '15m', '1h', '4h').
         """
         super().__init__(main_tf=main_tf)
-        logger.info(f"Initialized FalseBreakoutDetector with lower_tf={main_tf}, length={self.length}")
+        logger.debug(f"Initialized FalseBreakoutDetector with lower_tf={main_tf}, length={self.length}")
 
     def calculate_false_breakouts(self, ohlc, plot=True):
         """
@@ -57,7 +57,7 @@ class FakeBreakoutDetector(SMCBase):
             "false_breakouts": false_breakouts,
             "alert_conditions": alert_conditions
         }
-        logger.info(f"Completed false breakout detection: {len(false_breakouts)} false breakouts found.")
+        logger.debug(f"Completed false breakout detection: {len(false_breakouts)} false breakouts found.")
         return results
 
     def identify_false_breakouts_logic(self, ohlc, pivot_high_points, pivot_low_points):
@@ -192,7 +192,7 @@ class FakeBreakoutDetector(SMCBase):
                         breakout_found = True
                         break
 
-        logger.info(f"Identified {len(false_breakouts)} false breakouts.")
+        logger.debug(f"Identified {len(false_breakouts)} false breakouts.")
         return false_breakouts
 
     def plot_false_breakouts(self, ohlc, false_breakouts):
@@ -206,7 +206,7 @@ class FakeBreakoutDetector(SMCBase):
         Returns:
         - go.Figure: Plotly figure with candlesticks and labeled false breakouts.
         """
-        logger.info("Generating Plotly figure for false breakouts")
+        logger.debug("Generating Plotly figure for false breakouts")
         symbol = ohlc['symbol'].iloc[0] if 'symbol' in ohlc.columns else 'Unknown'
 
         fig = make_subplots(rows=1, cols=1, subplot_titles=[f"{symbol} | Price Chart with False Breakouts"])
@@ -262,5 +262,5 @@ class FakeBreakoutDetector(SMCBase):
             yaxis=dict(title="Price")
         )
         fig.update_xaxes(title_text="Time", row=1, col=1)
-        logger.info("Plotly figure for false breakouts generated successfully")
+        logger.debug("Plotly figure for false breakouts generated successfully")
         return fig

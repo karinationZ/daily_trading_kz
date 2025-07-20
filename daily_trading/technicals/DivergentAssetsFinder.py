@@ -215,12 +215,12 @@ class BitUnixDivergentAssetsFinder:
                         "inverse_correlated"
                     ])
 
-        logger.info(f"Results saved to {full_path}")
+        logger.debug(f"Results saved to {full_path}")
         return full_path
 
 
 if __name__ == "__main__":
-    logger.info("Searching for assets that move most independently of Bitcoin.")
+    logger.debug("Searching for assets that move most independently of Bitcoin.")
     finder = BitUnixDivergentAssetsFinder()
 
     results = finder.find_divergent_assets(
@@ -228,11 +228,11 @@ if __name__ == "__main__":
         lookback_hours=2
     )
     # Print results
-    logger.info("\nNon-correlated assets (correlation between -0.3 and 0.3):")
+    logger.debug("\nNon-correlated assets (correlation between -0.3 and 0.3):")
     logger.info(f"Found {len(results['non_correlated'])} asset(s)")
     for asset in results["non_correlated"]:
-        logger.info(f"{asset['symbol']}: Correlation = {asset['correlation']:.3f} | Volume: {asset['volume']}")
+        logger.debug(f"{asset['symbol']}: Correlation = {asset['correlation']:.3f} | Volume: {asset['volume']}")
 
-    logger.info("\nInverse-correlated assets (correlation below -0.7):")
+    logger.debug("\nInverse-correlated assets (correlation below -0.7):")
     for asset in results["inverse_correlated"]:
-        logger.info(f"{asset['symbol']}: Correlation = {asset['correlation']:.3f}")
+        logger.debug(f"{asset['symbol']}: Correlation = {asset['correlation']:.3f}")

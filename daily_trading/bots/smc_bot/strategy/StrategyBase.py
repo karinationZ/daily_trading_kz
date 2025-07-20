@@ -5,9 +5,9 @@ from typing import Optional, Tuple
 
 import plotly.graph_objects as go
 
-from daily_trading.bots.smc_bot.clients.SMCBase import SMCBase, Trend
-from daily_trading.bots.smc_bot.clients.TelegramBot import TelegramBot
-from daily_trading.settings import logger, TELEGRAM_BOT_CHAT_ID
+from daily_trading.bots.smc_bot.detectors.SMCBase import SMCBase, Trend
+from daily_trading.bots.smc_bot.bots.TelegramBot import TelegramBot
+from daily_trading.settings import logger
 
 
 @dataclass
@@ -18,7 +18,9 @@ class SignalSummary:
     recent_smc_events: Optional[list] = None
     fig: Optional[go.Figure] = None
     nearest_ob: Optional[dict] = None
-    recent_bos_time: Optional[str] = None
+    recent_bos_signal: Optional[str] = None
+    nearest_fvg: Optional[dict] = None
+    title: Optional[str] = None
 
 
 class StrategyBase(ABC):

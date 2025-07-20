@@ -37,12 +37,12 @@ class SMCBase:
         self.Major_LowIndex = None
         self.Major_HighType = None
         self.Major_LowType = None
-        logger.info(f"Initialized SMCBase with lower_tf={main_tf}, length={self.length}, "
+        logger.debug(f"Initialized SMCBase with lower_tf={main_tf}, length={self.length}, "
                     f"left_bars={left_bars}, right_bars={right_bars}")
         self.plot_tail = plot_tail
 
     def calculate_pivots(self, ohlc):
-        logger.info(
+        logger.debug(
             f"Starting pivot calculation with "
             f"left_bars={self.left_bars}, "
             f"right_bars={self.right_bars} on OHLC data with {len(ohlc)} rows")
@@ -174,7 +174,7 @@ class SMCBase:
                 self.Major_HighType = major_high['type']
                 self.Major_LowType = major_low['type']
 
-        logger.info(f"Detected {len(pivot_high_points)} swing highs and {len(pivot_low_points)} swing lows")
+        logger.debug(f"Detected {len(pivot_high_points)} swing highs and {len(pivot_low_points)} swing lows")
         return pivot_high_points, pivot_low_points
 
     def reset_pivot_arrays(self):

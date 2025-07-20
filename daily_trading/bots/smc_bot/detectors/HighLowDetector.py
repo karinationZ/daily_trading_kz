@@ -1,8 +1,7 @@
-import pandas as pd
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 
-from daily_trading.bots.smc_bot.clients.SMCBase import SMCBase
+from daily_trading.bots.smc_bot.detectors.SMCBase import SMCBase
 from daily_trading.settings import logger
 
 
@@ -22,7 +21,7 @@ class HighLowDetector(SMCBase):
         """
         super().__init__(main_tf=main_tf)
         self.length = length
-        logger.info(f"Initialized HighLowDetector with lower_tf={main_tf}, length={self.length}")
+        logger.debug(f"Initialized HighLowDetector with lower_tf={main_tf}, length={self.length}")
 
     def calculate_high_low_swings(self, ohlc, plot=True):
         """
@@ -60,7 +59,7 @@ class HighLowDetector(SMCBase):
             "pivot_low_points": pivot_low_points,
             "signals": signals,
         }
-        logger.info(f"Completed pivot calculation: {len(pivot_high_points)} highs, {len(pivot_low_points)} lows")
+        logger.debug(f"Completed pivot calculation: {len(pivot_high_points)} highs, {len(pivot_low_points)} lows")
         return results
 
     def _plot_pivots(self, ohlc, pivot_high_points, pivot_low_points):
@@ -75,11 +74,11 @@ class HighLowDetector(SMCBase):
         Returns:
         - go.Figure: Plotly figure with candlesticks and labeled pivots.
         """
-        logger.info("Generating Plotly figure for pivot points")
+        logger.debug("Generating Plotly figure for pivot points")
         ohlc = ohlc.sort_index()
 
         # Log sample of index values for debugging
-        logger.info(f"Sample ohlc.index values: {ohlc.index[-5:].tolist()}")
+        logger.debug(f"Sample ohlc.index values: {ohlc.index[-5:].tolist()}")
 
         # Limit to last 200 rows
         ohlc = ohlc.tail(self.plot_tail)
@@ -146,5 +145,5 @@ class HighLowDetector(SMCBase):
             tickangle=45,  # Rotate for readability
             row=1, col=1
         )
-        logger.info("Plotly figure generated successfully")
+        logger.debug("Plotly figure generated successfully")
         return fig

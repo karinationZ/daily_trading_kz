@@ -1,0 +1,67 @@
+import asyncio
+
+from daily_trading.bots.smc_bot.bots.BaseBot import SMCBotBase
+from daily_trading.bots.smc_bot.strategy.OrderBlockSweep import OrderBlockSweepStrategy
+from daily_trading.settings import logger, TELEGRAM_CHANNEL_CHAT_ID
+
+
+class SMCOrderBlockSweepBot(SMCBotBase):
+    """
+    Analyzes OHLC data for continuation trade signals based on block order sweeps.
+    Designed for scalping in volatile crypto markets with a 4-step process:
+    1. Identify Uptrend or Downtrend on 1H (last 24 candles).
+    2. Detect Block Orders (OB) on 1H.
+    3. For bullish trend, wait for price to pull back and tap into bullish OB below current price;
+       for bearish trend, wait for price to tap into bearish OB above current price.
+    4. Confirm OB mitigation with 15m candlestick rejection patterns, generate Buy (bullish) or Sell (bearish) signal
+       with entry, SL, and TP (1:2 RR).
+    Sends Telegram messages with plots (OHLC.tail(100)) for each step, including FVGs in final plot for visibility.
+    """
+
+    def __init__(self, symbols, main_tf: str = '1h', symbol_volume_threshold: float = 30000000, lookback_days: int = 1,
+                 debug=False):
+
+        super().__init__(symbols, main_tf, symbol_volume_threshold, lookback_days)
+        self.ob_sweep_strategy = OrderBlockSweepStrategy(main_tf, debug, telegram_chat_id=TELEGRAM_CHANNEL_CHAT_ID)
+        logger.info(f"SMCOrderBlockSweepBot initialized with {len(symbols)} symbols, {main_tf} TF.")
+
+    async def run_symbol(self, symbol: str):
+        """Analyze a single symbol and generate SMC signals."""
+        logger.info(f"Starting analysis for {symbol}")
+        try:
+            ohlc_main = await self.fetch_ohlc_data(symbol, self.main_tf)
+            if ohlc_main.empty:
+                logger.error(f"No data for {symbol}, skipping...")
+                await self.ob_sweep_strategy.telegram_bot.send_message(f"No data for {symbol}")
+                return
+
+            analysis = await self.ob_sweep_strategy.analyze_smc(symbol, ohlc_main)
+            analysis.title = "🧱🧹Order Block Sweep"
+            last_candle = ohlc_main.index.max().tz_convert('US/Pacific').strftime('%Y-%m-%d %H:%M')
+            await self.generate_signal(symbol, analysis, last_candle)
+
+        except Exception as e:
+            logger.error(f"Error processing {symbol}: {e}")
+
+    async def run(self):
+        """Main loop for monitoring all symbols.
+        Update symbols every 2 hours and runs analysis for each symbol concurrently.
+        """
+        logger.info("Starting SMCTradingBot main loop")
+        while True:
+            try:
+                needs_refresh = self.needs_symbol_refresh()
+                if needs_refresh:
+                    await self.update_symbols()
+                logger.info(f"Monitoring {len(self.symbols)} symbols")
+                tasks = [self.run_symbol(symbol) for symbol in self.symbols]
+                results = await asyncio.gather(*tasks, return_exceptions=True)
+                for symbol, result in zip(self.symbols, results):
+                    if isinstance(result, Exception):
+                        logger.error(f"Error processing {symbol}: {result}")
+                await self.sleep_until_next_hour()
+
+            except Exception as e:
+                logger.error(f"Error in main loop: {e}")
+                await self.sleep_until_next_hour()
+                continue

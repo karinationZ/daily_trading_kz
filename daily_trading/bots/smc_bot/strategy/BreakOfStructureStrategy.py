@@ -1,0 +1,213 @@
+from datetime import datetime
+from typing import List, Tuple
+
+import pandas as pd
+
+from daily_trading.bots.smc_bot.detectors.BosChochDetector import BosChochDetector
+from daily_trading.bots.smc_bot.detectors.FvgDetector import FvgDetector
+from daily_trading.bots.smc_bot.detectors.HighLowDetector import HighLowDetector
+from daily_trading.bots.smc_bot.detectors.LiquidityPoolDetector import LiquidityPoolDetector
+from daily_trading.bots.smc_bot.detectors.SMCBase import Trend
+from daily_trading.bots.smc_bot.strategy.StrategyBase import SignalSummary, StrategyBase
+from daily_trading.settings import logger
+
+
+class BreakOfStructureStrategy(StrategyBase):
+    """
+    Analyzes OHLC data using Smart Money Concept (SMC) for continuation trade signals.
+    Designed for scalping in volatile crypto markets with a 6-step process:
+    1. Identify Trend 1H (last 24 candles)
+    2. Detect Break of Structure (BOS) on 1H; reset on CHOCH.
+    4. Find unmitigated FVG below (uptrend) or above (downtrend) liquidity pool on 15m.
+    5. Confirm price touches the nearest FVG on 15m.
+    6. Generate LONG/SHORT signal
+    """
+
+    def __init__(self, main_tf: str, debug: bool, telegram_chat_id):
+        """
+        Initialize SMC strategy with detectors.
+        """
+        super().__init__(main_tf, debug, telegram_chat_id=telegram_chat_id)
+        self.detectors = {
+            'swing_1h': HighLowDetector(main_tf),  # Detects HH/HL/LL/LH on 1H
+            'bos_1h': BosChochDetector(main_tf),  # Detects BOS/CHOCH on 1H
+            'liquidity_pool_15m': LiquidityPoolDetector("15m"),  # Detects liquidity pools on 15m
+            'fvg_15m': FvgDetector(self.lower_tf_15m)  # Detects FVGs on 15m
+        }
+        self.bos_signals = None
+        self.recent_bos_signal = None
+        self.bos_choch_fig = None
+        self.fvg_fig = None
+
+    async def confirm_trend(self, ohlc_1h, symbol: str, cache_key: Tuple[str, str], current_time: datetime):
+        """Step 1: Identify Trend on 1H (last 24 candles)."""
+        swing_1h = self.detectors['swing_1h'].calculate_high_low_swings(ohlc_1h, plot=True)
+        fig = swing_1h["fig"]
+        trend, recent_smc_events = await self.get_trend(ohlc_1h, symbol, cache_key, current_time, fig)
+        return trend, recent_smc_events, fig
+
+    async def detect_bos_choch(self, ohlc_1h: pd.DataFrame, trend: str, symbol: str) -> List[str]:
+        """Step 2: Detect BOS or CHOCH on 1H, reset on CHOCH."""
+        recent_smc_events = []
+        results = self.detectors['bos_1h'].calculate_bos_choch(ohlc_1h, plot=True)
+        self.bos_signals = results["signals"]
+        self.bos_choch_fig = results["fig"]
+        bos_choch_signals = sorted(results["signals"], key=lambda x: x["time"], reverse=True)
+
+        if not bos_choch_signals:
+            event = "There are no BOS or ChoCH signals."
+            recent_smc_events.append(event)
+            return recent_smc_events
+
+        recent_signal = bos_choch_signals[0]
+
+        # Check if last smc event is ChoCH
+        if recent_signal["type"] == "CHoCH":
+            bos_event = f"Change of Character! Market trend may change ..."
+            self.recent_bos_signal = None
+            recent_smc_events.append(bos_event)
+            logger.info(f"Step 2: {bos_event} for {symbol}")
+            await self.send_telegram_message(f"{symbol} | Step 2: {bos_event}.", self.bos_choch_fig)
+            return recent_smc_events
+
+        # Get recent BOS signal
+        expected_bias = Trend.BULLISH.value if trend == Trend.BULLISH.name else Trend.BEARISH.value
+        expected_bos_signals = [s for s in bos_choch_signals if s['type'] == 'BOS' and s['bias'] == expected_bias]
+
+        if not expected_bos_signals:
+            bos_event = f"No BOS signals detected. Expected Bias - {expected_bias}."
+            recent_smc_events.append(bos_event)
+            logger.debug(f"Step 2: {bos_event}")
+        else:
+            self.recent_bos_signal = expected_bos_signals[0]
+            bos_event = f"{self.recent_bos_signal['type']} at {self.recent_bos_signal['time'].strftime('%Y-%m-%d %H:%M')}"
+            recent_smc_events.append(bos_event)
+            logger.debug(f"Step 2: {bos_event}")
+
+        await self.send_telegram_message(f"Step 2: {bos_event} for {symbol}.", self.bos_choch_fig)
+        return recent_smc_events
+
+    async def get_nearest_fvg(self, ohlc_15m: pd.DataFrame, trend: str):
+        """Step 4: Confirm price touches the nearest unmitigated FVG on 15m."""
+        fvg_result = self.detectors["fvg_15m"].calculate_fvg(ohlc_15m, plot=True)
+        self.fvg_fig = self.detectors["fvg_15m"].merge_bos_fvg_plots(ohlc_15m, self.bos_signals, fvg_result["signals"])
+
+        if not fvg_result["signals"]:
+            event = "No FVG signals!"
+            self.fvg_fig = fvg_result["fig"]
+            return None, [event]
+
+        self.fvg_fig = self.detectors["fvg_15m"].merge_bos_fvg_plots(ohlc_15m, self.bos_signals, fvg_result["signals"])
+        fvg_signals_sorted = sorted(fvg_result['signals'], key=lambda x: x['time'], reverse=True)
+        recent_smc_events = []
+
+        bos_level = self.recent_bos_signal["level"]
+        is_bullish_trend = trend == Trend.BULLISH.name
+
+        # Find nearest unmitigated FVG based on trend
+        nearest_fvg = None
+
+        for fvg_signal in fvg_signals_sorted:
+            # Skip if mitigated
+            if fvg_signal.get('mitigated', True):
+                continue
+
+            # Check if FVG bias matches trend
+            expected_bias = Trend.BULLISH.value if is_bullish_trend else Trend.BEARISH.value
+            if fvg_signal.get('bias') != expected_bias:
+                continue
+
+            # Check position relative to BOS level
+            if is_bullish_trend:
+                # For bullish trend: look for FVG below BOS level
+                if fvg_signal.get('top', float('inf')) <= bos_level:
+                    nearest_fvg = fvg_signal
+                    break
+            else:
+                # For bearish trend: look for FVG above BOS level
+                if fvg_signal.get('bottom', float('-inf')) >= bos_level:
+                    nearest_fvg = fvg_signal
+                    break
+
+        if not nearest_fvg:
+            event = "No valid FVG found."
+            recent_smc_events.append(event)
+            return None, recent_smc_events
+
+        event = f"Found nearest {trend} FVG."
+        recent_smc_events.append(event)
+        return nearest_fvg, recent_smc_events
+
+    @staticmethod
+    async def confirm_fvg_mitigation(ohlc_15m: pd.DataFrame, trend: str, fvg_signal):
+        recent_smc_events = []
+
+        fvg_top = fvg_signal['top']
+        fvg_bottom = fvg_signal['bottom']
+
+        # Check if any of the last 5 candles touched the FVG
+        lookback_candles = min(5, len(ohlc_15m))
+        price_touched_fvg = False
+
+        for i in range(1, lookback_candles + 1):
+            candle_low = ohlc_15m['low'].iloc[-i]
+            candle_high = ohlc_15m['high'].iloc[-i]
+
+            # Check if candle overlaps with FVG range
+            if candle_low <= fvg_top and candle_high >= fvg_bottom:
+                price_touched_fvg = True
+                break
+
+        if price_touched_fvg:
+            event = f"Price touched {trend} FVG - mitigated."
+            recent_smc_events.append(event)
+            return True, recent_smc_events
+        else:
+            event = f"Price did not touch {trend} FVG."
+            recent_smc_events.append(event)
+            return False, recent_smc_events
+
+    async def analyze_smc(self, symbol: str, ohlc_1h: pd.DataFrame, ohlc_15m: pd.DataFrame) -> SignalSummary:
+        """
+        Analyze OHLC data for continuation signals based on Liquidity Pool sweep
+        """
+        cache_key = (symbol, self.main_tf)
+        current_time = max(ohlc_15m.index.max(), ohlc_1h.index.max())
+        recent_smc_events = []
+
+        # Step 1: Identify market trend
+        trend, trend_event, fig = await self.confirm_trend(ohlc_1h, symbol, cache_key, current_time)
+        recent_smc_events.extend(trend_event)
+
+        # Step 2: Detect BOS & ChoCH signals
+        bos_events = await self.detect_bos_choch(ohlc_1h, trend, symbol)
+        recent_smc_events.extend(bos_events)
+        signal_summary = SignalSummary(direction=Trend.NEUTRAL.name,
+                                       trend=trend,
+                                       recent_smc_events=recent_smc_events,
+                                       recent_bos_signal=self.recent_bos_signal,
+                                       fig=self.bos_choch_fig)
+        if self.recent_bos_signal is None:
+            return signal_summary
+
+        # Step 3: Find nearest FVG
+        nearest_fvg, step_3_events = await self.get_nearest_fvg(ohlc_15m, trend)
+        recent_smc_events.extend(step_3_events)
+        signal_summary.fig = self.fvg_fig
+        if not nearest_fvg:
+            signal_summary.recent_smc_events = recent_smc_events
+            return signal_summary
+
+        # Step 4: Confirm Pull Back - FVG touch
+        price_touched_fvg, step_4_events = await self.confirm_fvg_mitigation(ohlc_15m, trend, nearest_fvg)
+        recent_smc_events.extend(step_4_events)
+
+        if not price_touched_fvg:
+            signal_summary.recent_smc_events = recent_smc_events
+            return signal_summary
+
+        # Step 5: generate final signal
+        signal = "LONG" if trend == Trend.BULLISH.name else "SHORT"
+        signal_summary.direction = signal
+        signal_summary.recent_smc_events = recent_smc_events
+        return signal_summary

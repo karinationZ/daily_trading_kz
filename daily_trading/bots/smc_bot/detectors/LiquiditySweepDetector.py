@@ -1,7 +1,7 @@
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 
-from daily_trading.bots.smc_bot.clients.SMCBase import BEARISH, BULLISH, SMCBase
+from daily_trading.bots.smc_bot.detectors.SMCBase import BEARISH, BULLISH, SMCBase
 from daily_trading.settings import logger
 
 
@@ -24,7 +24,7 @@ class LiquiditySweepDetector(SMCBase):
         super().__init__(main_tf=main_tf, left_bars=left_bars, right_bars=right_bars)
         self.sweep_window = sweep_window
         self.volume_threshold = volume_threshold
-        logger.info(f"Initialized LiquiditySweepDetector with lower_tf={main_tf}, sweep_window={sweep_window}, "
+        logger.debug(f"Initialized LiquiditySweepDetector with lower_tf={main_tf}, sweep_window={sweep_window}, "
                     f"volume_threshold={volume_threshold}, length={self.length}, left_bars={left_bars}, right_bars={right_bars}")
 
     def get_liquidity_count(self, ohlc, top, btm, start_idx, end_idx):
@@ -57,7 +57,7 @@ class LiquiditySweepDetector(SMCBase):
                         "fractal_time": lower["loc"],
                         "volume": volume
                     })
-                    logger.info(
+                    logger.debug(
                         f"Bullish Sweep detected: level={lower['value']:.6f}, time={ohlc.index[i + sweep_window]}, volume={volume:.2f}")
 
         if upper["value"] is not None and i < len(ohlc) - sweep_window:
@@ -73,7 +73,7 @@ class LiquiditySweepDetector(SMCBase):
                         "fractal_time": upper["loc"],
                         "volume": volume
                     })
-                    logger.info(
+                    logger.debug(
                         f"Bearish Sweep detected: level={upper['value']:.6f}, time={ohlc.index[i + sweep_window]}, volume={volume:.2f}")
 
         return signals
@@ -91,7 +91,7 @@ class LiquiditySweepDetector(SMCBase):
             - fig (go.Figure): Plotly figure with candlesticks and sweep signals (if plot=True).
             - signals (list): List of detected sweep signals.
         """
-        logger.info(f"Starting liquidity sweep calculation with sweep_window={self.sweep_window}, "
+        logger.debug(f"Starting liquidity sweep calculation with sweep_window={self.sweep_window}, "
                     f"volume_threshold={self.volume_threshold}, length={self.length}")
         if len(ohlc) < self.length * 2 + 1:
             logger.error(f"OHLC data too short ({len(ohlc)} rows) for length={self.length}")
@@ -123,7 +123,7 @@ class LiquiditySweepDetector(SMCBase):
         if plot:
             fig = self._plot_sweeps(ohlc, signals, pivot_high_points, pivot_low_points)
 
-        logger.info(
+        logger.debug(
             f"Detected {len(signals)} liquidity sweeps: {sum(1 for s in signals if s['bias'] == BULLISH)} bullish, "
             f"{sum(1 for s in signals if s['bias'] == BEARISH)} bearish")
         return {"fig": fig, "signals": signals}
@@ -145,7 +145,7 @@ class LiquiditySweepDetector(SMCBase):
         ohlc = ohlc.tail(self.plot_tail)
         symbol = ohlc['symbol'].iloc[0] if 'symbol' in ohlc.columns else 'Unknown'
 
-        logger.info("Generating Plotly figure for liquidity sweeps")
+        logger.debug("Generating Plotly figure for liquidity sweeps")
         ohlc = self.validate_data(ohlc)
         fig = make_subplots(rows=1, cols=1, subplot_titles=[f"{symbol} | Price Chart with Liquidity Sweeps"])
 
@@ -191,5 +191,5 @@ class LiquiditySweepDetector(SMCBase):
             margin=dict(t=100, b=100, l=50, r=50)
         )
         fig.update_xaxes(title_text="Time", row=1, col=1)
-        logger.info("Plotly figure generated successfully")
+        logger.debug("Plotly figure generated successfully")
         return fig

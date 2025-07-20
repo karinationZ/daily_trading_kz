@@ -1,8 +1,7 @@
 import pandas as pd
 import plotly.graph_objects as go
-from plotly.subplots import make_subplots
 
-from daily_trading.bots.smc_bot.clients.SMCBase import BEARISH, BULLISH, SMCBase
+from daily_trading.bots.smc_bot.detectors.SMCBase import BEARISH, BULLISH, SMCBase
 from daily_trading.settings import logger
 
 
@@ -27,10 +26,10 @@ class BosChochDetector(SMCBase):
         self.Major_LowIndex = None
         self.Major_HighType = None
         self.Major_LowType = None
-        logger.info(f"Initialized BosChochDetector with lower_tf={main_tf}, pivot_period={self.pivot_period}, "
-                    f"left_bars={left_bars}, right_bars={right_bars}, show_bull={show_bull}, "
-                    f"show_bear={show_bear}, volume_thresh={volume_thresh}, "
-                    f"min_price_move={min_price_move}, min_signal_gap={min_signal_gap}")
+        logger.debug(f"Initialized BosChochDetector with lower_tf={main_tf}, pivot_period={self.pivot_period}, "
+                     f"left_bars={left_bars}, right_bars={right_bars}, show_bull={show_bull}, "
+                     f"show_bear={show_bear}, volume_thresh={volume_thresh}, "
+                     f"min_price_move={min_price_move}, min_signal_gap={min_signal_gap}")
 
     def detect_signals(self, ohlc, i, signals, pivot_high_points, pivot_low_points):
         close = ohlc['close'].iloc[i]
@@ -82,7 +81,7 @@ class BosChochDetector(SMCBase):
                 self.ExternalTrend = 'Up Trend'
                 self.LockBreak_M = self.Major_HighIndex
                 self.LastSignalIndex = i
-                logger.info(f"Bullish {signal_type} detected: level={self.Major_HighLevel:.6f}, time={time}")
+                logger.debug(f"Bullish {signal_type} detected: level={self.Major_HighLevel:.6f}, time={time}")
                 # Update Major_HighLevel after BOS
                 self.Major_HighLevel = high
                 self.Major_HighIndex = i
@@ -119,7 +118,7 @@ class BosChochDetector(SMCBase):
                 self.ExternalTrend = 'Down Trend'
                 self.LockBreak_M = self.Major_LowIndex
                 self.LastSignalIndex = i
-                logger.info(f"Bearish {signal_type} detected: level={self.Major_LowLevel:.6f}, time={time}")
+                logger.debug(f"Bearish {signal_type} detected: level={self.Major_LowLevel:.6f}, time={time}")
                 # Update Major_LowLevel after BOS
                 self.Major_LowLevel = low
                 self.Major_LowIndex = i
@@ -160,8 +159,8 @@ class BosChochDetector(SMCBase):
         return signals
 
     def calculate_bos_choch(self, ohlc, plot=True):
-        logger.info(f"Starting BOS and CHoCH calculation with pivot_period={self.pivot_period}, "
-                    f"left_bars={self.left_bars}, right_bars={self.right_bars}")
+        logger.debug(f"Starting BOS and CHoCH calculation with pivot_period={self.pivot_period}, "
+                     f"left_bars={self.left_bars}, right_bars={self.right_bars}")
         if len(ohlc) < self.left_bars + self.right_bars + 1:
             logger.error(f"OHLC data too short ({len(ohlc)} rows)")
             return {"fig": None, "signals": [], "alert_conditions": {
@@ -219,7 +218,7 @@ class BosChochDetector(SMCBase):
                 self.ExternalTrend = 'Up Trend'
                 self.LockBreak_M = self.Major_HighIndex
                 self.LastSignalIndex = last_index
-                logger.info(
+                logger.debug(
                     f"Bullish Major {signal_type} detected (last candle): level={self.Major_HighLevel:.6f}, time={ohlc.index[last_index]}")
                 self.Major_HighLevel = last_high
                 self.Major_HighIndex = last_index
@@ -246,14 +245,14 @@ class BosChochDetector(SMCBase):
                 self.ExternalTrend = 'Down Trend'
                 self.LockBreak_M = self.Major_LowIndex
                 self.LastSignalIndex = last_index
-                logger.info(
+                logger.debug(
                     f"Bearish Major {signal_type} detected (last candle): level={self.Major_LowLevel:.6f}, time={ohlc.index[last_index]}")
                 self.Major_LowLevel = last_low
                 self.Major_LowIndex = last_index
                 self.Major_LowType = 'L'
 
-        logger.info(f"Detected {len(pivot_high_points)} swing highs and {len(pivot_low_points)} swing lows")
-        logger.info(f"Detected {self.bull_ms_count} bullish signals and {self.bear_ms_count} bearish signals")
+        logger.debug(f"Detected {len(pivot_high_points)} swing highs and {len(pivot_low_points)} swing lows")
+        logger.debug(f"Detected {self.bull_ms_count} bullish signals and {self.bear_ms_count} bearish signals")
 
         fig = None
         if plot:
@@ -266,11 +265,11 @@ class BosChochDetector(SMCBase):
             "BEARISH_CHoCH": [s for s in signals if s["type"] == "CHoCH" and s["bias"] == BEARISH]
         }
 
-        logger.info(f"Completed BOS and CHoCH calculation: "
-                    f"{len(alert_conditions['BULLISH_BOS'])} bullish BOS, "
-                    f"{len(alert_conditions['BEARISH_BOS'])} bearish BOS, "
-                    f"{len(alert_conditions['BULLISH_CHoCH'])} bullish CHoCH, "
-                    f"{len(alert_conditions['BEARISH_CHoCH'])} bearish CHoCH signals")
+        logger.debug(f"Completed BOS and CHoCH calculation: "
+                     f"{len(alert_conditions['BULLISH_BOS'])} bullish BOS, "
+                     f"{len(alert_conditions['BEARISH_BOS'])} bearish BOS, "
+                     f"{len(alert_conditions['BULLISH_CHoCH'])} bullish CHoCH, "
+                     f"{len(alert_conditions['BEARISH_CHoCH'])} bearish CHoCH signals")
         return {"fig": fig, "signals": signals, "alert_conditions": alert_conditions}
 
     def _plot_signals(self, ohlc, signals, pivot_high_points, pivot_low_points):
@@ -286,11 +285,11 @@ class BosChochDetector(SMCBase):
         Returns:
         - go.Figure: Plotly figure with candlesticks, pivots, and BOS/CHoCH signals.
         """
-        logger.info("Generating Plotly figure for BOS and CHoCH signals")
+        logger.debug("Generating Plotly figure for BOS and CHoCH signals")
         ohlc = ohlc.sort_index()
 
         # Log sample of index values for debugging
-        logger.info(f"Sample ohlc.index values: {ohlc.index[-5:].tolist()}")
+        logger.debug(f"Sample ohlc.index values: {ohlc.index[-5:].tolist()}")
 
         # Limit to last 100 rows
         ohlc = ohlc.tail(self.plot_tail)
@@ -371,5 +370,5 @@ class BosChochDetector(SMCBase):
             dtick=7200000,  # 2-hour intervals
             tickangle=45,  # Rotate for readability
         )
-        logger.info("Plotly figure generated successfully")
+        logger.debug("Plotly figure generated successfully")
         return fig

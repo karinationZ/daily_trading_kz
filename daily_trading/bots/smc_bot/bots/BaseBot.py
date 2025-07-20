@@ -4,15 +4,15 @@ from datetime import datetime, timedelta
 import pandas as pd
 import pytz
 
-from daily_trading.bots.smc_bot.clients.SMCBase import Trend
-from daily_trading.bots.smc_bot.clients.strategy.OrderBlockSweep import OrderBlockSweepStrategy, \
-    SignalSummary
+from daily_trading.bots.smc_bot.bots.TelegramBot import TelegramBot
+from daily_trading.bots.smc_bot.detectors.SMCBase import Trend
+from daily_trading.bots.smc_bot.strategy.BreakOfStructureStrategy import SignalSummary
 from daily_trading.brokers.BitUnixClient import BitUnixClient
-from daily_trading.settings import logger, TELEGRAM_CHANNEL_CHAT_ID, TELEGRAM_BOT_CHAT_ID
+from daily_trading.settings import logger, TELEGRAM_BOT_CHAT_ID, TELEGRAM_CHANNEL_CHAT_ID
 from daily_trading.technicals.DivergentAssetsFinder import BitUnixDivergentAssetsFinder
 
 
-class SMCTradingBot:
+class SMCBotBase:
     """SMC-based trading bot for high-probability continuation trades across multiple symbols.
     Uses SMCAnalyser for analysis and Telegram messaging, targeting scalping opportunities
     in volatile crypto markets with 1H/4H trend alignment, 15m liquidity pools between
@@ -22,7 +22,8 @@ class SMCTradingBot:
     def __init__(self, symbols, main_tf: str = '1h',
                  symbol_volume_threshold: float = 30000000,
                  lookback_days: int = 1,
-                 debug=False):
+                 telegram_chat_id=TELEGRAM_CHANNEL_CHAT_ID
+                 ):
         """
         Initialize SMCTradingBot.
 
@@ -32,14 +33,16 @@ class SMCTradingBot:
             symbol_volume_threshold (float): Minimum volume for symbol selection.
             lookback_days (int): Lookback period in days for OHLC data.
         """
+        self.static_symbols = symbols
         self.symbols = symbols
+        self.telegram_bot = TelegramBot(chat_id=telegram_chat_id)
+        self.telegram_bot_debug = TelegramBot(chat_id=TELEGRAM_BOT_CHAT_ID)
         self.main_tf = main_tf
         self.volume_threshold = symbol_volume_threshold
         self.lookback_days = lookback_days
         self.default_symbols = ["BTCUSDT"]
         self.client = BitUnixClient()
         self.asset_finder = BitUnixDivergentAssetsFinder()
-        self.ob_sweep_strategy = OrderBlockSweepStrategy(main_tf, debug, telegram_chat_id=TELEGRAM_CHANNEL_CHAT_ID)
         self.timezone = pytz.UTC
         self.symbols_update_timestamp = None
         self.candle_duration = {
@@ -107,15 +110,15 @@ class SMCTradingBot:
 
     async def send_final_message(self, analysis: SignalSummary, current_candle_time, symbol, title):
         events = [e for e in analysis.recent_smc_events if e is not None]
-        events_str = ' '.join([event[0] if isinstance(event, list) else event for event in events])
+        events_str = '\n• '.join([event[0] if isinstance(event, list) else event for event in events])
 
         action = f"Go {analysis.direction}." if analysis.direction != Trend.NEUTRAL.name else "Сидим в засаде"
-        msg = (f"📊 {title} - {symbol} {current_candle_time}\n"
+        msg = (f"{title} - {symbol} {current_candle_time}\n"
                f"Action: {action}\n"
                f"Trend: {analysis.trend}\n"
-               f"SMC Events: {events_str}")
+               f"SMC Events:\n• {events_str}")
         logger.info(msg)
-        await self.ob_sweep_strategy.telegram_bot.send_message(msg, analysis.fig)
+        await self.telegram_bot.send_message(msg, analysis.fig)
 
     async def fetch_ohlc_data(self, symbol: str, timeframe: str, periods: int = None) -> pd.DataFrame:
         """Fetch OHLC data with caching to reduce API calls.
@@ -195,14 +198,14 @@ class SMCTradingBot:
             logger.error(f"Error fetching OHLC for {symbol} ({timeframe}): {e}")
             raise e
 
-    def needs_symbol_refresh(self) -> bool:
+    async def needs_symbol_refresh(self) -> bool:
         """Check if symbols list needs to be refreshed (empty, never set, or >2h old)."""
         if not self.symbols or self.symbols_update_timestamp is None:
             return True
 
         dt_now = datetime.now(self.timezone)
         time_diff = (dt_now - self.symbols_update_timestamp).total_seconds()
-        return time_diff >= 7200  # 2 hours
+        return time_diff >= 14400  # 4 hours
 
     async def update_symbols(self):
         """Update high-volume symbols every 2 hours.
@@ -228,38 +231,21 @@ class SMCTradingBot:
             logger.error(f"Failed to update symbols: {e}")
             raise RuntimeError(f"Failed to update symbols: {e}")
 
-    async def run_symbol(self, symbol: str):
-        """Analyze a single symbol and generate SMC signals."""
-        logger.info(f"Starting analysis for {symbol}")
+    async def generate_signal(self, symbol: str, analysis: SignalSummary, last_candle: str):
+        """Generate SMC signals."""
         try:
-            ohlc_main = await self.fetch_ohlc_data(symbol, self.main_tf)
-            if ohlc_main.empty:
-                logger.error(f"No data for {symbol}, skipping...")
-                return
-
-            analysis = await self.ob_sweep_strategy.analyze_smc(symbol, ohlc_main)
-            last_candle = ohlc_main.index.max().tz_convert('US/Pacific').strftime('%Y-%m-%d %H:%M')
-            await self.send_final_message(analysis, last_candle, symbol, title="Order Block Sweep")
-
+            if analysis.direction != Trend.NEUTRAL.name:
+                await self.send_final_message(analysis, last_candle, symbol, title=analysis.title)
+            else:
+                msg = f"\n******\n{symbol}\n" \
+                      f"Action: Сидим в засаде\n" \
+                      f"Trend: {analysis.trend}\n" \
+                      f"SMC Events: {analysis.recent_smc_events}\n" \
+                      f"******"
+                logger.info(msg)
+                # TODO - DELETE IT
+                # send this message only to BOT channel for debugging purposes
+                if analysis.direction == Trend.NEUTRAL.name:
+                    await self.telegram_bot_debug.send_message(msg, analysis.fig)
         except Exception as e:
             logger.error(f"Error processing {symbol}: {e}")
-
-    async def run(self):
-        """Main loop for monitoring all symbols.
-        Update symbols every 2 hours and runs analysis for each symbol concurrently.
-        """
-        logger.info("Starting SMCTradingBot main loop")
-        while True:
-            try:
-                needs_refresh = self.needs_symbol_refresh()
-                if needs_refresh:
-                    await self.update_symbols()
-                logger.info(f"Monitoring {len(self.symbols)} symbols")
-                tasks = [self.run_symbol(symbol) for symbol in self.symbols]
-                await asyncio.gather(*tasks, return_exceptions=True)
-                await self.sleep_until_next_hour()
-
-            except Exception as e:
-                logger.error(f"Error in main loop: {e}")
-                await self.sleep_until_next_hour()
-                continue

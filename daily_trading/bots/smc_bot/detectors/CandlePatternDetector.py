@@ -1,4 +1,4 @@
-from daily_trading.bots.smc_bot.clients.SMCBase import SMCBase, Trend
+from daily_trading.bots.smc_bot.detectors.SMCBase import SMCBase, Trend
 from daily_trading.settings import logger
 
 
@@ -151,7 +151,7 @@ class CandlePatternDetector(SMCBase):
         Returns:
         - tuple: (trend (int), pattern_name (str)) - Trend is 1 (Bullish), -1 (Bearish), or 0 (Neutral).
         """
-        logger.info("Detecting single-candle pattern")
+        logger.debug("Detecting single-candle pattern")
         if not all(col in df for col in ['open', 'high', 'low', 'close']):
             logger.error("Missing required columns in DataFrame")
             return Trend.NEUTRAL, "None"
@@ -173,11 +173,11 @@ class CandlePatternDetector(SMCBase):
         for pattern in patterns:
             value = self.check_pattern(df['open'][0], df['high'][0], df['low'][0], df['close'][0], pattern, config)
             if value > 0:
-                logger.info(f"Detected {pattern} (Bullish)")
+                logger.debug(f"Detected {pattern} (Bullish)")
                 return Trend.BULLISH, pattern
             elif value < 0:
-                logger.info(f"Detected {pattern} (Bearish)")
+                logger.debug(f"Detected {pattern} (Bearish)")
                 return Trend.BEARISH, pattern
 
-        logger.info("No pattern detected (Neutral)")
+        logger.debug("No pattern detected (Neutral)")
         return Trend.NEUTRAL, "None"

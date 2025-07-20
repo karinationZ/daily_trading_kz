@@ -144,25 +144,26 @@ class BreakOfStructureStrategy(StrategyBase):
 
         fvg_top = fvg_signal['top']
         fvg_bottom = fvg_signal['bottom']
-        fvg_midpoint = (fvg_top + fvg_bottom) / 2  # Calculate midpoint for 50% mitigation
+        fvg_range = fvg_top - fvg_bottom
+        fvg_80_percent_level = fvg_bottom + 0.8 * fvg_range if trend == Trend.BULLISH.name \
+            else fvg_top - 0.8 * fvg_range
 
-        # Check last 5 candles for FVG interaction
-        lookback_candles = min(5, len(ohlc_15m))
+        # Check last 3 candles for FVG interaction
+        lookback_candles = min(3, len(ohlc_15m))
         fvg_mitigated = False
         price_touched_event = None
 
         for i in range(1, lookback_candles + 1):
             candle_low = ohlc_15m['low'].iloc[-i]
             candle_high = ohlc_15m['high'].iloc[-i]
-
-            # Check if candle overlaps with FVG range
             if candle_low <= fvg_top and candle_high >= fvg_bottom:
-                price_touched_event = f"Price touched {trend} FVG."
-                # Check for 50% mitigation
-                if trend == Trend.BULLISH.name and candle_high >= fvg_midpoint:
+                event = f"Price touched {trend} FVG at candle {-i}."
+                recent_smc_events.append(event)
+                if trend == Trend.BULLISH.name and candle_high >= fvg_80_percent_level:
                     fvg_mitigated = True
-                elif trend == Trend.BEARISH.name and candle_low <= fvg_midpoint:
+                elif trend == Trend.BEARISH.name and candle_low <= fvg_80_percent_level:
                     fvg_mitigated = True
+
         if price_touched_event:
             recent_smc_events.append(price_touched_event)
 

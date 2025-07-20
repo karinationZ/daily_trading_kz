@@ -158,8 +158,7 @@ class BreakOfStructureStrategy(StrategyBase):
             candle_low = ohlc_15m['low'].iloc[-i]
             candle_high = ohlc_15m['high'].iloc[-i]
             if candle_low <= fvg_top and candle_high >= fvg_bottom:
-                event = f"Price touched {trend} FVG at candle {-i}."
-                recent_smc_events.append(event)
+                price_touched_event = f"Price touched {trend} FVG."
                 if trend == Trend.BULLISH.name and candle_high >= fvg_80_percent_level:
                     fvg_mitigated = True
                 elif trend == Trend.BEARISH.name and candle_low <= fvg_80_percent_level:

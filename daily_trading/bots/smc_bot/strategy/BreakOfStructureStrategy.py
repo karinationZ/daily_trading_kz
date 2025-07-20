@@ -80,7 +80,8 @@ class BreakOfStructureStrategy(StrategyBase):
             logger.debug(f"Step 2: {bos_event}")
         else:
             self.recent_bos_signal = expected_bos_signals[0]
-            bos_event = f"{self.recent_bos_signal['type']} at {self.recent_bos_signal['time'].strftime('%Y-%m-%d %H:%M')}"
+            bos_event = f"{self.recent_bos_signal['type']} at " \
+                        f"{self.recent_bos_signal['time'].strftime('%Y-%m-%d %H:%M')}"
             recent_smc_events.append(bos_event)
             logger.debug(f"Step 2: {bos_event}")
 
@@ -104,7 +105,7 @@ class BreakOfStructureStrategy(StrategyBase):
         bos_level = self.recent_bos_signal["level"]
         is_bullish_trend = trend == Trend.BULLISH.name
 
-        # Find nearest unmitigated FVG based on trend
+        # Find the nearest unmitigated FVG based on trend
         nearest_fvg = None
 
         for fvg_signal in fvg_signals_sorted:
@@ -220,18 +221,18 @@ class BreakOfStructureStrategy(StrategyBase):
             signal_summary.recent_smc_events = recent_smc_events
             return signal_summary
 
-        # Check if this FVG was already mitigated and if a new BOS has occurred
-        if (self.last_mitigated_fvg and
-                self.last_mitigated_fvg.get('time') == nearest_fvg.get('time') and
-                (self.last_bos_time is None or
-                 self.last_bos_time <= self.last_mitigated_fvg.get('time'))):
-            event = f"Skipping signal: FVG at {nearest_fvg['time']} already mitigated, no new BOS."
-            recent_smc_events.append(event)
-            signal_summary.recent_smc_events = recent_smc_events
-            return signal_summary
-
-        # Update last mitigated FVG
-        self.last_mitigated_fvg = nearest_fvg
+        # # Check if this FVG was already mitigated and if a new BOS has occurred
+        # if (self.last_mitigated_fvg and
+        #         self.last_mitigated_fvg.get('time') == nearest_fvg.get('time') and
+        #         (self.last_bos_time is None or
+        #          self.last_bos_time <= self.last_mitigated_fvg.get('time'))):
+        #     event = f"Skipping signal: FVG at {nearest_fvg['time']} already mitigated, no new BOS."
+        #     recent_smc_events.append(event)
+        #     signal_summary.recent_smc_events = recent_smc_events
+        #     return signal_summary
+        #
+        # # Update last mitigated FVG
+        # self.last_mitigated_fvg = nearest_fvg
 
         # Step 5: Generate final signal
         signal = "LONG" if trend == Trend.BULLISH.name else "SHORT"

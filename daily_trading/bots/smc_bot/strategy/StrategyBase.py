@@ -36,14 +36,13 @@ class StrategyBase(ABC):
             channel_id (str): Telegram channel ID for message delivery.
         """
         self.main_tf = main_tf
-        self.lower_tf_15m = '15m'  # Default 15m timeframe for finer analysis
         self.telegram_bot = TelegramBot(chat_id=telegram_chat_id)
         self.smc_base = SMCBase(self.main_tf)
         self.event_cache = {}  # Cache: {(symbol, timeframe): {'events': list, 'last_updated': datetime}}
         self.debug = debug
-        logger.info(f"StrategyBase initialized with {main_tf} and {self.lower_tf_15m}")
+        logger.info(f"StrategyBase initialized with {main_tf}")
         if not self.debug:
-            logger.warning("Debug Mode is Off. Intermittent Telegram messages will not be sent.")
+            logger.warning("Debug Mode is Off. Internal Telegram messages will not be sent.")
 
     async def manage_cache_event(self, cache_key: Tuple[str, str], event: str, current_time: datetime) -> bool:
         """Manage cache for a new event, return True if event is new."""

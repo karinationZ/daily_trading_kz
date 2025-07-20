@@ -7,8 +7,8 @@ import numpy as np
 import pandas as pd
 from scipy.stats import pearsonr
 
-from daily_trading.settings import logger, PROJECT_DIR
 from daily_trading.brokers.BitUnixClient import BitUnixClient
+from daily_trading.settings import logger, PROJECT_DIR
 
 
 class BitUnixDivergentAssetsFinder:
@@ -30,7 +30,7 @@ class BitUnixDivergentAssetsFinder:
                 high_volume_symbols.append((ticker["symbol"], ticker["quoteVol"]))
 
         high_volume_symbols.sort(key=lambda x: x[1])
-        print(json.dumps(high_volume_symbols, indent=1))
+        logger.debug(json.dumps(high_volume_symbols, indent=1))
         return high_volume_symbols
 
     @staticmethod
@@ -228,11 +228,11 @@ if __name__ == "__main__":
         lookback_hours=2
     )
     # Print results
-    logger.debug("\nNon-correlated assets (correlation between -0.3 and 0.3):")
+    logger.info("\nNon-correlated assets (correlation between -0.3 and 0.3):")
     logger.info(f"Found {len(results['non_correlated'])} asset(s)")
     for asset in results["non_correlated"]:
-        logger.debug(f"{asset['symbol']}: Correlation = {asset['correlation']:.3f} | Volume: {asset['volume']}")
+        logger.info(f"{asset['symbol']}: Correlation = {asset['correlation']:.3f} | Volume: {asset['volume']}")
 
     logger.debug("\nInverse-correlated assets (correlation below -0.7):")
     for asset in results["inverse_correlated"]:
-        logger.debug(f"{asset['symbol']}: Correlation = {asset['correlation']:.3f}")
+        logger.info(f"{asset['symbol']}: Correlation = {asset['correlation']:.3f}")

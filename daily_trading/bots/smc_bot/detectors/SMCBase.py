@@ -19,7 +19,7 @@ class Trend(Enum):
 
 class SMCBase:
     def __init__(self, main_tf, left_bars=None, right_bars=None, plot_tail=100):
-        self.lower_tf = main_tf
+        self.main_tf = main_tf
         self.swing_length_map = {
             "15m": 8,
             "1h": 6,
@@ -38,7 +38,7 @@ class SMCBase:
         self.Major_HighType = None
         self.Major_LowType = None
         logger.debug(f"Initialized SMCBase with lower_tf={main_tf}, length={self.length}, "
-                    f"left_bars={left_bars}, right_bars={right_bars}")
+                     f"left_bars={left_bars}, right_bars={right_bars}")
         self.plot_tail = plot_tail
 
     def calculate_pivots(self, ohlc):

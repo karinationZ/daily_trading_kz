@@ -412,7 +412,7 @@ class FvgDetector(SMCBase):
         candle_time_str = f"Last Candle: {last_candle} (PT)"
 
         fig.update_layout(
-            title=f"{symbol} - BOS/CHoCH & FVG Analysis | {candle_time_str}",
+            title=f"{symbol} | BOS/CHoCH & FVG Analysis | {candle_time_str} | TF: {self.main_tf}",
             xaxis_title="Time",
             yaxis_title="Price",
             xaxis_rangeslider_visible=False,

@@ -31,8 +31,7 @@ class BreakOfStructureStrategy(StrategyBase):
         self.detectors = {
             'swing_1h': HighLowDetector(main_tf),  # Detects HH/HL/LL/LH on 1H
             'bos_1h': BosChochDetector(main_tf),  # Detects BOS/CHOCH on 1H
-            'liquidity_pool_15m': LiquidityPoolDetector("15m"),  # Detects liquidity pools on 15m
-            'fvg_15m': FvgDetector(self.lower_tf_15m)  # Detects FVGs on 15m
+            'fvg_15m': FvgDetector("15m")  # Detects FVGs on 15m
         }
         self.bos_signals = None
         self.recent_bos_signal = None
@@ -144,10 +143,11 @@ class BreakOfStructureStrategy(StrategyBase):
 
         fvg_top = fvg_signal['top']
         fvg_bottom = fvg_signal['bottom']
+        fvg_midpoint = (fvg_top + fvg_bottom) / 2  # Calculate midpoint for 50% mitigation
 
-        # Check if any of the last 5 candles touched the FVG
+        # Check last 5 candles for FVG interaction
         lookback_candles = min(5, len(ohlc_15m))
-        price_touched_fvg = False
+        fvg_mitigated = False
 
         for i in range(1, lookback_candles + 1):
             candle_low = ohlc_15m['low'].iloc[-i]
@@ -155,17 +155,22 @@ class BreakOfStructureStrategy(StrategyBase):
 
             # Check if candle overlaps with FVG range
             if candle_low <= fvg_top and candle_high >= fvg_bottom:
-                price_touched_fvg = True
-                break
+                event = f"Price touched {trend} FVG at candle {-i}."
+                recent_smc_events.append(event)
+                # Check for 50% mitigation
+                if trend == Trend.BULLISH.name and candle_high >= fvg_midpoint:
+                    fvg_mitigated = True
+                elif trend == Trend.BEARISH.name and candle_low <= fvg_midpoint:
+                    fvg_mitigated = True
 
-        if price_touched_fvg:
-            event = f"Price touched {trend} FVG - mitigated."
+        if not fvg_mitigated:
+            event = f"Price did not  mitigated 50% {trend} FVG."
             recent_smc_events.append(event)
-            return True, recent_smc_events
         else:
-            event = f"Price did not touch {trend} FVG."
+            event = f"Price mitigated {trend} FVG by 50% or more."
             recent_smc_events.append(event)
-            return False, recent_smc_events
+
+        return fvg_mitigated, recent_smc_events
 
     async def analyze_smc(self, symbol: str, ohlc_1h: pd.DataFrame, ohlc_15m: pd.DataFrame) -> SignalSummary:
         """
@@ -199,10 +204,10 @@ class BreakOfStructureStrategy(StrategyBase):
             return signal_summary
 
         # Step 4: Confirm Pull Back - FVG touch
-        price_touched_fvg, step_4_events = await self.confirm_fvg_mitigation(ohlc_15m, trend, nearest_fvg)
+        fvg_mitigated, step_4_events = await self.confirm_fvg_mitigation(ohlc_15m, trend, nearest_fvg)
         recent_smc_events.extend(step_4_events)
 
-        if not price_touched_fvg:
+        if not fvg_mitigated:
             signal_summary.recent_smc_events = recent_smc_events
             return signal_summary
 

@@ -384,7 +384,7 @@ class LevelsBreakDetector(SMCBase):
         last_candle = ohlc.index.max().tz_convert('US/Pacific').strftime('%Y-%m-%d %H:%M')
         candle_time_str = f"Last Candle: {last_candle} (PT)"
         fig.update_layout(
-            title=f"{symbol} | Support and Resistance Levels | {candle_time_str}",
+            title=f"{symbol} | Support and Resistance Levels | {candle_time_str} | TF: {self.main_tf}",
             xaxis_title="Time",
             yaxis_title="Price",
             xaxis_rangeslider_visible=False,

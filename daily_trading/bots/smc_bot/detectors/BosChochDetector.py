@@ -355,7 +355,7 @@ class BosChochDetector(SMCBase):
         last_candle = ohlc.index.max().tz_convert('US/Pacific').strftime('%Y-%m-%d %H:%M')
         candle_time_str = f"Last Candle: {last_candle} (PT)"
         fig.update_layout(
-            title=f"{symbol} - BOS and CHoCH Signals | {candle_time_str}",
+            title=f"{symbol} | BOS and CHoCH Signals | {candle_time_str} | TF: {self.main_tf}",
             xaxis_title="Time",
             yaxis_title="Price",
             xaxis_rangeslider_visible=False,

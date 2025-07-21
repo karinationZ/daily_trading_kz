@@ -11,7 +11,7 @@ from daily_trading.bots.smc_bot.strategy.StrategyBase import SignalSummary, Stra
 from daily_trading.settings import logger
 
 
-class BreakOfStructureStrategy(StrategyBase):
+class BosFvgFillStrategy(StrategyBase):
     """
     Analyzes OHLC data using Smart Money Concept (SMC) for continuation trade signals.
     Designed for scalping in volatile crypto markets with a 6-step process:
@@ -90,6 +90,12 @@ class BreakOfStructureStrategy(StrategyBase):
 
     async def get_nearest_fvg(self, ohlc_15m: pd.DataFrame, trend: str):
         """Step 4: Confirm price touches the nearest unmitigated FVG on 15m."""
+        recent_smc_events = []
+
+        if trend == Trend.NEUTRAL.name:
+            recent_smc_events.append(f"Trend is {trend}. Exiting FVG search step.")
+            return None, recent_smc_events
+
         fvg_result = self.detectors["fvg_15m"].calculate_fvg(ohlc_15m, plot=True)
         self.fvg_fig = self.detectors["fvg_15m"].merge_bos_fvg_plots(ohlc_15m, self.bos_signals, fvg_result["signals"])
 
@@ -100,7 +106,6 @@ class BreakOfStructureStrategy(StrategyBase):
 
         self.fvg_fig = self.detectors["fvg_15m"].merge_bos_fvg_plots(ohlc_15m, self.bos_signals, fvg_result["signals"])
         fvg_signals_sorted = sorted(fvg_result['signals'], key=lambda x: x['time'], reverse=True)
-        recent_smc_events = []
 
         bos_level = self.recent_bos_signal["level"]
         is_bullish_trend = trend == Trend.BULLISH.name
@@ -224,7 +229,7 @@ class BreakOfStructureStrategy(StrategyBase):
             recent_bos_signal=self.recent_bos_signal,
             fig=self.bos_choch_fig
         )
-        if self.recent_bos_signal is None:
+        if self.recent_bos_signal is None or trend == Trend.NEUTRAL.name:
             return signal_summary
 
         # Update last BOS time

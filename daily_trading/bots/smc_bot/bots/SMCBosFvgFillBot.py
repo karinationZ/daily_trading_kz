@@ -1,11 +1,11 @@
 import asyncio
 
 from daily_trading.bots.smc_bot.bots.BaseBot import SMCBotBase
-from daily_trading.bots.smc_bot.strategy.BreakOfStructureStrategy import BreakOfStructureStrategy
+from daily_trading.bots.smc_bot.strategy.BosFvgFillStrategy import BosFvgFillStrategy
 from daily_trading.settings import logger, TELEGRAM_CHANNEL_CHAT_ID, TELEGRAM_BOT_CHAT_ID
 
 
-class SMCBosFvgTapBot(SMCBotBase):
+class SMCBosFvgFillBot(SMCBotBase):
     """
     Analyzes OHLC data using Smart Money Concept (SMC) for continuation trade signals.
     Designed for scalping in volatile crypto markets with a 6-step process:
@@ -25,7 +25,7 @@ class SMCBosFvgTapBot(SMCBotBase):
                          telegram_chat_id=telegram_chat_id)
 
         self.chat_id = telegram_chat_id
-        self.bos_strategy = BreakOfStructureStrategy(main_tf, debug, telegram_chat_id=self.chat_id)
+        self.bos_strategy = BosFvgFillStrategy(main_tf, debug, telegram_chat_id=self.chat_id)
 
     async def run_symbol(self, symbol: str):
         """Analyze a single symbol and generate SMC signals."""

@@ -6,7 +6,7 @@ import pytz
 
 from daily_trading.bots.smc_bot.bots.TelegramBot import TelegramBot
 from daily_trading.bots.smc_bot.detectors.SMCBase import Trend
-from daily_trading.bots.smc_bot.strategy.BreakOfStructureStrategy import SignalSummary
+from daily_trading.bots.smc_bot.strategy.BosFvgFillStrategy import SignalSummary
 from daily_trading.brokers.BitUnixClient import BitUnixClient
 from daily_trading.settings import logger, TELEGRAM_BOT_CHAT_ID, TELEGRAM_CHANNEL_CHAT_ID
 from daily_trading.technicals.DivergentAssetsFinder import BitUnixDivergentAssetsFinder

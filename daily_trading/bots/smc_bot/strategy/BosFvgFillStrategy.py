@@ -72,6 +72,15 @@ class BosFvgFillStrategy(StrategyBase):
 
         # Get recent BOS signal
         expected_bias = Trend.BULLISH.value if trend == Trend.BULLISH.name else Trend.BEARISH.value
+
+        if recent_signal['bias'] != expected_bias:
+            bos_event = f"Recent BOS opposes the trend direction. BOS bias {expected_bias}. Trend: {trend}"
+            self.recent_bos_signal = None
+            recent_smc_events.append(bos_event)
+            logger.info(f"Step 2: {bos_event} for {symbol}")
+            await self.send_telegram_message(f"{symbol} | Step 2: {bos_event}.", self.bos_choch_fig)
+            return recent_smc_events
+
         expected_bos_signals = [s for s in bos_choch_signals if s['type'] == 'BOS' and s['bias'] == expected_bias]
 
         if not expected_bos_signals:

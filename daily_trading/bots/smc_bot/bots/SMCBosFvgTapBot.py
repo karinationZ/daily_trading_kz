@@ -39,7 +39,7 @@ class SMCBosFvgTapBot(SMCBotBase):
                 return
 
             analysis = await self.bos_strategy.analyze_smc(symbol, ohlc_1h, ohlc_15m)
-            analysis.title = "🎯BOS + FVG Tap"
+            analysis.title = "🎯BOS + FVG Fill"
             last_candle = ohlc_15m.index.max().tz_convert('US/Pacific').strftime('%Y-%m-%d %H:%M')
             await self.generate_signal(symbol, analysis, last_candle)
 

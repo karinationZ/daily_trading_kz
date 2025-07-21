@@ -4,7 +4,7 @@ from typing import Dict, List, Tuple
 
 import pandas as pd
 
-from daily_trading.bots.smc_bot.bots.SMCOrderBlockSweepBot import SMCTradingBot
+from daily_trading.bots.smc_bot.bots.BaseBot import SMCBotBase
 from daily_trading.bots.smc_bot.strategy.OrderBlockSweep import OrderBlockSweepStrategy
 from daily_trading.settings import logger
 
@@ -35,7 +35,7 @@ class BackTester:
         Returns:
             Tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]: OHLC data for 1H, 4H, 15m.
         """
-        bot = SMCTradingBot(
+        bot = SMCBotBase(
             symbols=[self.symbol],
             lookback_days=self.lookback_days,
             main_tf=self.main_tf

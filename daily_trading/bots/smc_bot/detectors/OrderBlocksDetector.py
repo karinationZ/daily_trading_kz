@@ -29,6 +29,7 @@ class OrderBlocksDetector(SMCBase):
         pivot_highs, pivot_lows = self.calculate_pivots(ohlc)
         bullish_ob = []
         bearish_ob = []
+        min_distance = 6  # Minimum candles between OB and pivot break
 
         crossed_highs = {p["index"]: False for p in pivot_highs}
         crossed_lows = {p["index"]: False for p in pivot_lows}
@@ -42,14 +43,14 @@ class OrderBlocksDetector(SMCBase):
                     if current_price > pivot["level"]:
                         crossed_highs[pivot["index"]] = True
                         # Find last bearish candle (close < open) before break
-                        for j in range(i - 1, pivot["index"] - 1, -1):
+                        for j in range(i - 1, max(pivot["index"] - 1, i - min_distance - 1), -1):
                             if ohlc['close'].iloc[j] < ohlc['open'].iloc[j]:
                                 ob_item = {
                                     "type": "bullish",
                                     "top": ohlc['high'].iloc[j],
                                     "bottom": ohlc['low'].iloc[j],
                                     "time": ohlc.index[j],
-                                    "index": pivot["index"],
+                                    "index": j,  # Use OB candle's index
                                     "breaker": False,
                                     "break_loc": None
                                 }
@@ -64,14 +65,14 @@ class OrderBlocksDetector(SMCBase):
                     if current_price < pivot["level"]:
                         crossed_lows[pivot["index"]] = True
                         # Find last bullish candle (close > open) before break
-                        for j in range(i - 1, pivot["index"] - 1, -1):
+                        for j in range(i - 1, max(pivot["index"] - 1, i - min_distance - 1), -1):
                             if ohlc['close'].iloc[j] > ohlc['open'].iloc[j]:
                                 ob_item = {
                                     "type": "bearish",
                                     "top": ohlc['high'].iloc[j],
                                     "bottom": ohlc['low'].iloc[j],
                                     "time": ohlc.index[j],
-                                    "index": pivot["index"],
+                                    "index": j,  # Use OB candle's index
                                     "breaker": False,
                                     "break_loc": None
                                 }
@@ -145,7 +146,7 @@ class OrderBlocksDetector(SMCBase):
         logger.debug("Generating Plotly figure for Order Blocks")
 
         ohlc = self.validate_data(ohlc)
-        # Limit to last 200 rows
+        # Limit to last X rows
         ohlc = ohlc.tail(self.plot_tail)
         symbol = ohlc['symbol'].iloc[0] if 'symbol' in ohlc.columns else 'Unknown'
 

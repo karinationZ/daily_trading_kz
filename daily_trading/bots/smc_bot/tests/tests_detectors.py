@@ -15,7 +15,7 @@ from daily_trading.bots.smc_bot.detectors.LiquiditySweepDetector import Liquidit
 from daily_trading.bots.smc_bot.detectors.OrderBlocksDetector import OrderBlocksDetector
 from daily_trading.settings import logger, TELEGRAM_BOT_CHAT_ID
 
-symbol = "CUSDT"
+symbol = "ENAUSDT"
 main_tf = "1h"
 lookback_days = 10
 
@@ -118,8 +118,8 @@ async def test_order_blocks():
     bot = SMCBotBase(symbols=[symbol], lookback_days=lookback_days, main_tf=main_tf)
     ohlc = await bot.fetch_ohlc_data(symbol, main_tf)
 
-    with pd.option_context('display.max_rows', None, 'display.max_columns', None):
-        logger.info("\n{}", ohlc.tail(50).to_string())
+    # with pd.option_context('display.max_rows', None, 'display.max_columns', None):
+    #     logger.info("\n{}", ohlc.tail(50).to_string())
 
     detector = OrderBlocksDetector(main_tf)
     results = detector.calculate_order_blocks(ohlc, plot=True)

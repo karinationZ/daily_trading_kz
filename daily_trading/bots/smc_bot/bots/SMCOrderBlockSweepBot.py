@@ -54,9 +54,10 @@ class SMCOrderBlockSweepBot(SMCBotBase):
         logger.info("Starting SMCTradingBot main loop")
         while True:
             try:
-                needs_refresh = self.needs_symbol_refresh()
-                if needs_refresh:
-                    await self.update_symbols()
+                if not self.static_symbols:
+                    needs_refresh = self.needs_symbol_refresh()
+                    if needs_refresh:
+                        await self.update_symbols()
                 logger.info(f"Monitoring {len(self.symbols)} symbols")
                 tasks = [self.run_symbol(symbol) for symbol in self.symbols]
                 results = await asyncio.gather(*tasks, return_exceptions=True)

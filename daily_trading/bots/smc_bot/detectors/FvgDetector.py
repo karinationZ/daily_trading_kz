@@ -98,11 +98,26 @@ class FvgDetector(SMCBase):
         return signals
 
     def check_mitigation(self, ohlc, fvg_item, start_index):
+        """
+        Check if an FVG is mitigated by a candle's wick crossing the FVG boundary.
+
+        Args:
+            ohlc (pd.DataFrame): OHLC data.
+            fvg_item (dict): FVG signal with 'top', 'bottom', 'type', etc.
+            start_index (int): Index where FVG was detected.
+
+        Returns:
+            bool: True if mitigated, False otherwise.
+        """
         fvg_top = fvg_item['top']
         fvg_bottom = fvg_item['bottom']
         fvg_range = fvg_top - fvg_bottom
 
-        for j in range(start_index + 2, len(ohlc)):
+        if fvg_range <= 0:
+            logger.warning(f"Invalid FVG range {fvg_range:.6f} for {fvg_item['type']} at {fvg_item['time']}")
+            return False
+
+        for j in range(start_index + 1, len(ohlc)):
             high = ohlc['high'].iloc[j]
             low = ohlc['low'].iloc[j]
             time = ohlc.index[j]
@@ -113,7 +128,7 @@ class FvgDetector(SMCBase):
                 f"high={high:.6f}, low={low:.6f}")
 
             if fvg_item["type"] == "Major Bullish FVG":
-                if low <= fvg_bottom:  # Changed condition to check if low crosses bottom
+                if low <= fvg_bottom:
                     fvg_item["mitigated"] = True
                     fvg_item["mitigated_time"] = time
                     fvg_item["mitigated_index"] = index
@@ -123,7 +138,7 @@ class FvgDetector(SMCBase):
                         f"time={time}, high={high:.6f}, low={low:.6f}")
                     return True
             else:  # Major Bearish FVG
-                if high >= fvg_top:  # Changed condition to check if high crosses top
+                if high >= fvg_top:
                     fvg_item["mitigated"] = True
                     fvg_item["mitigated_time"] = time
                     fvg_item["mitigated_index"] = index

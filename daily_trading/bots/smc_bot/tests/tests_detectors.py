@@ -15,7 +15,7 @@ from daily_trading.bots.smc_bot.detectors.LiquiditySweepDetector import Liquidit
 from daily_trading.bots.smc_bot.detectors.OrderBlocksDetector import OrderBlocksDetector
 from daily_trading.settings import logger, TELEGRAM_BOT_CHAT_ID
 
-symbol = "CUSDT"
+symbol = "CROSSUSDT"
 main_tf = "15m"
 lookback_days = 10
 
@@ -159,13 +159,19 @@ async def test_liq_pool():
 @pytest.mark.asyncio
 async def test_fvg_bos_merge():
     bot = SMCBotBase(symbols=[symbol], lookback_days=lookback_days, main_tf=main_tf)
-    ohlc_1h = await bot.fetch_ohlc_data(symbol, "1h", num_candles=180)
+    # ohlc_1h = await bot.fetch_ohlc_data(symbol, "1h", num_candles=180)
     ohlc_15m = await bot.fetch_ohlc_data(symbol, "15m", num_candles=100)
+    ohlc_15m = ohlc_15m[:-2]
+
+    with pd.option_context('display.max_rows', None, 'display.max_columns', None):
+        logger.info("\n{}", ohlc_15m.tail(50).to_string())
 
 
     detector_fvg = FvgDetector(main_tf="15min", pivot_period=5, left_bars=5)
-    detector_bos = BosChochDetector(main_tf, show_bull=True, show_bear=True)
-    bos_results = detector_bos.calculate_bos_choch(ohlc_1h, plot=False)
-    fvg_results = detector_fvg.calculate_fvg(ohlc_15m, plot=False)
-    fig = detector_fvg.merge_bos_fvg_plots(ohlc_15m, bos_signals=bos_results["signals"], fvg_signals=fvg_results["signals"])
+    # detector_bos = BosChochDetector(main_tf, show_bull=True, show_bear=True)
+    # bos_results = detector_bos.calculate_bos_choch(ohlc_1h, plot=False)
+    fvg_results = detector_fvg.calculate_fvg(ohlc_15m, plot=True)
+    logger.info(fvg_results["signals"])
+    fig = fvg_results["fig"]
+    # fig = detector_fvg.merge_bos_fvg_plots(ohlc_15m, bos_signals=bos_results["signals"], fvg_signals=fvg_results["signals"])
     fig.show()

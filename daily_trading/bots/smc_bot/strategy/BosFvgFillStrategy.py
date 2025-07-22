@@ -178,7 +178,6 @@ class BosFvgFillStrategy(StrategyBase):
         current_candle = ohlc_15m.iloc[-1]
         candle_high = current_candle['high']
         candle_low = current_candle['low']
-        current_time = ohlc_15m.index[-1]
         fvg_mitigated = False
 
         # Reset state for new FVG
@@ -187,7 +186,7 @@ class BosFvgFillStrategy(StrategyBase):
             self._current_fvg_id_map[symbol] = id(fvg_signal)
 
         if candle_low <= fvg_top and candle_high >= fvg_bottom:
-            recent_smc_events.append(f"Price touched {trend} FVG at {current_time}")
+            recent_smc_events.append(f"Current price is in {trend} FVG.")
 
             if trend == Trend.BULLISH.name:
                 # Update last_mitigated_fvg_level, constrain to FVG bottom
@@ -218,7 +217,7 @@ class BosFvgFillStrategy(StrategyBase):
                 else:
                     recent_smc_events.append(f"Price partially mitigated {trend} FVG by {mitigation_percent:.2f}%")
         else:
-            recent_smc_events.append(f"Price did not touch {trend} FVG at {current_candle.name}")
+            recent_smc_events.append(f"Current price is outside of the {trend} FVG.")
 
         return fvg_mitigated, recent_smc_events
 

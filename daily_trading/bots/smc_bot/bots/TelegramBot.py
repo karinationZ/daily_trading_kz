@@ -107,10 +107,10 @@ class TelegramBot:
                     logger.warning(f"Rate limit hit, retry after {retry_after}s")
                     await asyncio.sleep(retry_after)
                     raise
-                logger.error(f"Telegram API error: {e}")
+                logger.error(f"Telegram API error: {e}\nFailed to send: {text}")
                 return False
             except Exception as e:
-                logger.error(f"Unexpected error sending message: {str(e)}")
+                logger.error(f"Unexpected error sending message: {str(e)}\nFailed to send: {text}")
                 return False
 
     async def get_channel_id_from_updates(self):

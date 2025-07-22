@@ -11,7 +11,7 @@ class SMCBosFvgFillBot(SMCBotBase):
     Designed for scalping in volatile crypto markets with a 6-step process:
     1. Identify Trend 1H (last 24 candles)
     2. Detect Break of Structure (BOS) on 1H; reset on CHOCH.
-    4. Find unmitigated FVG below (uptrend) or above (downtrend) liquidity pool on 15m.
+    4. Find unmitigated FVG below (uptrend) or above (downtrend) on 15m.
     5. Confirm price touches the nearest FVG on 15m.
     6. Generate LONG/SHORT signal
     """

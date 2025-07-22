@@ -37,7 +37,8 @@ class BosFvgFillStrategy(StrategyBase):
         self.bos_choch_fig = None
         self.fvg_fig = None
         self.last_bos_time = None  # Track last BOS time
-        self.last_mitigated_fvg_level = None
+        self.last_mitigated_fvg_level_map = {}  # Initialize as empty dict
+        self._current_fvg_id_map = {}  # Initialize as empty dict
 
     async def confirm_trend(self, ohlc_1h, symbol: str, cache_key: Tuple[str, str], current_time: datetime):
         """Step 1: Identify Trend on 1H (last 24 candles)."""
@@ -154,11 +155,12 @@ class BosFvgFillStrategy(StrategyBase):
         recent_smc_events.append(event)
         return nearest_fvg, recent_smc_events
 
-    async def confirm_fvg_mitigation(self, ohlc_15m: pd.DataFrame, trend: str, fvg_signal: dict):
+    async def confirm_fvg_mitigation(self, symbol, ohlc_15m: pd.DataFrame, trend: str, fvg_signal: dict):
         """
         Confirm if the current candle mitigates an FVG by 90% or more.
 
         Args:
+            symbol: Asset
             ohlc_15m (pd.DataFrame): OHLC data with at least one row.
             trend (str): Trend direction ('BULLISH' or 'BEARISH').
             fvg_signal (dict): FVG signal with 'top', 'bottom', 'time'.
@@ -167,6 +169,7 @@ class BosFvgFillStrategy(StrategyBase):
             tuple[bool, list[str]]: (fvg_mitigated, recent_smc_events)
         """
         recent_smc_events = []
+
         fvg_top = fvg_signal['top']
         fvg_bottom = fvg_signal['bottom']
         fvg_range = fvg_top - fvg_bottom
@@ -178,38 +181,40 @@ class BosFvgFillStrategy(StrategyBase):
         current_time = ohlc_15m.index[-1]
         fvg_mitigated = False
 
+        # Reset state for new FVG
+        if symbol not in self._current_fvg_id_map or self._current_fvg_id_map[symbol] != id(fvg_signal):
+            self.last_mitigated_fvg_level_map[symbol] = None
+            self._current_fvg_id_map[symbol] = id(fvg_signal)
+
         if candle_low <= fvg_top and candle_high >= fvg_bottom:
             recent_smc_events.append(f"Price touched {trend} FVG at {current_time}")
 
             if trend == Trend.BULLISH.name:
-                # Update last_mitigated_fvg_level to min of candle_low and current level (if exists)
-                if self.last_mitigated_fvg_level is None:
-                    self.last_mitigated_fvg_level = candle_low  # or candle_high for bearish
-                else:
-                    self.last_mitigated_fvg_level = min(self.last_mitigated_fvg_level, candle_low)
-                # Calculate mitigation percentage
-                mitigation_depth = fvg_top - self.last_mitigated_fvg_level
+                # Update last_mitigated_fvg_level, constrain to FVG bottom
+                if self.last_mitigated_fvg_level_map.get(symbol) is None \
+                        or candle_low < self.last_mitigated_fvg_level_map[symbol]:
+                    self.last_mitigated_fvg_level_map[symbol] = max(candle_low, fvg_bottom)
+                mitigation_depth = fvg_top - self.last_mitigated_fvg_level_map[symbol]
                 mitigation_percent = (mitigation_depth / fvg_range) * 100 if fvg_range > 0 else 0
                 if mitigation_percent >= 90:
                     fvg_mitigated = True
                     recent_smc_events.append(f"Price mitigated {trend} FVG by {mitigation_percent:.2f}% (>= 90%)")
-                    self.last_mitigated_fvg_level = None  # Reset on full mitigation
+                    self.last_mitigated_fvg_level_map[symbol] = None
+                    self._current_fvg_id_map[symbol] = None
                 else:
                     recent_smc_events.append(f"Price partially mitigated {trend} FVG by {mitigation_percent:.2f}%")
             else:  # BEARISH
-                # Update last_mitigated_fvg_level to max of candle_high and current level (if exists)
-                if self.last_mitigated_fvg_level is None:
-                    self.last_mitigated_fvg_level = candle_high
-                else:
-                    self.last_mitigated_fvg_level = max(candle_high, self.last_mitigated_fvg_level)
-
-                # Calculate mitigation percentage
-                mitigation_depth = self.last_mitigated_fvg_level - fvg_bottom
+                # Update last_mitigated_fvg_level, constrain to FVG top
+                if self.last_mitigated_fvg_level_map.get(symbol) is None or candle_high > \
+                        self.last_mitigated_fvg_level_map[symbol]:
+                    self.last_mitigated_fvg_level_map[symbol] = min(candle_high, fvg_top)
+                mitigation_depth = self.last_mitigated_fvg_level_map[symbol] - fvg_bottom
                 mitigation_percent = (mitigation_depth / fvg_range) * 100 if fvg_range > 0 else 0
                 if mitigation_percent >= 90:
                     fvg_mitigated = True
                     recent_smc_events.append(f"Price mitigated {trend} FVG by {mitigation_percent:.2f}% (>= 90%)")
-                    self.last_mitigated_fvg_level = None  # Reset on full mitigation
+                    self.last_mitigated_fvg_level_map[symbol] = None
+                    self._current_fvg_id_map[symbol] = None
                 else:
                     recent_smc_events.append(f"Price partially mitigated {trend} FVG by {mitigation_percent:.2f}%")
         else:
@@ -254,7 +259,7 @@ class BosFvgFillStrategy(StrategyBase):
             return signal_summary
 
         # Step 4: Confirm Pull Back - FVG mitigation
-        fvg_mitigated, step_4_events = await self.confirm_fvg_mitigation(ohlc_15m, trend, nearest_fvg)
+        fvg_mitigated, step_4_events = await self.confirm_fvg_mitigation(symbol, ohlc_15m, trend, nearest_fvg)
         recent_smc_events.extend(step_4_events)
 
         if not fvg_mitigated:

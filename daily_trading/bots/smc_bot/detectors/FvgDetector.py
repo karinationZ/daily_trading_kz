@@ -70,7 +70,7 @@ class FvgDetector(SMCBase):
                     self.fvg_records.append(fvg_item)
                     self.bull_count += 1
                     logger.debug(f"Bullish FVG detected: top={fvg_item['top']:.6f}, bottom={fvg_item['bottom']:.6f}, "
-                                f"time={time}, gap_size={gap_size:.6f}, threshold={threshold:.6f}")
+                                 f"time={time}, gap_size={gap_size:.6f}, threshold={threshold:.6f}")
 
         if self.show_bear:
             bearish_gap = high < ohlc['low'].iloc[i - 2] and ohlc['close'].iloc[i - 1] < ohlc['low'].iloc[i - 2]
@@ -93,30 +93,45 @@ class FvgDetector(SMCBase):
                     self.fvg_records.append(fvg_item)
                     self.bear_count += 1
                     logger.debug(f"Bearish FVG detected: top={fvg_item['top']:.6f}, bottom={fvg_item['bottom']:.6f}, "
-                                f"time={time}, gap_size={gap_size:.6f}, threshold={threshold:.6f}")
+                                 f"time={time}, gap_size={gap_size:.6f}, threshold={threshold:.6f}")
 
         return signals
 
     def check_mitigation(self, ohlc, fvg_item, start_index):
+        fvg_top = fvg_item['top']
+        fvg_bottom = fvg_item['bottom']
+        fvg_range = fvg_top - fvg_bottom
+
         for j in range(start_index + 2, len(ohlc)):
             high = ohlc['high'].iloc[j]
             low = ohlc['low'].iloc[j]
             time = ohlc.index[j]
             index = j
-            # Ensure candle fully crosses the gap
-            if (fvg_item["type"] == "Major Bullish FVG" and high >= fvg_item["top"] and low <= fvg_item["bottom"]) or \
-                    (fvg_item["type"] == "Major Bearish FVG" and high >= fvg_item["top"] and low <= fvg_item["bottom"]):
-                fvg_item["mitigated"] = True
-                fvg_item["mitigated_time"] = time
-                fvg_item["mitigated_index"] = index
-                if fvg_item["type"] == "Major Bullish FVG":
+
+            logger.debug(
+                f"Checking mitigation for {fvg_item['type']} at {time}: top={fvg_top:.6f}, bottom={fvg_bottom:.6f}, "
+                f"high={high:.6f}, low={low:.6f}")
+
+            if fvg_item["type"] == "Major Bullish FVG":
+                if low <= fvg_bottom:  # Changed condition to check if low crosses bottom
+                    fvg_item["mitigated"] = True
+                    fvg_item["mitigated_time"] = time
+                    fvg_item["mitigated_index"] = index
                     self.bull_mitigated += 1
-                else:
+                    logger.debug(
+                        f"{fvg_item['type']} mitigated: bottom={fvg_bottom:.6f}, top={fvg_top:.6f}, "
+                        f"time={time}, high={high:.6f}, low={low:.6f}")
+                    return True
+            else:  # Major Bearish FVG
+                if high >= fvg_top:  # Changed condition to check if high crosses top
+                    fvg_item["mitigated"] = True
+                    fvg_item["mitigated_time"] = time
+                    fvg_item["mitigated_index"] = index
                     self.bear_mitigated += 1
-                logger.debug(
-                    f"{fvg_item['type']} mitigated: bottom={fvg_item['bottom']:.6f}, top={fvg_item['top']:.6f}, "
-                    f"time={time}, high={high:.6f}, low={low:.6f}")
-                return True
+                    logger.debug(
+                        f"{fvg_item['type']} mitigated: bottom={fvg_bottom:.6f}, top={fvg_top:.6f}, "
+                        f"time={time}, high={high:.6f}, low={low:.6f}")
+                    return True
         return False
 
     def calculate_fvg(self, ohlc, plot=True):

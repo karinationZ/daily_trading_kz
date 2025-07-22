@@ -16,8 +16,8 @@ from daily_trading.bots.smc_bot.detectors.OrderBlocksDetector import OrderBlocks
 from daily_trading.settings import logger, TELEGRAM_BOT_CHAT_ID
 
 symbol = "ENAUSDT"
-main_tf = "1h"
-lookback_days = 10
+main_tf = "15m"
+lookback_days = 1
 
 
 @pytest.mark.asyncio

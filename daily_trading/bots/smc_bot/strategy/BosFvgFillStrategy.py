@@ -30,7 +30,7 @@ class BosFvgFillStrategy(StrategyBase):
         self.detectors = {
             'swing_1h': HighLowDetector(main_tf),  # Detects HH/HL/LL/LH on 1H
             'bos_1h': BosChochDetector(main_tf),  # Detects BOS/CHOCH on 1H
-            'fvg_15m': FvgDetector("15m")  # Detects FVGs on 15m
+            'fvg_15m': FvgDetector(main_tf="15m", pivot_period=5, left_bars=5) # Detects FVGs on 15m
         }
         self.bos_signals = None
         self.recent_bos_signal = None
@@ -115,7 +115,6 @@ class BosFvgFillStrategy(StrategyBase):
             self.fvg_fig = fvg_result["fig"]
             return None, [event]
 
-        self.fvg_fig = self.detectors["fvg_15m"].merge_bos_fvg_plots(ohlc_15m, self.bos_signals, fvg_result["signals"])
         fvg_signals_sorted = sorted(fvg_result['signals'], key=lambda x: x['time'], reverse=True)
 
         bos_level = self.recent_bos_signal["level"]

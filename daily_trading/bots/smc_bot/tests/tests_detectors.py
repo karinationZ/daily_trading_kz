@@ -15,8 +15,8 @@ from daily_trading.bots.smc_bot.detectors.LiquiditySweepDetector import Liquidit
 from daily_trading.bots.smc_bot.detectors.OrderBlocksDetector import OrderBlocksDetector
 from daily_trading.settings import logger, TELEGRAM_BOT_CHAT_ID
 
-symbol = "ENAUSDT"
-main_tf = "1h"
+symbol = "CUSDT"
+main_tf = "15m"
 lookback_days = 10
 
 
@@ -71,8 +71,15 @@ async def test_fvg_detector():
 
     detector = FvgDetector(main_tf=main_tf, pivot_period=5, left_bars=5)
     results = detector.calculate_fvg(ohlc, plot=True)
-    fig = results["fig"]
-    fig.show()
+    fig_1 = results["fig"]
+
+    detectors = {
+        'fvg_15m': FvgDetector(main_tf="15m", pivot_period=5, left_bars=5)  # Detects FVGs on 15m
+    }
+    results = detectors["fvg_15m"].calculate_fvg(ohlc, plot=True)
+    fig_2 = results["fig"]
+    fig_2.show()
+    assert fig_2 == fig_1
 
 
 @pytest.mark.asyncio
@@ -152,11 +159,13 @@ async def test_liq_pool():
 @pytest.mark.asyncio
 async def test_fvg_bos_merge():
     bot = SMCBotBase(symbols=[symbol], lookback_days=lookback_days, main_tf=main_tf)
-    ohlc = await bot.fetch_ohlc_data(symbol, main_tf)
+    ohlc_1h = await bot.fetch_ohlc_data(symbol, "1h", num_candles=180)
+    ohlc_15m = await bot.fetch_ohlc_data(symbol, "15m", num_candles=100)
 
-    detector_fvg = FvgDetector(main_tf=main_tf, pivot_period=5, left_bars=5)
+
+    detector_fvg = FvgDetector(main_tf="15min", pivot_period=5, left_bars=5)
     detector_bos = BosChochDetector(main_tf, show_bull=True, show_bear=True)
-    bos_results = detector_bos.calculate_bos_choch(ohlc, plot=False)
-    fvg_results = detector_fvg.calculate_fvg(ohlc, plot=False)
-    fig = detector_fvg.merge_bos_fvg_plots(ohlc, bos_signals=bos_results["signals"], fvg_signals=fvg_results["signals"])
+    bos_results = detector_bos.calculate_bos_choch(ohlc_1h, plot=False)
+    fvg_results = detector_fvg.calculate_fvg(ohlc_15m, plot=False)
+    fig = detector_fvg.merge_bos_fvg_plots(ohlc_15m, bos_signals=bos_results["signals"], fvg_signals=fvg_results["signals"])
     fig.show()

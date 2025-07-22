@@ -33,7 +33,7 @@ class SMCOrderBlockSweepBot(SMCBotBase):
         """Analyze a single symbol and generate SMC signals."""
         logger.info(f"Starting analysis for {symbol}")
         try:
-            ohlc_main = await self.fetch_ohlc_data(symbol, self.main_tf)
+            ohlc_main = await self.fetch_ohlc_data(symbol, self.main_tf, num_candles=120)
             if ohlc_main.empty:
                 logger.error(f"No data for {symbol}, skipping...")
                 await self.ob_sweep_strategy.telegram_bot.send_message(f"No data for {symbol}")

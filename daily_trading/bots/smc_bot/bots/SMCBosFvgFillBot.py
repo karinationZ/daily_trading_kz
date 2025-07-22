@@ -2,7 +2,7 @@ import asyncio
 
 from daily_trading.bots.smc_bot.bots.BaseBot import SMCBotBase
 from daily_trading.bots.smc_bot.strategy.BosFvgFillStrategy import BosFvgFillStrategy
-from daily_trading.settings import logger, TELEGRAM_CHANNEL_CHAT_ID, TELEGRAM_BOT_CHAT_ID
+from daily_trading.settings import logger, TELEGRAM_BOT_CHAT_ID
 
 
 class SMCBosFvgFillBot(SMCBotBase):
@@ -31,14 +31,15 @@ class SMCBosFvgFillBot(SMCBotBase):
         """Analyze a single symbol and generate SMC signals."""
         logger.info(f"Starting analysis for {symbol}")
         try:
-            ohlc_1h = await self.fetch_ohlc_data(symbol, self.main_tf)
-            ohlc_15m = await self.fetch_ohlc_data(symbol, "15m")
+            ohlc_15m = await self.fetch_ohlc_data(symbol, "15m", num_candles=100)
+            ohlc_1h = await self.fetch_ohlc_data(symbol, self.main_tf, num_candles=120)
+
             if ohlc_1h.empty or ohlc_15m.empty:
                 logger.error(f"No data for {symbol}, skipping...")
                 await self.bos_strategy.telegram_bot.send_message(f"No data for {symbol}")
                 return
 
-            analysis = await self.bos_strategy.analyze_smc(symbol, ohlc_1h, ohlc_15m)
+            analysis = await self.bos_strategy.analyze_smc(symbol, ohlc_1h=ohlc_1h, ohlc_15m=ohlc_15m)
             analysis.title = "🎯BOS + FVG Fill"
             last_candle = ohlc_15m.index.max().tz_convert('US/Pacific').strftime('%Y-%m-%d %H:%M')
             await self.generate_signal(symbol, analysis, last_candle)

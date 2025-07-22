@@ -8,7 +8,7 @@ from daily_trading.settings import logger
 
 
 class FvgDetector(SMCBase):
-    def __init__(self, main_tf, pivot_period=None, left_bars=2, right_bars=1, show_bull=True, show_bear=True,
+    def __init__(self, main_tf, pivot_period=5, left_bars=5, right_bars=1, show_bull=True, show_bear=True,
                  volume_thresh=10, fvg_threshold=0.5, mode='Present', back=180,
                  show_labels=False, show_fulfilled=True):
         super().__init__(main_tf=main_tf, left_bars=left_bars, right_bars=right_bars)
@@ -28,10 +28,10 @@ class FvgDetector(SMCBase):
         if fvg_threshold == 0:
             logger.warning("fvg_threshold=0, all gaps will be detected, which may increase noise")
         logger.debug(f"Initialized FvgDetector with lower_tf={main_tf}, pivot_period={self.pivot_period}, "
-                    f"left_bars={self.left_bars}, right_bars={self.right_bars}, show_bull={show_bull}, "
-                    f"show_bear={show_bear}, volume_thresh={volume_thresh}, "
-                    f"fvg_threshold={fvg_threshold}, mode={mode}, back={back}, show_labels={show_labels}, "
-                    f"show_fulfilled={show_fulfilled}")
+                     f"left_bars={self.left_bars}, right_bars={self.right_bars}, show_bull={show_bull}, "
+                     f"show_bear={show_bear}, volume_thresh={volume_thresh}, "
+                     f"fvg_threshold={fvg_threshold}, mode={mode}, back={back}, show_labels={show_labels}, "
+                     f"show_fulfilled={show_fulfilled}")
 
     def _get_threshold(self, ohlc, i):
         atr = (ohlc['high'] - ohlc['low']).rolling(window=144).mean().iloc[i]
@@ -136,8 +136,8 @@ class FvgDetector(SMCBase):
 
     def calculate_fvg(self, ohlc, plot=True):
         logger.debug(f"Starting FVG calculation with pivot_period={self.pivot_period}, "
-                    f"left_bars={self.left_bars}, right_bars={self.right_bars}, fvg_threshold={self.fvg_threshold}, "
-                    f"mode={self.mode}, back={self.back}")
+                     f"left_bars={self.left_bars}, right_bars={self.right_bars}, fvg_threshold={self.fvg_threshold}, "
+                     f"mode={self.mode}, back={self.back}")
         if len(ohlc) < 3:
             logger.error(f"OHLC data too short ({len(ohlc)} rows)")
             return {"fig": None, "signals": [], "alert_conditions": {
@@ -161,7 +161,7 @@ class FvgDetector(SMCBase):
         pivot_high_points, pivot_low_points = self.calculate_pivots(ohlc)
 
         logger.debug(f"Detected {len(signals)} FVGs: {self.bull_count} bullish, {self.bear_count} bearish, "
-                    f"{self.bull_mitigated} bullish mitigated, {self.bear_mitigated} bearish mitigated")
+                     f"{self.bull_mitigated} bullish mitigated, {self.bear_mitigated} bearish mitigated")
 
         fig = None
         if plot:
@@ -175,12 +175,11 @@ class FvgDetector(SMCBase):
         }
 
         logger.debug(f"Completed FVG calculation: "
-                    f"{len(alert_conditions['BULLISH_FVG'])} bullish FVGs, "
-                    f"{len(alert_conditions['BEARISH_FVG'])} bearish FVGs, "
-                    f"{len(alert_conditions['BULLISH_FVG_FULFILLED'])} bullish fulfilled, "
-                    f"{len(alert_conditions['BEARISH_FVG_FULFILLED'])} bearish fulfilled")
+                     f"{len(alert_conditions['BULLISH_FVG'])} bullish FVGs, "
+                     f"{len(alert_conditions['BEARISH_FVG'])} bearish FVGs, "
+                     f"{len(alert_conditions['BULLISH_FVG_FULFILLED'])} bullish fulfilled, "
+                     f"{len(alert_conditions['BEARISH_FVG_FULFILLED'])} bearish fulfilled")
         return {"fig": fig, "signals": signals, "alert_conditions": alert_conditions}
-
 
     def _plot_fvg(self, ohlc, signals, pivot_high_points, pivot_low_points):
         """
@@ -314,8 +313,6 @@ class FvgDetector(SMCBase):
         - ohlc (pd.DataFrame): OHLCV DataFrame with pandas.Timestamp index
         - bos_signals (list): List of BOS/CHoCH signals
         - fvg_signals (list): List of FVG signals
-        - pivot_high_points (list): List of pivot high points
-        - pivot_low_points (list): List of pivot low points
 
         Returns:
         - go.Figure: Combined Plotly figure with BOS lines and FVG rectangles
@@ -327,12 +324,8 @@ class FvgDetector(SMCBase):
         # Limit to last plot_tail rows
         ohlc = ohlc.tail(self.plot_tail)
 
-        # Filter pivots to ensure timestamps are within ohlc.index
-        pivot_high_points = [p for p in pivot_high_points if p['time'] in ohlc.index]
-        pivot_low_points = [p for p in pivot_low_points if p['time'] in ohlc.index]
-
         symbol = ohlc['symbol'].iloc[0] if 'symbol' in ohlc.columns else 'Unknown'
-        fig = go.Figure()
+        fig = make_subplots(rows=1, cols=1, subplot_titles=[f"{symbol} | BOS/CHoCH & FVG Analysis"])
 
         # Add OHLC candlesticks
         fig.add_trace(go.Candlestick(
@@ -342,49 +335,46 @@ class FvgDetector(SMCBase):
             low=ohlc['low'],
             close=ohlc['close'],
             name="OHLC"
-        ))
-        #
-        # # Add pivot high points
-        # for pivot in pivot_high_points:
-        #     fig.add_trace(go.Scatter(
-        #         x=[pivot['time']],
-        #         y=[pivot['level'] * 1.001],
-        #         mode='markers+text',
-        #         text=[pivot['type']],
-        #         textposition='top center',
-        #         marker=dict(symbol='triangle-down', size=8, color='#8E2043'),
-        #         name=pivot['type'],
-        #         showlegend=False
-        #     ))
-        #
-        # # Add pivot low points
-        # for pivot in pivot_low_points:
-        #     fig.add_trace(go.Scatter(
-        #         x=[pivot['time']],
-        #         y=[pivot['level'] * 0.999],
-        #         mode='markers+text',
-        #         text=[pivot['type']],
-        #         textposition='bottom center',
-        #         marker=dict(symbol='triangle-up', size=8, color='#027C5E'),
-        #         name=pivot['type'],
-        #         showlegend=False
-        #     ))
+        ), row=1, col=1)
+
+        # Filter BOS signals to FVG time window
+        if fvg_signals:
+            fvg_times = [s['time'] for s in fvg_signals]
+            min_fvg_time = min(fvg_times)
+            max_fvg_time = max(fvg_times)
+            filtered_bos_signals = [
+                s for s in bos_signals
+                if (s['time'] >= min_fvg_time and s['time'] <= max_fvg_time and
+                    s['fractal_time'] >= min_fvg_time and s['fractal_time'] <= max_fvg_time)
+            ]
+            logger.debug(
+                f"Filtered {len(bos_signals)} BOS signals to {len(filtered_bos_signals)} within FVG time window: {min_fvg_time} to {max_fvg_time}")
+        else:
+            filtered_bos_signals = []
+            logger.debug("No FVG signals, skipping BOS signals")
 
         # Add BOS/CHoCH signals (lines)
-        for signal in bos_signals:
+        for signal in filtered_bos_signals:
             if (signal['bias'] == BULLISH and self.show_bull) or (signal['bias'] == BEARISH and self.show_bear):
+                start_time = signal['fractal_time']
+                end_time = signal['time']
+                # Ensure times are within ohlc.index
+                if start_time not in ohlc.index:
+                    start_time = ohlc.index[ohlc.index.get_indexer([start_time], method='nearest')[0]]
+                if end_time not in ohlc.index:
+                    end_time = ohlc.index[ohlc.index.get_indexer([end_time], method='nearest')[0]]
                 color = '#01AADD' if signal['bias'] == BULLISH else '#EFB465'
                 fig.add_trace(go.Scatter(
-                    x=[signal['fractal_time'], signal['time']],
+                    x=[start_time, end_time],
                     y=[signal['level'], signal['level']],
                     mode='lines+text',
                     text=[signal['type'], ''],
                     textposition='bottom center',
-                    textfont=dict(size=12),  # <-- Increased text size
-                    line=dict(color=color, dash='solid', width=4),  # <-- Increased line width
+                    textfont=dict(size=12),
+                    line=dict(color=color, dash='solid', width=4),
                     name=signal['type'],
                     showlegend=False
-                ))
+                ), row=1, col=1)
 
         # Add FVG rectangles
         for signal in fvg_signals:
@@ -393,11 +383,11 @@ class FvgDetector(SMCBase):
                     color = 'rgba(0, 255, 0, 0.5)' if signal["bias"] == BULLISH else 'rgba(255, 0, 0, 0.5)'
                     if signal["mitigated"]:
                         color = 'rgba(169, 169, 169, 0.6)'
-
                     end_time = signal["mitigated_time"] if signal["mitigated"] else ohlc.index[-1]
                     if signal["mitigated"] and end_time not in ohlc.index:
                         end_time = ohlc.index[ohlc.index.get_indexer([end_time], method='nearest')[0]]
-
+                    logger.debug(
+                        f"Adding FVG rectangle: x0={signal['time']}, x1={end_time}, y0={signal['bottom']:.6f}, y1={signal['top']:.6f}, color={color}")
                     fig.add_shape(
                         type="rect",
                         x0=signal["time"],
@@ -410,29 +400,31 @@ class FvgDetector(SMCBase):
                         opacity=0.5 if not signal["mitigated"] else 0.6,
                         name=signal["type"]
                     )
-
                     if self.show_labels:
                         text_position = 'bottom center' if signal["bias"] == BULLISH else 'top center'
                         fig.add_trace(go.Scatter(
                             x=[signal["time"]],
                             y=[(signal["top"] + signal["bottom"]) / 2],
                             mode='text',
+                            text=["Liquidity Void"],
                             textposition=text_position,
                             textfont=dict(color=color.replace('0.5', '1.0').replace('0.6', '1.0'), size=12),
                             showlegend=False
-                        ))
+                        ), row=1, col=1)
 
         # Update layout
         last_candle = ohlc.index.max().tz_convert('US/Pacific').strftime('%Y-%m-%d %H:%M')
         candle_time_str = f"Last Candle: {last_candle} (PT)"
-
         fig.update_layout(
             title=f"{symbol} | BOS/CHoCH & FVG Analysis | {candle_time_str} | TF: {self.main_tf}",
             xaxis_title="Time",
             yaxis_title="Price",
             xaxis_rangeslider_visible=False,
             showlegend=True,
-            xaxis=dict(range=[ohlc.index[0], ohlc.index[-1] + pd.Timedelta(minutes=60)])
+            xaxis=dict(range=[ohlc.index[0], ohlc.index[-1] + pd.Timedelta(minutes=60)]),
+            # width=1200,
+            # height=600,
+            margin=dict(l=50, r=50, t=100, b=100)
         )
 
         fig.update_xaxes(
@@ -442,8 +434,8 @@ class FvgDetector(SMCBase):
             tickmode='linear',
             dtick=7200000,  # 2-hour intervals
             tickangle=45,
+            row=1, col=1
         )
 
         logger.debug("Combined BOS and FVG figure generated successfully")
         return fig
-

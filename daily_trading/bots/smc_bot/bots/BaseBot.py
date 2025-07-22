@@ -120,13 +120,13 @@ class SMCBotBase:
         logger.info(msg)
         await self.telegram_bot.send_message(msg, analysis.fig)
 
-    async def fetch_ohlc_data(self, symbol: str, timeframe: str, periods: int = None) -> pd.DataFrame:
+    async def fetch_ohlc_data(self, symbol: str, timeframe: str, num_candles: int = None) -> pd.DataFrame:
         """Fetch OHLC data with caching to reduce API calls.
 
         Args:
             symbol (str): Trading pair (e.g., 'BTC/USDT').
             timeframe (str): Timeframe (e.g., '1h', '15m').
-            periods (int, optional): Number of candles to fetch.
+            num_candles (int, optional): Number of candles to fetch.
 
         Returns:
             pd.DataFrame: OHLC data with time index and float columns.
@@ -138,8 +138,8 @@ class SMCBotBase:
         }
         try:
             required_candles = self.lookback_candles.get(timeframe, 24) + 2
-            periods = required_candles if periods is None else max(periods, required_candles)
-            fetch_candles = int(periods)
+            num_candles = required_candles if num_candles is None else num_candles
+            fetch_candles = int(num_candles)
             minutes_per_candle = self.candle_duration.get(timeframe, 60)
             current_time = int(datetime.now().timestamp() * 1000)
             start_time = current_time - (fetch_candles * minutes_per_candle * 60 * 1000)

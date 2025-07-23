@@ -119,7 +119,7 @@ Explain your analysis using ICT concepts:
 REQUIRED: You must always return your analysis as a JSON object in this exact format:
 For HIGH-PROBABILITY SETUPS ONLY:
 {
-"message": "Clear, concise trading analysis. Keep it simple and informative - explain the setup, why you're taking it, key levels in plain language. 
+"message": "Clear, concise trading analysis. Keep it simple and informative - explain the setup, why you're taking it, key levels in plain language. Use bullet points. 
 Avoid jargon overload. Be precise and short.",
     "entry": int,
     "stop_loss": int,
@@ -142,7 +142,7 @@ Entry Criteria - ALL must be present:
 
 Message Content Requirements:
 Write in clear, simple language covering:
-- Setup Summary: What you see and trade direction (or why no trade)
+- Setup Summary: What you see and trade direction (or why no trade). Use bullet points.
 - Key Reasons: 2-3 main confluence factors OR reasons to wait
 - Entry Logic: Why this exact price level OR what you're waiting for
 - Risk Management: SL reasoning and R:R ratio (if trading)
@@ -188,7 +188,7 @@ Remember: Your 80% win rate comes from patience, discipline, and only taking the
                 content = response.candidates[0].content.parts[0].text
                 raw_message = json.loads(content.replace("```json\n", "").replace("\n```", "").strip())
                 logger.info(f"Gemini AI analysis complete - {json.dumps(raw_message, indent=1)}")
-                formatted_ai_message = f"\n*** AI Analysis | {self.symbol} ***\n" \
+                formatted_ai_message = f"\n*** 🤖📊 AI Analysis | {self.symbol} ***\n" \
                                        f"\n{raw_message['message']}\n" \
                                        f"\nEntry: {raw_message['entry']}" \
                                        f"\nSL: {raw_message['stop_loss']}" \

@@ -109,7 +109,7 @@ class SMCBotBase:
             f"Sleeping for {int(sleep_duration)} seconds ({sleep_duration / 60:.2f} minutes) until {next_candle}")
         await asyncio.sleep(sleep_duration)
 
-    async def send_final_message(self, analysis: SignalSummary, current_candle_time, symbol, title, ai_message=None):
+    async def send_final_message(self, analysis: SignalSummary, current_candle_time, symbol, title):
         events = [e for e in analysis.recent_smc_events if e is not None]
         events_str = '\n• '.join([event[0] if isinstance(event, list) else event for event in events])
 
@@ -244,8 +244,7 @@ class SMCBotBase:
                 if raw_message['entry']:
                     fig = ai_agent.update_plot_with_entry_data(analysis.fig, raw_message)
                     analysis.fig = fig
-                await self.send_final_message(analysis, last_candle, symbol, title=analysis.title,
-                                              ai_message=formatted_ai_message)
+                await self.send_final_message(analysis, last_candle, symbol, title=analysis.title)
                 if raw_message:
                     await self.telegram_bot.send_message(formatted_ai_message)
             else:

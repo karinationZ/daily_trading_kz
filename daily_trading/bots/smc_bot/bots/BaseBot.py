@@ -9,6 +9,7 @@ from daily_trading.bots.smc_bot.detectors.SMCBase import Trend
 from daily_trading.bots.smc_bot.strategy.BosFvgFillStrategy import SignalSummary
 from daily_trading.brokers.BitUnixClient import BitUnixClient
 from daily_trading.settings import logger, TELEGRAM_BOT_CHAT_ID, TELEGRAM_CHANNEL_CHAT_ID
+from daily_trading.technicals.AITradeAssistants.GeminiTradeAssistant import GEMINI_PRO, GeminiTradeAssistant
 from daily_trading.technicals.DivergentAssetsFinder import BitUnixDivergentAssetsFinder
 
 
@@ -108,7 +109,7 @@ class SMCBotBase:
             f"Sleeping for {int(sleep_duration)} seconds ({sleep_duration / 60:.2f} minutes) until {next_candle}")
         await asyncio.sleep(sleep_duration)
 
-    async def send_final_message(self, analysis: SignalSummary, current_candle_time, symbol, title):
+    async def send_final_message(self, analysis: SignalSummary, current_candle_time, symbol, title, ai_message=None):
         events = [e for e in analysis.recent_smc_events if e is not None]
         events_str = '\n• '.join([event[0] if isinstance(event, list) else event for event in events])
 
@@ -231,11 +232,22 @@ class SMCBotBase:
             logger.error(f"Failed to update symbols: {e}")
             raise RuntimeError(f"Failed to update symbols: {e}")
 
-    async def generate_signal(self, symbol: str, analysis: SignalSummary, last_candle: str):
+    async def generate_signal(self, symbol: str, analysis: SignalSummary, ohlc_1h: pd.DataFrame,
+                              ohlc_15m: pd.DataFrame):
         """Generate SMC signals."""
         try:
             if analysis.direction != Trend.NEUTRAL.name:
-                await self.send_final_message(analysis, last_candle, symbol, title=analysis.title)
+                ai_agent = GeminiTradeAssistant(symbol=symbol, model=GEMINI_PRO, ohlc_1h=ohlc_1h, ohlc_15m=ohlc_15m,
+                                                debug=False)
+                formatted_ai_message, raw_message = await ai_agent.analyze_asset_trade_data()
+                last_candle = ohlc_15m.index.max().tz_convert('US/Pacific').strftime('%Y-%m-%d %H:%M')
+                if raw_message['entry']:
+                    fig = ai_agent.update_plot_with_entry_data(analysis.fig, raw_message)
+                    analysis.fig = fig
+                await self.send_final_message(analysis, last_candle, symbol, title=analysis.title,
+                                              ai_message=formatted_ai_message)
+                if raw_message:
+                    await self.telegram_bot.send_message(formatted_ai_message)
             else:
                 msg = f"\n******\n{symbol}\n" \
                       f"Action: Сидим в засаде\n" \

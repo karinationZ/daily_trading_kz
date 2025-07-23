@@ -41,8 +41,7 @@ class SMCBosFvgFillBot(SMCBotBase):
 
             analysis = await self.bos_strategy.analyze_smc(symbol, ohlc_1h=ohlc_1h, ohlc_15m=ohlc_15m)
             analysis.title = "🎯BOS + FVG Fill"
-            last_candle = ohlc_15m.index.max().tz_convert('US/Pacific').strftime('%Y-%m-%d %H:%M')
-            await self.generate_signal(symbol, analysis, last_candle)
+            await self.generate_signal(symbol, analysis, ohlc_1h=ohlc_1h, ohlc_15m=ohlc_15m)
 
         except Exception as e:
             logger.error(f"Error processing {symbol}: {e}")

@@ -34,6 +34,7 @@ class SMCOrderBlockSweepBot(SMCBotBase):
         logger.info(f"Starting analysis for {symbol}")
         try:
             ohlc_main = await self.fetch_ohlc_data(symbol, self.main_tf, num_candles=120)
+            ohlc_15m = await self.fetch_ohlc_data(symbol, "15m", num_candles=100)
             if ohlc_main.empty:
                 logger.error(f"No data for {symbol}, skipping...")
                 await self.ob_sweep_strategy.telegram_bot.send_message(f"No data for {symbol}")
@@ -41,8 +42,7 @@ class SMCOrderBlockSweepBot(SMCBotBase):
 
             analysis = await self.ob_sweep_strategy.analyze_smc(symbol, ohlc_main)
             analysis.title = "🧱🧹Order Block Sweep"
-            last_candle = ohlc_main.index.max().tz_convert('US/Pacific').strftime('%Y-%m-%d %H:%M')
-            await self.generate_signal(symbol, analysis, last_candle)
+            await self.generate_signal(symbol, analysis, ohlc_1h=ohlc_main, ohlc_15m=ohlc_15m)
 
         except Exception as e:
             logger.error(f"Error processing {symbol}: {e}")

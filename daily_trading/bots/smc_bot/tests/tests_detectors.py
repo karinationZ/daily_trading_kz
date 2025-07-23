@@ -3,8 +3,8 @@ import time
 import pandas as pd
 import pytest
 
-from daily_trading.bots.smc_bot.bots.TelegramBot import TelegramBot
 from daily_trading.bots.smc_bot.bots.BaseBot import SMCBotBase
+from daily_trading.bots.smc_bot.bots.TelegramBot import TelegramBot
 from daily_trading.bots.smc_bot.detectors.BosChochDetector import BosChochDetector
 from daily_trading.bots.smc_bot.detectors.FakeBreakoutDetector import FakeBreakoutDetector
 from daily_trading.bots.smc_bot.detectors.FvgDetector import FvgDetector
@@ -13,9 +13,11 @@ from daily_trading.bots.smc_bot.detectors.LevelsBreakDetector import LevelsBreak
 from daily_trading.bots.smc_bot.detectors.LiquidityPoolDetector import LiquidityPoolDetector
 from daily_trading.bots.smc_bot.detectors.LiquiditySweepDetector import LiquiditySweepDetector
 from daily_trading.bots.smc_bot.detectors.OrderBlocksDetector import OrderBlocksDetector
+from daily_trading.bots.smc_bot.strategy.StrategyBase import SignalSummary
 from daily_trading.settings import logger, TELEGRAM_BOT_CHAT_ID
+from daily_trading.technicals.AITradeAssistants.GeminiTradeAssistant import GEMINI_PRO, GeminiTradeAssistant
 
-symbol = "CROSSUSDT"
+symbol = "RESOLVUSDT"
 main_tf = "15m"
 lookback_days = 10
 
@@ -157,21 +159,29 @@ async def test_liq_pool():
 
 
 @pytest.mark.asyncio
-async def test_fvg_bos_merge():
-    bot = SMCBotBase(symbols=[symbol], lookback_days=lookback_days, main_tf=main_tf)
-    # ohlc_1h = await bot.fetch_ohlc_data(symbol, "1h", num_candles=180)
+async def test_ai():
+    symbol = "SAHARAUSDT"
+    bot = SMCBotBase(symbols=[symbol], main_tf="1h")
+    # Fetch OHLC data within async context
+    ohlc_1h = await bot.fetch_ohlc_data(symbol, "1h", num_candles=120)
     ohlc_15m = await bot.fetch_ohlc_data(symbol, "15m", num_candles=100)
-    ohlc_15m = ohlc_15m[:-2]
 
-    with pd.option_context('display.max_rows', None, 'display.max_columns', None):
-        logger.info("\n{}", ohlc_15m.tail(50).to_string())
+    detector_fvg = FvgDetector(main_tf=main_tf, pivot_period=5, left_bars=5)
+    detector_bos = BosChochDetector(main_tf, show_bull=True, show_bear=True)
+    bos_results = detector_bos.calculate_bos_choch(ohlc_1h, plot=False)
+    fvg_results = detector_fvg.calculate_fvg(ohlc_15m, plot=False)
+    fig = detector_fvg.merge_bos_fvg_plots(ohlc_15m, bos_signals=bos_results["signals"],
+                                           fvg_signals=fvg_results["signals"])
 
+    ai_agent = GeminiTradeAssistant(symbol=symbol, model=GEMINI_PRO, ohlc_1h=ohlc_1h, ohlc_15m=ohlc_15m, debug=True)
+    formatted_ai_message, raw_message = await ai_agent.analyze_asset_trade_data()
+    raw_message['entry'] = 0.04
+    raw_message['stop_loss'] = 0.039
+    raw_message['take_profit'] = 0.042
+    if raw_message['entry']:
+        fig_1 = ai_agent.update_plot_with_entry_data(fig, entry=raw_message['entry'], stop_loss=raw_message['stop_loss'],
+                                             take_profit=raw_message['take_profit'])
+        fig_1.show()
+    summary = SignalSummary(direction="NEUTRAL", trend_signal=["Blah bla"], fig=fig, trend="Bullish")
 
-    detector_fvg = FvgDetector(main_tf="15min", pivot_period=5, left_bars=5)
-    # detector_bos = BosChochDetector(main_tf, show_bull=True, show_bear=True)
-    # bos_results = detector_bos.calculate_bos_choch(ohlc_1h, plot=False)
-    fvg_results = detector_fvg.calculate_fvg(ohlc_15m, plot=True)
-    logger.info(fvg_results["signals"])
-    fig = fvg_results["fig"]
-    # fig = detector_fvg.merge_bos_fvg_plots(ohlc_15m, bos_signals=bos_results["signals"], fvg_signals=fvg_results["signals"])
-    fig.show()
+    await bot.generate_signal(symbol, summary, ohlc_1h=ohlc_1h, ohlc_15m=ohlc_15m)

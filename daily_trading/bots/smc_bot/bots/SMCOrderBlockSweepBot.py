@@ -34,6 +34,7 @@ class SMCOrderBlockSweepBot(SMCBotBase):
         logger.info(f"Starting analysis for {symbol}")
         try:
             ohlc_main = await self.fetch_ohlc_data(symbol, self.main_tf, num_candles=120)
+            ohlc_4h = await self.fetch_ohlc_data(symbol, "4h", num_candles=24)
             ohlc_15m = await self.fetch_ohlc_data(symbol, "15m", num_candles=100)
             if ohlc_main.empty:
                 logger.error(f"No data for {symbol}, skipping...")
@@ -42,7 +43,7 @@ class SMCOrderBlockSweepBot(SMCBotBase):
 
             analysis = await self.ob_sweep_strategy.analyze_smc(symbol, ohlc_main)
             analysis.title = "🧱🧹Order Block Sweep"
-            await self.generate_signal(symbol, analysis, ohlc_1h=ohlc_main, ohlc_15m=ohlc_15m)
+            await self.generate_signal(symbol, analysis, ohlc_4h=ohlc_4h, ohlc_1h=ohlc_main, ohlc_15m=ohlc_15m)
 
         except Exception as e:
             logger.error(f"Error processing {symbol}: {e}")

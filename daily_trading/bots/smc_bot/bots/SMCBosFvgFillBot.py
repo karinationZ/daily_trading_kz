@@ -32,6 +32,7 @@ class SMCBosFvgFillBot(SMCBotBase):
         logger.info(f"Starting analysis for {symbol}")
         try:
             ohlc_15m = await self.fetch_ohlc_data(symbol, "15m", num_candles=100)
+            ohlc_4h = await self.fetch_ohlc_data(symbol, "4h", num_candles=24)
             ohlc_1h = await self.fetch_ohlc_data(symbol, self.main_tf, num_candles=120)
 
             if ohlc_1h.empty or ohlc_15m.empty:
@@ -41,7 +42,7 @@ class SMCBosFvgFillBot(SMCBotBase):
 
             analysis = await self.bos_strategy.analyze_smc(symbol, ohlc_1h=ohlc_1h, ohlc_15m=ohlc_15m)
             analysis.title = "🎯BOS + FVG Fill"
-            await self.generate_signal(symbol, analysis, ohlc_1h=ohlc_1h, ohlc_15m=ohlc_15m)
+            await self.generate_signal(symbol, analysis, ohlc_4h=ohlc_4h, ohlc_1h=ohlc_1h, ohlc_15m=ohlc_15m)
 
         except Exception as e:
             logger.error(f"Error processing {symbol}: {e}")

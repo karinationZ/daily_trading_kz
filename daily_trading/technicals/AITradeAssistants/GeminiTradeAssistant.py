@@ -1,9 +1,11 @@
 import asyncio
 import json
 from dataclasses import dataclass
+from datetime import datetime
 
 import pandas as pd
 import plotly.graph_objects as go
+import pytz
 from google import genai
 
 from daily_trading.bots.smc_bot.detectors.BosChochDetector import BosChochDetector
@@ -36,7 +38,8 @@ class AssetData:
 
 
 class GeminiTradeAssistant:
-    def __init__(self, symbol: str, model: str, ohlc_4h: pd.DataFrame, ohlc_1h: pd.DataFrame, ohlc_15m: pd.DataFrame, main_tf="1h",
+    def __init__(self, symbol: str, model: str, ohlc_4h: pd.DataFrame, ohlc_1h: pd.DataFrame, ohlc_15m: pd.DataFrame,
+                 main_tf="1h",
                  debug=False):
         self.api_key = GEMINI_API_KEY
         self.model = model
@@ -55,7 +58,6 @@ class GeminiTradeAssistant:
         ohlc_1h_subset = self.ohlc_1h.tail(24).to_dict(orient="records")
         ohlc_15m_subset = self.ohlc_15m.tail(96).to_dict(orient="records")
         ohlc_4h_subset = self.ohlc_4h.tail(18).to_dict(orient="records")
-
 
         detector_fvg = FvgDetector(main_tf="15min", pivot_period=5, left_bars=5)
         detector_bos = BosChochDetector(self.main_tf, show_bull=True, show_bear=True)
@@ -273,6 +275,15 @@ Remember: Your 80% win rate comes from patience, discipline, and only taking the
         )
         return fig
 
+    @staticmethod
+    def can_send_request(start_hour=6, end_hour=23, end_minute=0):
+        pacific = pytz.timezone('US/Pacific')
+        now = datetime.now(pacific)
+        current_time = now.hour * 60 + now.minute
+        start_time = start_hour * 60
+        end_time = end_hour * 60 + end_minute
+        return start_time <= current_time <= end_time
+
 
 async def main():
     from daily_trading.bots.smc_bot.bots.BaseBot import SMCBotBase
@@ -286,7 +297,8 @@ async def main():
     ohlc_15m = await bot.fetch_ohlc_data(symbol, "15m", num_candles=100)
     ohlc_4h = await bot.fetch_ohlc_data(symbol, "4h", num_candles=18)
 
-    ai_agent = GeminiTradeAssistant(symbol=symbol, model=GEMINI_PRO, ohlc_4h=ohlc_4h, ohlc_1h=ohlc_1h, ohlc_15m=ohlc_15m, debug=False)
+    ai_agent = GeminiTradeAssistant(symbol=symbol, model=GEMINI_PRO, ohlc_4h=ohlc_4h, ohlc_1h=ohlc_1h,
+                                    ohlc_15m=ohlc_15m, debug=False)
 
     if want_to_pay_for_analyses:
         formatted_ai_message, raw_message = await ai_agent.analyze_asset_trade_data()

@@ -160,6 +160,7 @@ async def test_ai():
     bot = SMCBotBase(symbols=[symbol], main_tf="1h")
     # Fetch OHLC data within async context
     ohlc_1h = await bot.fetch_ohlc_data(symbol, "1h", num_candles=120)
+    ohlc_4h = await bot.fetch_ohlc_data(symbol, "4h", num_candles=24)
     ohlc_15m = await bot.fetch_ohlc_data(symbol, "15m", num_candles=100)
 
     detector_fvg = FvgDetector(main_tf=main_tf, pivot_period=5, left_bars=5)
@@ -179,4 +180,4 @@ async def test_ai():
         fig_1.show()
     summary = SignalSummary(direction="NEUTRAL", trend_signal=["Blah bla"], fig=fig, trend="Bullish")
 
-    await bot.generate_signal(symbol, summary, ohlc_1h=ohlc_1h, ohlc_15m=ohlc_15m)
+    await bot.generate_signal(symbol, summary, ohlc_4h=ohlc_4h, ohlc_1h=ohlc_1h, ohlc_15m=ohlc_15m)

@@ -232,20 +232,26 @@ class SMCBotBase:
             logger.error(f"Failed to update symbols: {e}")
             raise RuntimeError(f"Failed to update symbols: {e}")
 
-    async def generate_signal(self, symbol: str, analysis: SignalSummary, ohlc_1h: pd.DataFrame,
+    async def generate_signal(self, symbol: str, analysis: SignalSummary, ohlc_4h: pd.DataFrame, ohlc_1h: pd.DataFrame,
                               ohlc_15m: pd.DataFrame):
         """Generate SMC signals."""
         try:
             if analysis.direction != Trend.NEUTRAL.name:
-                ai_agent = GeminiTradeAssistant(symbol=symbol, model=GEMINI_PRO, ohlc_1h=ohlc_1h, ohlc_15m=ohlc_15m,
-                                                debug=False)
-                formatted_ai_message, raw_message = await ai_agent.analyze_asset_trade_data()
                 last_candle = ohlc_15m.index.max().tz_convert('US/Pacific').strftime('%Y-%m-%d %H:%M')
-                if raw_message['entry']:
-                    fig = ai_agent.update_plot_with_entry_data(analysis.fig, raw_message)
-                    analysis.fig = fig
                 await self.send_final_message(analysis, last_candle, symbol, title=analysis.title)
-                if raw_message:
+                # AI Request
+                ai_agent = GeminiTradeAssistant(symbol=symbol,
+                                                model=GEMINI_PRO,
+                                                ohlc_4h=ohlc_4h,
+                                                ohlc_1h=ohlc_1h,
+                                                ohlc_15m=ohlc_15m,
+                                                debug=False)
+                can_run_gemini = ai_agent.can_send_request(start_hour=6, end_hour=23)
+                if can_run_gemini:
+                    formatted_ai_message, raw_message = await ai_agent.analyze_asset_trade_data()
+                    if raw_message['entry']:
+                        fig = ai_agent.update_plot_with_entry_data(analysis.fig, raw_message)
+                        analysis.fig = fig
                     await self.telegram_bot.send_message(formatted_ai_message)
             else:
                 msg = f"\n******\n{symbol}\n" \

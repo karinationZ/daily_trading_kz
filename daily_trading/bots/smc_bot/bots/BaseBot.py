@@ -238,7 +238,6 @@ class SMCBotBase:
         try:
             if analysis.direction != Trend.NEUTRAL.name:
                 last_candle = ohlc_15m.index.max().tz_convert('US/Pacific').strftime('%Y-%m-%d %H:%M')
-                await self.send_final_message(analysis, last_candle, symbol, title=analysis.title)
                 # AI Request
                 ai_agent = GeminiTradeAssistant(symbol=symbol,
                                                 model=GEMINI_PRO,
@@ -247,11 +246,15 @@ class SMCBotBase:
                                                 ohlc_15m=ohlc_15m,
                                                 debug=False)
                 can_run_gemini = ai_agent.can_send_request(start_hour=6, end_hour=23)
+                formatted_ai_message = None
                 if can_run_gemini:
                     formatted_ai_message, raw_message = await ai_agent.analyze_asset_trade_data()
                     if raw_message['entry']:
                         fig = ai_agent.update_plot_with_entry_data(analysis.fig, raw_message)
                         analysis.fig = fig
+                await self.send_final_message(analysis, last_candle, symbol, title=analysis.title)
+
+                if formatted_ai_message:
                     await self.telegram_bot.send_message(formatted_ai_message)
             else:
                 msg = f"\n******\n{symbol}\n" \

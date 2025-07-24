@@ -31,17 +31,19 @@ class AssetData:
     pivot_low_points: list
     ob_signals: list
     ohlc_1h: list
+    ohlc_4h: list
     ohlc_15m: list
 
 
 class GeminiTradeAssistant:
-    def __init__(self, symbol: str, model: str, ohlc_1h: pd.DataFrame, ohlc_15m: pd.DataFrame, main_tf="1h",
+    def __init__(self, symbol: str, model: str, ohlc_4h: pd.DataFrame, ohlc_1h: pd.DataFrame, ohlc_15m: pd.DataFrame, main_tf="1h",
                  debug=False):
         self.api_key = GEMINI_API_KEY
         self.model = model
         self.symbol = symbol.upper()
         self.ohlc_1h = ohlc_1h
         self.ohlc_15m = ohlc_15m
+        self.ohlc_4h = ohlc_4h
         self.main_tf = main_tf
         self.client = genai.Client()
         self.debug = debug
@@ -52,6 +54,8 @@ class GeminiTradeAssistant:
         # Select the last 24 candles for 1H and 96 candles for 15m
         ohlc_1h_subset = self.ohlc_1h.tail(24).to_dict(orient="records")
         ohlc_15m_subset = self.ohlc_15m.tail(96).to_dict(orient="records")
+        ohlc_4h_subset = self.ohlc_4h.tail(18).to_dict(orient="records")
+
 
         detector_fvg = FvgDetector(main_tf="15min", pivot_period=5, left_bars=5)
         detector_bos = BosChochDetector(self.main_tf, show_bull=True, show_bear=True)
@@ -69,7 +73,8 @@ class GeminiTradeAssistant:
             pivot_low_points=high_low_detector.calculate_pivots(self.ohlc_1h)[1],
             ob_signals=ob_results["order_blocks"],
             ohlc_1h=ohlc_1h_subset,
-            ohlc_15m=ohlc_15m_subset
+            ohlc_15m=ohlc_15m_subset,
+            ohlc_4h=ohlc_4h_subset
         )
 
     async def build_prompt(self) -> str:
@@ -90,9 +95,10 @@ You follow strict ICT Smart Money Concepts including:
 
 ## Input Data:
 1. **OHLC 1H Data**: {data.ohlc_1h}
-2. **OHLC 15MIN Data** - Entry timeframe for precise execution: {data.ohlc_15m}
-3. **FVG Signals** - Fair Value Gap locations and classifications (bullish/bearish/mitigation): {data.fvg_signals}
-4. **BOS (Break of Structure) Signals**: {data.bos_choch_signals}
+2. **OHLC 4H Data**: {data.ohlc_4h}
+3. **OHLC 15MIN Data** - Entry timeframe for precise execution: {data.ohlc_15m}
+4. **FVG Signals** - Fair Value Gap locations and classifications (bullish/bearish/mitigation): {data.fvg_signals}
+5. **BOS (Break of Structure) Signals**: {data.bos_choch_signals}
 6. **Pivot Highs** - Recent swing highs and potential resistance levels: {data.pivot_high_points}
 7. **Pivot Lows** - Recent swing lows and potential support levels: {data.pivot_low_points}
 8. **Order Blocks** - Institutional order zones: {data.ob_signals}""" + """
@@ -271,15 +277,16 @@ Remember: Your 80% win rate comes from patience, discipline, and only taking the
 async def main():
     from daily_trading.bots.smc_bot.bots.BaseBot import SMCBotBase
     logger.debug("Searching for assets that move most independently of Bitcoin.")
-    symbol = "SAHARAUSDT"
-    want_to_pay_for_analyses = False
+    symbol = "HUMAUSDT"
+    want_to_pay_for_analyses = True
     bot = SMCBotBase(symbols=[symbol], main_tf="1h")
 
     # Fetch OHLC data within async context
     ohlc_1h = await bot.fetch_ohlc_data(symbol, "1h", num_candles=120)
     ohlc_15m = await bot.fetch_ohlc_data(symbol, "15m", num_candles=100)
+    ohlc_4h = await bot.fetch_ohlc_data(symbol, "4h", num_candles=18)
 
-    ai_agent = GeminiTradeAssistant(symbol=symbol, model=GEMINI_PRO, ohlc_1h=ohlc_1h, ohlc_15m=ohlc_15m, debug=False)
+    ai_agent = GeminiTradeAssistant(symbol=symbol, model=GEMINI_PRO, ohlc_4h=ohlc_4h, ohlc_1h=ohlc_1h, ohlc_15m=ohlc_15m, debug=False)
 
     if want_to_pay_for_analyses:
         formatted_ai_message, raw_message = await ai_agent.analyze_asset_trade_data()

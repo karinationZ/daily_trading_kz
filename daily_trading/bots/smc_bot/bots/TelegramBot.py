@@ -7,6 +7,7 @@ import plotly.graph_objects as go
 from aiogram import Bot
 from aiogram.client.default import DefaultBotProperties
 from aiogram.client.session.aiohttp import AiohttpSession
+from aiogram.enums import ParseMode
 from aiogram.exceptions import TelegramAPIError
 from aiogram.types import BufferedInputFile
 from tenacity import retry, stop_after_attempt, wait_exponential
@@ -95,7 +96,8 @@ class TelegramBot:
                 else:
                     await self.bot.send_message(
                         chat_id=self.chat_id,
-                        text=text
+                        text=text,
+                        parse_mode=ParseMode.HTML
                     )
 
                 logger.info(f"Telegram message sent successfully.")

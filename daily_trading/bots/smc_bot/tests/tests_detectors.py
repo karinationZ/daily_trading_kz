@@ -147,15 +147,11 @@ async def test_liq_pool():
     detector = LiquidityPoolDetector(main_tf="1h")
     results = detector.calculate_liquidity_pools(ohlc, plot=True)
     fig = results["fig"]
-    fig.show()
+    # fig.show()
     bot = TelegramBot(chat_id=TELEGRAM_BOT_CHAT_ID)
 
-    for i in range(10):
-        await bot.send_message(
-            text="TEST TEST TEST",
-            image=fig
-        )
-        time.sleep(1)
+    await bot.send_message(
+        text="<b>Bold text</b>")
 
 
 @pytest.mark.asyncio
@@ -179,8 +175,7 @@ async def test_ai():
     raw_message['stop_loss'] = 0.039
     raw_message['take_profit'] = 0.042
     if raw_message['entry']:
-        fig_1 = ai_agent.update_plot_with_entry_data(fig, entry=raw_message['entry'], stop_loss=raw_message['stop_loss'],
-                                             take_profit=raw_message['take_profit'])
+        fig_1 = ai_agent.update_plot_with_entry_data(fig, raw_message)
         fig_1.show()
     summary = SignalSummary(direction="NEUTRAL", trend_signal=["Blah bla"], fig=fig, trend="Bullish")
 

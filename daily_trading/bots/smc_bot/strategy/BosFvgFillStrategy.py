@@ -156,7 +156,7 @@ class BosFvgFillStrategy(StrategyBase):
 
     async def confirm_fvg_mitigation(self, symbol, ohlc_15m: pd.DataFrame, trend: str, fvg_signal: dict):
         """
-        Confirm if the current candle mitigates an FVG by 80% or more.
+        Confirm if the current candle mitigates an FVG by 60% or more.
 
         Args:
             symbol: Asset
@@ -194,9 +194,9 @@ class BosFvgFillStrategy(StrategyBase):
                     self.last_mitigated_fvg_level_map[symbol] = max(candle_low, fvg_bottom)
                 mitigation_depth = fvg_top - self.last_mitigated_fvg_level_map[symbol]
                 mitigation_percent = (mitigation_depth / fvg_range) * 100 if fvg_range > 0 else 0
-                if mitigation_percent >= 80:
+                if mitigation_percent >= 60:
                     fvg_mitigated = True
-                    recent_smc_events.append(f"Price mitigated {trend} FVG by {mitigation_percent:.2f}% (>= 80%)")
+                    recent_smc_events.append(f"Price mitigated {trend} FVG by {mitigation_percent:.2f}% (>= 60%)")
                     self.last_mitigated_fvg_level_map[symbol] = None
                     self._current_fvg_id_map[symbol] = None
                 else:
@@ -208,9 +208,9 @@ class BosFvgFillStrategy(StrategyBase):
                     self.last_mitigated_fvg_level_map[symbol] = min(candle_high, fvg_top)
                 mitigation_depth = self.last_mitigated_fvg_level_map[symbol] - fvg_bottom
                 mitigation_percent = (mitigation_depth / fvg_range) * 100 if fvg_range > 0 else 0
-                if mitigation_percent >= 80:
+                if mitigation_percent >= 60:
                     fvg_mitigated = True
-                    recent_smc_events.append(f"Price mitigated {trend} FVG by {mitigation_percent:.2f}% (>= 80%)")
+                    recent_smc_events.append(f"Price mitigated {trend} FVG by {mitigation_percent:.2f}% (>= 60%)")
                     self.last_mitigated_fvg_level_map[symbol] = None
                     self._current_fvg_id_map[symbol] = None
                 else:

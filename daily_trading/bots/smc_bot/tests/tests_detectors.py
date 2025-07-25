@@ -13,10 +13,10 @@ from daily_trading.bots.smc_bot.detectors.LiquiditySweepDetector import Liquidit
 from daily_trading.bots.smc_bot.detectors.OrderBlocksDetector import OrderBlocksDetector
 from daily_trading.bots.smc_bot.detectors.VolumeProfiler import VolumeProfileCollector
 from daily_trading.bots.smc_bot.strategy.StrategyBase import SignalSummary
-from daily_trading.settings import logger
+from daily_trading.settings import logger, TELEGRAM_BOT_CHAT_ID
 from daily_trading.technicals.AITradeAssistants.GeminiTradeAssistant import GEMINI_PRO, GeminiTradeAssistant, Ohlc
 
-symbol = "RESOLVUSDT"
+symbol = "DIAUSDT"
 main_tf = "1h"
 lookback_days = 10
 
@@ -162,13 +162,23 @@ async def test_vol_prof():
         logger.info("\n{}", ohlc.to_string())
 
     detector = VolumeProfileCollector(main_tf="1h")
-    results = detector.calculate_volume_profile(ohlc, plot=False)
+    results = detector.calculate_volume_profile(ohlc, plot=True)
     fig = results["fig"]
-    fig.show()
-    # bot = TelegramBot(chat_id=TELEGRAM_BOT_CHAT_ID)
-    #
-    # await bot.send_message(
-    #     text="<b>Bold text</b>")
+    # fig.show()
+    bot = TelegramBot(chat_id=TELEGRAM_BOT_CHAT_ID)
+
+    await bot.send_message(
+        text="""🎯BOS + FVG Fill - CFXUSDT 2025-07-25 08:30
+Action: Go LONG.
+Trend: BULLISH
+SMC Events:
+• BULLISH trend confirmed.
+• BOS at 2025-07-25 10:00
+• Found nearest BULLISH FVG.
+• Current price is in BULLISH FVG.
+• Price mitigated BULLISH FVG by 74.55% (>= 60%)
+• Generated LONG signal for CFXUSDT based on FVG mitigation.")
+""", image=fig)
 
 
 @pytest.mark.asyncio
@@ -203,6 +213,25 @@ async def test_ai():
 
 
 @pytest.mark.asyncio
-async def test():
-    t = TelegramBot()
-    r = await t.get_channel_id_from_updates()
+async def test_merge_ob_and_bos():
+    bot = SMCBotBase(symbols=[symbol], lookback_days=lookback_days, main_tf=main_tf)
+    ohlc_1h = await bot.fetch_ohlc_data(symbol, "1h", num_candles=120)
+    ohlc_15m = await bot.fetch_ohlc_data(symbol, "15m", num_candles=100)
+    # with pd.option_context('display.max_rows', None, 'display.max_columns', None):
+    #     logger.info("\n{}", ohlc.tail(50).to_string())
+
+    ob_detector = OrderBlocksDetector(main_tf)
+    results = ob_detector.calculate_order_blocks(ohlc_15m, plot=True)
+    ob_signals = results["order_blocks"]
+    ob_fig = results["fig"]
+
+    detector = BosChochDetector(main_tf, show_bull=True, show_bear=True)
+    results = detector.calculate_bos_choch(ohlc_1h, plot=True)
+    bos_signals = results["signals"]
+    bos_fig = results["fig"]
+
+    fig = ob_detector.merge_bos_ob_plots(ohlc_15m, bos_signals, ob_signals=ob_signals)
+    fig.show()
+
+
+

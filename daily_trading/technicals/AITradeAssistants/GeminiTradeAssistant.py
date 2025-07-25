@@ -181,7 +181,7 @@ You follow strict ICT Smart Money Concepts combined with advanced market analysi
 - **Clear Higher Timeframe Bias**: 1H structure showing institutional direction
 - **Multiple Confluence**: FVG + Order Block + BOS/ChoCH + Volume Profile alignment
 - **Clean Market Structure**: Defined institutional levels with clear invalidation
-- **Risk:Reward Minimum**: 1:2 ratio with structure-based targets
+- **Risk:Reward Minimum**: 1:3 ratio with structure-based targets
 - **No Conflicting Signals**: All analysis components align with trade direction
 - **Sentiment Confirmation**: Market psychology supports or provides contrarian opportunity
 
@@ -199,6 +199,7 @@ You follow strict ICT Smart Money Concepts combined with advanced market analysi
 - **Session Timing**: Optimal execution based on volume and volatility
 - **Alternative Scenarios**: What to watch if primary analysis doesn't play out
 
+## Response must short, clear, precise and easy to understand. Use abbreviations (i.e FVG) instead full names..
 ## Response Output Format:
 
 ### For HIGH-PROBABILITY SETUPS ONLY:
@@ -365,7 +366,7 @@ Remember: Your edge comes from identifying where institutions are positioned and
 async def main():
     from daily_trading.bots.smc_bot.bots.BaseBot import SMCBotBase
     logger.debug("Searching for assets that move most independently of Bitcoin.")
-    symbol = "SAHARAUSDT"
+    symbol = "PUMPFUNUSDT"
     want_to_pay_for_analyses = True
     bot = SMCBotBase(symbols=[symbol], main_tf="1h")
 

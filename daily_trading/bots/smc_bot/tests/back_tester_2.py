@@ -4,7 +4,7 @@ from typing import Dict, List, Tuple
 import pandas as pd
 
 from daily_trading.bots.smc_bot.bots.BaseBot import SMCBotBase
-from daily_trading.bots.smc_bot.strategy.MajorHighHighLowLowRejectionStrategy import MajorHHLLRejectionStrategy
+from daily_trading.bots.smc_bot.strategy.BosOrderBlockTapStrategy import MajorHHLLRejectionStrategy
 from daily_trading.settings import *
 
 

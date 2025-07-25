@@ -1,6 +1,3 @@
-from datetime import datetime
-from typing import List, Tuple
-
 import pandas as pd
 
 from daily_trading.bots.smc_bot.detectors.BosChochDetector import BosChochDetector
@@ -8,7 +5,6 @@ from daily_trading.bots.smc_bot.detectors.FvgDetector import FvgDetector
 from daily_trading.bots.smc_bot.detectors.HighLowDetector import HighLowDetector
 from daily_trading.bots.smc_bot.detectors.SMCBase import Trend
 from daily_trading.bots.smc_bot.strategy.StrategyBase import SignalSummary, StrategyBase
-from daily_trading.settings import logger
 
 
 class BosFvgFillStrategy(StrategyBase):
@@ -30,7 +26,7 @@ class BosFvgFillStrategy(StrategyBase):
         self.detectors = {
             'swing_1h': HighLowDetector(main_tf),  # Detects HH/HL/LL/LH on 1H
             'bos_1h': BosChochDetector(main_tf),  # Detects BOS/CHOCH on 1H
-            'fvg_15m': FvgDetector(main_tf="15m", pivot_period=5, left_bars=5) # Detects FVGs on 15m
+            'fvg_15m': FvgDetector(main_tf="15m", pivot_period=5, left_bars=5)  # Detects FVGs on 15m
         }
         self.bos_signals = None
         self.recent_bos_signal = None
@@ -39,65 +35,6 @@ class BosFvgFillStrategy(StrategyBase):
         self.last_bos_time = None  # Track last BOS time
         self.last_mitigated_fvg_level_map = {}  # Initialize as empty dict
         self._current_fvg_id_map = {}  # Initialize as empty dict
-
-    async def confirm_trend(self, ohlc_1h, symbol: str, cache_key: Tuple[str, str], current_time: datetime):
-        """Step 1: Identify Trend on 1H (last 24 candles)."""
-        swing_1h = self.detectors['swing_1h'].calculate_high_low_swings(ohlc_1h, plot=True)
-        fig = swing_1h["fig"]
-        trend, recent_smc_events = await self.get_trend(ohlc_1h, symbol, cache_key, current_time, fig)
-        return trend, recent_smc_events, fig
-
-    async def detect_bos_choch(self, ohlc_1h: pd.DataFrame, trend: str, symbol: str) -> List[str]:
-        """Step 2: Detect BOS or CHOCH on 1H, reset on CHOCH."""
-        recent_smc_events = []
-        results = self.detectors['bos_1h'].calculate_bos_choch(ohlc_1h, plot=True)
-        self.bos_signals = results["signals"]
-        self.bos_choch_fig = results["fig"]
-        bos_choch_signals = sorted(results["signals"], key=lambda x: x["time"], reverse=True)
-
-        if not bos_choch_signals:
-            event = "There are no BOS or ChoCH signals."
-            recent_smc_events.append(event)
-            return recent_smc_events
-
-        recent_signal = bos_choch_signals[0]
-
-        # Check if last smc event is ChoCH
-        if recent_signal["type"] == "CHoCH":
-            bos_event = f"Change of Character! Market trend may change ..."
-            self.recent_bos_signal = None
-            recent_smc_events.append(bos_event)
-            logger.info(f"Step 2: {bos_event} for {symbol}")
-            await self.send_telegram_message(f"{symbol} | Step 2: {bos_event}.", self.bos_choch_fig)
-            return recent_smc_events
-
-        # Get recent BOS signal
-        expected_bias = Trend.BULLISH.value if trend == Trend.BULLISH.name else Trend.BEARISH.value
-        last_bos_bias = recent_signal['bias']
-
-        if last_bos_bias != expected_bias:
-            last_bias_name = "Bullish" if last_bos_bias == 1 else "Bearish"
-            bos_event = f"Recent BOS opposes the trend direction. BOS type:{last_bias_name}. Trend: {trend}"
-            self.recent_bos_signal = None
-            recent_smc_events.append(bos_event)
-            logger.info(f"Step 2: {bos_event} for {symbol}")
-            await self.send_telegram_message(f"{symbol} | Step 2: {bos_event}.", self.bos_choch_fig)
-            return recent_smc_events
-
-        expected_bos_signals = [s for s in bos_choch_signals if s['type'] == 'BOS' and s['bias'] == expected_bias]
-        if not expected_bos_signals:
-            bos_event = f"No BOS signals detected. Expected Bias - {expected_bias}."
-            recent_smc_events.append(bos_event)
-            logger.debug(f"Step 2: {bos_event}")
-        else:
-            self.recent_bos_signal = expected_bos_signals[0]
-            bos_event = f"{self.recent_bos_signal['type']} at " \
-                        f"{self.recent_bos_signal['time'].strftime('%Y-%m-%d %H:%M')}"
-            recent_smc_events.append(bos_event)
-            logger.debug(f"Step 2: {bos_event}")
-
-        await self.send_telegram_message(f"Step 2: {bos_event} for {symbol}.", self.bos_choch_fig)
-        return recent_smc_events
 
     async def get_nearest_fvg(self, ohlc_15m: pd.DataFrame, trend: str):
         """Step 4: Confirm price touches the nearest unmitigated FVG on 15m."""
@@ -229,11 +166,12 @@ class BosFvgFillStrategy(StrategyBase):
         recent_smc_events = []
 
         # Step 1: Identify market trend
-        trend, trend_event, fig = await self.confirm_trend(ohlc_1h, symbol, cache_key, current_time)
+        trend, trend_event, fig = await self.confirm_trend(self.detectors['swing_1h'], ohlc_1h, symbol, cache_key,
+                                                           current_time)
         recent_smc_events.extend(trend_event)
 
         # Step 2: Detect BOS & ChoCH signals
-        bos_events = await self.detect_bos_choch(ohlc_1h, trend, symbol)
+        bos_events = await self.detect_bos_choch( self.detectors['bos_1h'], ohlc_1h, trend, symbol)
         recent_smc_events.extend(bos_events)
         signal_summary = SignalSummary(
             direction=Trend.NEUTRAL.name,

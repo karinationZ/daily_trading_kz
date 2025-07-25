@@ -27,6 +27,7 @@ class SMCBosFvgFillBot(SMCBotBase):
 
         self.chat_id = telegram_chat_id
         self.bos_strategy = BosFvgFillStrategy(main_tf, debug, telegram_chat_id=self.chat_id)
+        self.strategy_name = "🎯BOS + FVG Fill"
 
     async def run_symbol(self, symbol: str):
         """Analyze a single symbol and generate SMC signals."""
@@ -43,7 +44,7 @@ class SMCBosFvgFillBot(SMCBotBase):
                 return
 
             analysis = await self.bos_strategy.analyze_smc(symbol, ohlc_1h=ohlc_1h, ohlc_15m=ohlc_15m)
-            analysis.title = "🎯BOS + FVG Fill"
+            analysis.title = self.strategy_name
             await self.generate_signal(symbol, analysis,
                                        ohlc_1d=ohlc_1d,
                                        ohlc_4h=ohlc_4h,
@@ -75,9 +76,9 @@ class SMCBosFvgFillBot(SMCBotBase):
                 for symbol, result in zip(self.symbols, results):
                     if isinstance(result, Exception):
                         logger.error(f"Error processing {symbol}: {result}")
-                await self.sleep_until_next_15min()
+                await self.sleep_until_next_interval()
 
             except Exception as e:
                 logger.error(f"Error in main loop: {e}")
-                await self.sleep_until_next_15min()
+                await self.sleep_until_next_interval()
                 continue

@@ -48,13 +48,6 @@ class OrderBlockSweepStrategy(StrategyBase):
         self.nearest_ob = None
         logger.info(f"ContinuationBlockOrderSweepStrategy initialized with detectors")
 
-    async def confirm_trend(self, ohlc_1h, symbol: str, cache_key: Tuple[str, str], current_time: datetime):
-        """Step 1: Identify Trend on 1H (last 24 candles)."""
-        swing_1h = self.detectors['swing_1h'].calculate_high_low_swings(ohlc_1h, plot=True)
-        fig = swing_1h["fig"]
-        trend, recent_smc_events = await self.get_trend(ohlc_1h, symbol, cache_key, current_time, fig)
-        return trend, recent_smc_events, fig
-
     async def detect_ob(self, ohlc_1h: pd.DataFrame, symbol: str, trend: str, cache_key: Tuple[str, str]):
         """Step 2: Detect Block Orders on 1H."""
         current_time = ohlc_1h.index.max()
@@ -171,7 +164,8 @@ class OrderBlockSweepStrategy(StrategyBase):
         recent_smc_events = []
 
         # Step 1: Confirm trend alignment
-        trend, step1_events, high_low_fig = await self.confirm_trend(ohlc_1h, symbol, cache_key, current_time)
+        trend, step1_events, high_low_fig = await self.confirm_trend(self.detectors['swing_1h'], ohlc_1h, symbol,
+                                                                     cache_key, current_time)
         recent_smc_events.extend(step1_events)
         signal_summary = SignalSummary(direction=Trend.NEUTRAL.name,
                                        trend=trend,

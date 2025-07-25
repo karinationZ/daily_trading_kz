@@ -8,7 +8,7 @@ from daily_trading.bots.smc_bot.bots.TelegramBot import TelegramBot
 from daily_trading.bots.smc_bot.detectors.SMCBase import Trend
 from daily_trading.bots.smc_bot.strategy.BosFvgFillStrategy import SignalSummary
 from daily_trading.brokers.BitUnixClient import BitUnixClient
-from daily_trading.settings import logger, TELEGRAM_DEBUG_CHANNEL_ID, TELEGRAM_CHANNEL_CHAT_ID
+from daily_trading.settings import logger, TELEGRAM_CHANNEL_CHAT_ID, TELEGRAM_DEBUG_CHANNEL_ID
 from daily_trading.technicals.AITradeAssistants.GeminiTradeAssistant import GEMINI_PRO, GeminiTradeAssistant, Ohlc
 from daily_trading.technicals.DivergentAssetsFinder import BitUnixDivergentAssetsFinder
 
@@ -52,6 +52,7 @@ class SMCBotBase:
         }
         self.lookback_candles = self.lookback_days_converter(lookback_days)
         logger.info(f"SMCTradingBot initialized with {len(symbols)} symbols, {main_tf} TF.")
+        self.strategy_name = None
 
     def lookback_days_converter(self, num_days: int) -> dict:
         """Convert lookback days to candles for each timeframe.
@@ -76,16 +77,19 @@ class SMCBotBase:
         return lookback
 
     @staticmethod
-    async def sleep_until_next_15min():
+    async def sleep_until_next_interval(interval_minutes: int = 15):
+        """
+        Sleep until the next specified time interval (e.g., 15, 20 minutes).
+        """
         # Get current time in UTC
         now = datetime.now(pytz.UTC)
 
-        # Round to next 15-min mark
-        minute = ((now.minute // 15) + 1) * 15
+        # Round to next interval mark
+        minute = ((now.minute // interval_minutes) + 1) * interval_minutes
         next_candle = now.replace(minute=0, second=0, microsecond=0) + timedelta(minutes=minute)
 
-        # Handle overflow (e.g., 21:53 → 22:00)
-        if next_candle.minute == 60:
+        # Handle overflow (e.g., minute == 60)
+        if next_candle.minute >= 60:
             next_candle = next_candle.replace(minute=0) + timedelta(hours=1)
 
         # Time to sleep (in seconds)
@@ -259,11 +263,12 @@ class SMCBotBase:
                 if formatted_ai_message:
                     await self.telegram_bot.send_message(formatted_ai_message)
             else:
-                msg = f"\n******\n{symbol}\n" \
+                events = [e for e in analysis.recent_smc_events if e is not None]
+                events_str = '\n • '.join([event[0] if isinstance(event, list) else event for event in events])
+                msg = f"{symbol}\n{self.strategy_name}\n" \
                       f"Action: Сидим в засаде\n" \
                       f"Trend: {analysis.trend}\n" \
-                      f"SMC Events: {analysis.recent_smc_events}\n" \
-                      f"******"
+                      f"SMC Events:\n • {events_str}\n"
                 logger.info(msg)
                 # TODO - DELETE IT
                 if analysis.direction == Trend.NEUTRAL.name:

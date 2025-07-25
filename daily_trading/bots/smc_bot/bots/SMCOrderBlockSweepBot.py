@@ -28,6 +28,7 @@ class SMCOrderBlockSweepBot(SMCBotBase):
                          telegram_chat_id=telegram_chat_id)
         self.ob_sweep_strategy = OrderBlockSweepStrategy(main_tf, debug, telegram_chat_id=telegram_chat_id)
         logger.info(f"SMCOrderBlockSweepBot initialized with {len(symbols)} symbols, {main_tf} TF.")
+        self.strategy_name = "🧱🧹1H Order Block Sweep"
 
     async def run_symbol(self, symbol: str):
         """Analyze a single symbol and generate SMC signals."""
@@ -44,7 +45,7 @@ class SMCOrderBlockSweepBot(SMCBotBase):
                 return
 
             analysis = await self.ob_sweep_strategy.analyze_smc(symbol, ohlc_1h)
-            analysis.title = "🧱🧹Order Block Sweep"
+            analysis.title = self.strategy_name
             await self.generate_signal(symbol, analysis,
                                        ohlc_1d=ohlc_1d,
                                        ohlc_4h=ohlc_4h,

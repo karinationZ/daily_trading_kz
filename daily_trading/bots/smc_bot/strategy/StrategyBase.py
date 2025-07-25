@@ -1,12 +1,15 @@
 from abc import ABC
 from dataclasses import dataclass
 from datetime import datetime
-from typing import Optional, Tuple
+from typing import List, Optional, Tuple
 
+import pandas as pd
 import plotly.graph_objects as go
 
-from daily_trading.bots.smc_bot.detectors.SMCBase import SMCBase, Trend
 from daily_trading.bots.smc_bot.bots.TelegramBot import TelegramBot
+from daily_trading.bots.smc_bot.detectors.BosChochDetector import BosChochDetector
+from daily_trading.bots.smc_bot.detectors.HighLowDetector import HighLowDetector
+from daily_trading.bots.smc_bot.detectors.SMCBase import SMCBase, Trend
 from daily_trading.settings import logger
 
 
@@ -43,6 +46,10 @@ class StrategyBase(ABC):
         logger.info(f"StrategyBase initialized with {main_tf}")
         if not self.debug:
             logger.warning("Debug Mode is Off. Internal Telegram messages will not be sent.")
+
+        self.bos_signals = None
+        self.recent_bos_signal = None
+        self.bos_choch_fig = None
 
     async def manage_cache_event(self, cache_key: Tuple[str, str], event: str, current_time: datetime) -> bool:
         """Manage cache for a new event, return True if event is new."""
@@ -81,3 +88,50 @@ class StrategyBase(ABC):
             await self.send_telegram_message(f"{symbol} | Step 1: Neutral trend detected.", fig)
 
         return trend, recent_smc_events
+
+    async def confirm_trend(self, detector: HighLowDetector, ohlc: pd.DataFrame, symbol: str,
+                            cache_key: Tuple[str, str],
+                            current_time: datetime):
+        """Step 1: Determine Market Trend on 1H (last 24 candles)."""
+        swing_1h = detector.calculate_high_low_swings(ohlc, plot=True)
+        fig = swing_1h["fig"]
+        trend, recent_smc_events = await self.get_trend(ohlc, symbol, cache_key, current_time, fig)
+        return trend, recent_smc_events, fig
+
+    async def detect_bos_choch(self, detector: BosChochDetector, ohlc_1h: pd.DataFrame, trend: str, symbol: str) -> List[str]:
+        """Step 2: Identify the most recent and valid BOS level in the trend direction."""
+        recent_smc_events = []
+        results = detector.calculate_bos_choch(ohlc_1h, plot=True)
+        self.bos_signals = results["signals"]
+        self.bos_choch_fig = results["fig"]
+        bos_choch_signals = sorted(results["signals"], key=lambda x: x["time"], reverse=True)
+
+        if not bos_choch_signals:
+            event = f"No {self.main_tf} BOS or CHOCH signals detected."
+            recent_smc_events.append(event)
+            return recent_smc_events
+
+        recent_signal = bos_choch_signals[0]
+        if recent_signal["type"] == "CHoCH":
+            event = "Change of Character detected. Market trend may change."
+            self.recent_bos_signal = None
+            recent_smc_events.append(event)
+            logger.info(f"Step 2: {event} for {symbol}")
+            await self.send_telegram_message(f"{symbol} | Step 2: {event}.", self.bos_choch_fig)
+            return recent_smc_events
+
+        expected_bias = Trend.BULLISH.value if trend == Trend.BULLISH.name else Trend.BEARISH.value
+        expected_bos_signals = [s for s in bos_choch_signals if s['type'] == 'BOS' and s['bias'] == expected_bias]
+        if not expected_bos_signals:
+            event = f"No BOS signals detected for {trend} trend."
+            recent_smc_events.append(event)
+            logger.info(f"Step 2: {event} for {symbol}")
+            await self.send_telegram_message(f"{symbol} | Step 2: {event}.", self.bos_choch_fig)
+            return recent_smc_events
+
+        self.recent_bos_signal = expected_bos_signals[0]
+        event = f"BOS detected at {self.recent_bos_signal['time'].strftime('%Y-%m-%d %H:%M')} for {trend} trend."
+        recent_smc_events.append(event)
+        logger.info(f"Step 2: {event} for {symbol}")
+        await self.send_telegram_message(f"{symbol} | Step 2: {event}.", self.bos_choch_fig)
+        return recent_smc_events

@@ -1,8 +1,9 @@
 import asyncio
+import traceback
 
 from daily_trading.bots.smc_bot.bots.BaseBot import SMCBotBase
 from daily_trading.bots.smc_bot.strategy.BosFvgFillStrategy import BosFvgFillStrategy
-from daily_trading.settings import logger, TELEGRAM_BOT_CHAT_ID
+from daily_trading.settings import logger, TELEGRAM_CHANNEL_CHAT_ID
 
 
 class SMCBosFvgFillBot(SMCBotBase):
@@ -17,7 +18,7 @@ class SMCBosFvgFillBot(SMCBotBase):
     """
 
     def __init__(self, symbols, main_tf: str = '1h', symbol_volume_threshold: float = 30000000, lookback_days: int = 1,
-                 debug=False, telegram_chat_id=TELEGRAM_BOT_CHAT_ID):
+                 debug=False, telegram_chat_id=TELEGRAM_CHANNEL_CHAT_ID):
 
         super().__init__(symbols, main_tf,
                          symbol_volume_threshold,
@@ -31,9 +32,10 @@ class SMCBosFvgFillBot(SMCBotBase):
         """Analyze a single symbol and generate SMC signals."""
         logger.info(f"Starting analysis for {symbol}")
         try:
-            ohlc_15m = await self.fetch_ohlc_data(symbol, "15m", num_candles=100)
+            ohlc_1d = await self.fetch_ohlc_data(symbol, "1d", num_candles=14)
             ohlc_4h = await self.fetch_ohlc_data(symbol, "4h", num_candles=24)
             ohlc_1h = await self.fetch_ohlc_data(symbol, self.main_tf, num_candles=120)
+            ohlc_15m = await self.fetch_ohlc_data(symbol, "15m", num_candles=100)
 
             if ohlc_1h.empty or ohlc_15m.empty:
                 logger.error(f"No data for {symbol}, skipping...")
@@ -42,10 +44,18 @@ class SMCBosFvgFillBot(SMCBotBase):
 
             analysis = await self.bos_strategy.analyze_smc(symbol, ohlc_1h=ohlc_1h, ohlc_15m=ohlc_15m)
             analysis.title = "🎯BOS + FVG Fill"
-            await self.generate_signal(symbol, analysis, ohlc_4h=ohlc_4h, ohlc_1h=ohlc_1h, ohlc_15m=ohlc_15m)
+            await self.generate_signal(symbol, analysis,
+                                       ohlc_1d=ohlc_1d,
+                                       ohlc_4h=ohlc_4h,
+                                       ohlc_1h=ohlc_1h,
+                                       ohlc_15m=ohlc_15m)
 
         except Exception as e:
-            logger.error(f"Error processing {symbol}: {e}")
+            # Enhanced error logging with full traceback
+            error_msg = f"Error processing {symbol}: {str(e)}"
+            logger.error(error_msg)
+            logger.error(f"Full traceback for {symbol}:")
+            logger.error(traceback.format_exc())
 
     async def run(self):
         """Main loop for monitoring all symbols.
@@ -59,6 +69,7 @@ class SMCBosFvgFillBot(SMCBotBase):
                     if needs_refresh:
                         await self.update_symbols()
                 logger.info(f"Monitoring {len(self.symbols)} symbols")
+                await self.telegram_bot_debug.send_message(f"****** Monitoring {len(self.symbols)} symbols ******")
                 tasks = [self.run_symbol(symbol) for symbol in self.symbols]
                 results = await asyncio.gather(*tasks, return_exceptions=True)
                 for symbol, result in zip(self.symbols, results):

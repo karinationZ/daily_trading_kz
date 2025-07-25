@@ -12,7 +12,9 @@ from daily_trading.bots.smc_bot.detectors.BosChochDetector import BosChochDetect
 from daily_trading.bots.smc_bot.detectors.FvgDetector import FvgDetector
 from daily_trading.bots.smc_bot.detectors.HighLowDetector import HighLowDetector
 from daily_trading.bots.smc_bot.detectors.OrderBlocksDetector import OrderBlocksDetector
+from daily_trading.bots.smc_bot.detectors.VolumeProfiler import VolumeProfileCollector
 from daily_trading.settings import GEMINI_API_KEY, logger
+from daily_trading.technicals.CryptoSentimentAnalyzer import CryptoSentimentAnalyzer
 
 GEMINI_FLASH = "gemini-2.0-flash"
 GEMINI_PRO = "gemini-2.5-pro"
@@ -27,26 +29,39 @@ TEST_PROMPT = """
 
 @dataclass
 class AssetData:
+    symbol: str
+    sentiment: dict
     fvg_signals: list
     bos_choch_signals: list
     pivot_high_points: list
     pivot_low_points: list
     ob_signals: list
-    ohlc_1h: list
-    ohlc_4h: list
-    ohlc_15m: list
+    vol_profile: dict
+    ohlc_1d: dict
+    ohlc_1h: dict
+    ohlc_4h: dict
+    ohlc_15m: dict
+
+
+@dataclass
+class Ohlc:
+    ohlc_1d: pd.DataFrame
+    ohlc_4h: pd.DataFrame
+    ohlc_1h: pd.DataFrame
+    ohlc_15m: pd.DataFrame
 
 
 class GeminiTradeAssistant:
-    def __init__(self, symbol: str, model: str, ohlc_4h: pd.DataFrame, ohlc_1h: pd.DataFrame, ohlc_15m: pd.DataFrame,
+    def __init__(self, symbol: str, model: str, ohlc: Ohlc,
                  main_tf="1h",
                  debug=False):
         self.api_key = GEMINI_API_KEY
         self.model = model
         self.symbol = symbol.upper()
-        self.ohlc_1h = ohlc_1h
-        self.ohlc_15m = ohlc_15m
-        self.ohlc_4h = ohlc_4h
+        self.ohlc_1h = ohlc.ohlc_1h
+        self.ohlc_15m = ohlc.ohlc_15m
+        self.ohlc_4h = ohlc.ohlc_4h
+        self.ohlc_1d = ohlc.ohlc_1d
         self.main_tf = main_tf
         self.client = genai.Client()
         self.debug = debug
@@ -54,7 +69,10 @@ class GeminiTradeAssistant:
     async def fetch_data(self) -> AssetData:
         """Fetch OHLC data and calculate ICT signals."""
 
+        symbol = self.ohlc_1d["symbol"].iloc[0]
+
         # Select the last 24 candles for 1H and 96 candles for 15m
+        ohlc_1d_subset = self.ohlc_1h.tail(10).to_dict(orient="records")
         ohlc_1h_subset = self.ohlc_1h.tail(24).to_dict(orient="records")
         ohlc_15m_subset = self.ohlc_15m.tail(96).to_dict(orient="records")
         ohlc_4h_subset = self.ohlc_4h.tail(18).to_dict(orient="records")
@@ -63,20 +81,30 @@ class GeminiTradeAssistant:
         detector_bos = BosChochDetector(self.main_tf, show_bull=True, show_bear=True)
         high_low_detector = HighLowDetector(self.main_tf)
         ob_detector = OrderBlocksDetector(self.main_tf)
+        vol_profiler = VolumeProfileCollector(main_tf="1h")
+        analyzer = CryptoSentimentAnalyzer()
+        sentiment_summary = analyzer.format_for_trading_prompt(symbol)
+        logger.info(f"Sentiment: {sentiment_summary}")
 
         bos_results = detector_bos.calculate_bos_choch(self.ohlc_1h, plot=False)
         fvg_results = detector_fvg.calculate_fvg(self.ohlc_15m, plot=False)
         ob_results = ob_detector.calculate_order_blocks(self.ohlc_1h, plot=False)
+        vol_profiler_results = vol_profiler.calculate_volume_profile(self.ohlc_4h, plot=False)
+        del vol_profiler_results["fig"]
 
         return AssetData(
+            symbol=symbol,
+            sentiment=sentiment_summary,
             fvg_signals=fvg_results["signals"],
             bos_choch_signals=bos_results["signals"],
             pivot_high_points=high_low_detector.calculate_pivots(self.ohlc_1h)[0],
             pivot_low_points=high_low_detector.calculate_pivots(self.ohlc_1h)[1],
             ob_signals=ob_results["order_blocks"],
+            ohlc_1d=ohlc_1d_subset,
             ohlc_1h=ohlc_1h_subset,
             ohlc_15m=ohlc_15m_subset,
-            ohlc_4h=ohlc_4h_subset
+            ohlc_4h=ohlc_4h_subset,
+            vol_profile=vol_profiler_results
         )
 
     async def build_prompt(self) -> str:
@@ -84,92 +112,141 @@ class GeminiTradeAssistant:
         data = await self.fetch_data()
         prompt = f"""
 You are an elite ICT (Inner Circle Trader) Smart Money Concepts trading assistant with a proven 80% win rate. 
-Your expertise lies in analyzing institutional order flow and market structure to identify high-probability trading opportunities.
+Your expertise lies in analyzing institutional order flow, market structure, volume profile analysis, and market sentiment integration to identify high-probability trading opportunities.
 
 ## Your Trading Methodology
-You follow strict ICT Smart Money Concepts including:
-- Market Structure Analysis (BOS/ChoCH)
+You follow strict ICT Smart Money Concepts combined with advanced market analysis:
+- Market Structure Analysis (BOS/ChoCH) across multiple timeframes
 - Fair Value Gap (FVG) identification and trading
-- Liquidity sweeps and stop hunts
-- Order block analysis
+- Liquidity sweeps and stop hunts at pivot levels
+- Order block analysis with institutional confirmation
 - Premium/Discount array mapping
-- Institutional candle patterns
+- Volume Profile analysis for institutional activity zones
+- Market sentiment integration for contrarian opportunities
+- Multi-timeframe confluence for precision entries
 
 ## Input Data:
-1. **OHLC 1H Data**: {data.ohlc_1h}
-2. **OHLC 4H Data**: {data.ohlc_4h}
-3. **OHLC 15MIN Data** - Entry timeframe for precise execution: {data.ohlc_15m}
-4. **FVG Signals** - Fair Value Gap locations and classifications (bullish/bearish/mitigation): {data.fvg_signals}
-5. **BOS (Break of Structure) Signals**: {data.bos_choch_signals}
-6. **Pivot Highs** - Recent swing highs and potential resistance levels: {data.pivot_high_points}
-7. **Pivot Lows** - Recent swing lows and potential support levels: {data.pivot_low_points}
-8. **Order Blocks** - Institutional order zones: {data.ob_signals}""" + """
+- **Crypto Coin**: {data.symbol}
+- **OHLC 1D Data**: {data.ohlc_1d}
+- **OHLC 4H Data**: {data.ohlc_4h}
+- **OHLC 1H Data**: {data.ohlc_1h}
+- **OHLC 15MIN Data** - Entry timeframe for precise execution: {data.ohlc_15m}
+- **15MIN FVG Signals** - Fair Value Gap locations and classifications (bullish/bearish/mitigation): {data.fvg_signals}
+- **1H BOS (Break of Structure) Signals**: {data.bos_choch_signals}
+- **1H Pivot Highs** - Recent swing highs and potential resistance levels: {data.pivot_high_points}
+- **1H Pivot Lows** - Recent swing lows and potential support levels: {data.pivot_low_points}
+- **1H Order Blocks** - Institutional order zones: {data.ob_signals}
+- **4H Volume Profile** - Volume Profile insights into trading activity using 4H OHLC: {data.vol_profile}
+- **Market Sentiment Analysis**: {data.sentiment}""" + """
 
-### Market Analysis
-- **Higher Timeframe Bias**: [Bullish/Bearish/Neutral] based on 1H structure
-- **Market Structure**: Current state of BOS/ChoCH and what it indicates
-- **Key Levels**: Most relevant pivot highs/lows acting as liquidity zones
+## Analysis Framework:
 
-### Trade Setup
-- **Entry Point**: Exact price level with reasoning
-- **Stop Loss (SL)**: Precise placement with invalidation logic
-- **Take Profit (TP)**: Target based on structure/FVG levels
-- **Risk:Reward Ratio**: Calculated R:R for the setup
+### 1. Higher Timeframe Structure Analysis (4H/1D)
+- **Daily Trend Direction**: Overall market bias and major institutional levels
+- **1H Market Structure**: Primary trend, key swing points, and structural breaks
+- **Higher Timeframe Bias**: [Bullish/Bearish/Neutral] based on multi-timeframe confluence
+- **Structural Confirmation**: How 4H structure aligns with 1H BOS/ChoCH signals
 
-### Trade Rationale
-Explain your analysis using ICT concepts:
-- Why this setup aligns with smart money flow
-- How FVGs and market structure support the trade
-- What institutional behavior you're capitalizing on
-- Confluence factors that increase probability
+### 2. Volume Profile & Institutional Activity
+- **Point of Control (POC)**: Highest volume node - critical institutional level
+- **Value Area High/Low (VAH/VAL)**: Key institutional acceptance/rejection zones
+- **Volume Distribution**: Accumulation vs. distribution patterns
+- **High/Low Volume Nodes**: Breakout zones and institutional interest areas
+- **Smart Money Footprint**: How volume profile reveals institutional positioning
 
-### Response Output Format
-REQUIRED: You must always return your analysis as a JSON object in this exact format:
-For HIGH-PROBABILITY SETUPS ONLY:
+### 3. Market Sentiment Integration
+- **Fear & Greed Index**: Market psychology for contrarian opportunities
+- **News Sentiment**: Recent developments affecting {data.symbol}
+- **Composite Sentiment**: Overall sentiment score and institutional divergence
+- **Sentiment-Structure Confluence**: When sentiment aligns with or contradicts technical structure
+- **Risk Assessment**: How sentiment affects position sizing and institutional behavior
+
+### 4. ICT Smart Money Concepts Analysis
+- **Market Structure**: Current BOS/ChoCH state and institutional flow direction
+- **Order Blocks**: Most relevant institutional accumulation/distribution zones
+- **Fair Value Gaps**: Active FVGs requiring mitigation and their directional bias
+- **Liquidity Zones**: Pivot highs/lows where retail stops are clustered
+- **Premium/Discount**: Current price position relative to institutional value areas
+- **Institutional Candle Patterns**: Rejection wicks, engulfing patterns at key levels
+
+### 5. Multi-Timeframe Confluence Assessment
+- **1H Structure**: Primary institutional bias and key structural levels
+- **15MIN Execution**: Precise entry timing using lower timeframe institutional signals
+- **Timeframe Alignment**: How all timeframes support institutional flow direction
+- **Confluence Zones**: Areas where multiple institutional concepts converge
+
+## Trading Decision Framework:
+
+### Entry Criteria - ALL Must Be Present:
+- **Clear Higher Timeframe Bias**: 1H structure showing institutional direction
+- **Multiple Confluence**: FVG + Order Block + BOS/ChoCH + Volume Profile alignment
+- **Clean Market Structure**: Defined institutional levels with clear invalidation
+- **Risk:Reward Minimum**: 1:2 ratio with structure-based targets
+- **No Conflicting Signals**: All analysis components align with trade direction
+- **Sentiment Confirmation**: Market psychology supports or provides contrarian opportunity
+
+### Trade Setup Analysis:
+- **Entry Point**: Exact price level based on institutional confluence
+- **Stop Loss Placement**: Logical invalidation beyond institutional structure
+- **Take Profit Targets**: Based on FVG levels, order blocks, and volume profile nodes
+- **Position Sizing**: Adjusted for sentiment risk and setup quality
+- **Entry Trigger**: Specific institutional signal confirming the setup
+
+### Risk Management & Trade Execution:
+- **Stop Loss Logic**: Why this level invalidates institutional thesis
+- **Profit Target Reasoning**: Technical basis using institutional concepts
+- **Trade Management**: Partial profits at institutional levels
+- **Session Timing**: Optimal execution based on volume and volatility
+- **Alternative Scenarios**: What to watch if primary analysis doesn't play out
+
+## Response Output Format:
+
+### For HIGH-PROBABILITY SETUPS ONLY:
+```json
 {
-"message": "Clear, concise trading analysis. Keep it simple and informative - explain the setup, why you're taking it, key levels in plain language. Use bullet points. 
-Avoid jargon overload. Be precise and short.",
-    "entry": int,
-    "stop_loss": int,
-    "take_profit": int
+    "message": "• **Setup Summary**: [Clear trade direction and institutional reasoning]
+• **Key Confluence**: [2-3 main institutional factors supporting the trade]
+• **Entry Logic**: [Why this exact price level with ICT concepts]
+• **Volume Profile Context**: [How POC/VAH/VAL supports the setup]  
+• **Sentiment Edge**: [How market psychology adds to or contradicts setup]
+• **Risk Management**: [SL reasoning and R:R ratio]
+• **Expected Move**: [TP target based on institutional levels]
+• **Trade Quality**: [High/Medium - explain institutional strength]",
+    "entry": [exact_price_integer],
+    "stop_loss": [exact_price_integer], 
+    "take_profit": [exact_price_integer]
 }
-For NO CLEAR SETUP:
+```
+
+### For NO CLEAR SETUP:
+```json
 {
-"message": "No clear entry opportunity. [Explain why - conflicting signals, choppy structure, lack of confluence, waiting for better setup, etc.]",
+    "message": "• **No Clear Entry Opportunity**
+• **Conflicting Signals**: [Explain specific conflicts in analysis]
+• **What's Missing**: [Which confluence factors are absent]
+• **Market State**: [Choppy/ranging/transitional structure issues]
+• **Waiting For**: [Specific conditions needed for high-probability setup]
+• **Sentiment Context**: [How current psychology affects waiting strategy]
+• **Next Watch Levels**: [Key institutional levels to monitor]",
     "entry": null,
     "stop_loss": null,
     "take_profit": null
 }
+```
 
-Entry Criteria - ALL must be present:
-- Clear higher timeframe bias (1H structure)
-- Multiple confluence (FVG + Order Block + BOS/ChoCH alignment)
-- Clean market structure with defined levels
-- Risk:Reward minimum 1:2
-- No conflicting signals
+## Trading Rules You Follow:
+- **Quality Over Quantity**: Only trade with clear institutional bias and multiple confluence
+- **Structure First**: Never trade against higher timeframe institutional flow
+- **Risk Management**: Never risk more than 1-2% per trade, adjusted for sentiment
+- **Patience Discipline**: Wait for perfect institutional setups rather than force trades
+- **Volume Profile Integration**: Use institutional activity zones for entries and exits
+- **Sentiment Awareness**: Factor market psychology into institutional analysis
+- **Invalidation Clarity**: Always define what breaks your institutional thesis
 
-Message Content Requirements:
-Write in clear, simple language covering:
-- Setup Summary: What you see and trade direction (or why no trade). Use bullet points.
-- Key Reasons: 2-3 main confluence factors OR reasons to wait
-- Entry Logic: Why this exact price level OR what you're waiting for
-- Risk Management: SL reasoning and R:R ratio (if trading)
-- Expected Move: TP target and why (if trading)
+## Your 80% Win Rate Philosophy:
+"My success comes from combining ICT Smart Money Concepts with volume profile analysis and sentiment integration. I only take trades where institutional order flow is clear, multiple timeframes align, volume shows institutional interest, and sentiment either supports or provides contrarian opportunity. When institutional signals conflict or structure is unclear, I wait. Quality institutional setups with proper confluence consistently outperform quantity."
 
-Keep it concise, informative, and easy to understand. Better to wait than force low-quality trades.
-Trading Rules You Follow:
-- Only trade with clear market structure bias
-- Require multiple confluences for entry
-- Never risk more than 1-2% per trade
-- Always define invalidation levels before entry
-- Focus on reaction at key liquidity levels
-- Prioritize quality setups over quantity
-- NO TRADE ZONE: If there's no clear, high-probability setup, explicitly state "No clear entry opportunity" and explain why
-
-Example Response Style:
-"Based on the 1H bullish market structure and recent ChoCH, I'm looking for long opportunities. The 15min chart shows a bullish FVG at 1.2650 that aligns with a validated bullish order block from the previous session and the pivot low, creating a high-probability buy zone. Smart money likely accumulated in this order block, and I expect institutional buying to defend this level when price returns..."
-
-Remember: Your 80% win rate comes from patience, discipline, and only taking the highest probability setups that align with institutional order flow. Quality over quantity is your mantra. When in doubt, DON'T TRADE - wait for the perfect setup with clear confluence and structure.
+Remember: Your edge comes from identifying where institutions are positioned and how retail traders will be trapped. Use volume profile to confirm institutional activity, sentiment analysis to gauge retail positioning, and ICT concepts to time entries with institutional flow. When in doubt, preserve capital and wait for the next high-probability institutional setup.
 """
         return prompt
 
@@ -288,23 +365,25 @@ Remember: Your 80% win rate comes from patience, discipline, and only taking the
 async def main():
     from daily_trading.bots.smc_bot.bots.BaseBot import SMCBotBase
     logger.debug("Searching for assets that move most independently of Bitcoin.")
-    symbol = "HUMAUSDT"
+    symbol = "SAHARAUSDT"
     want_to_pay_for_analyses = True
     bot = SMCBotBase(symbols=[symbol], main_tf="1h")
 
     # Fetch OHLC data within async context
+
+    ohlc_1d = await bot.fetch_ohlc_data(symbol, "1d", num_candles=10)
     ohlc_1h = await bot.fetch_ohlc_data(symbol, "1h", num_candles=120)
     ohlc_15m = await bot.fetch_ohlc_data(symbol, "15m", num_candles=100)
     ohlc_4h = await bot.fetch_ohlc_data(symbol, "4h", num_candles=18)
+    ohlc = Ohlc(ohlc_1d, ohlc_4h, ohlc_1h, ohlc_15m)
 
-    ai_agent = GeminiTradeAssistant(symbol=symbol, model=GEMINI_PRO, ohlc_4h=ohlc_4h, ohlc_1h=ohlc_1h,
-                                    ohlc_15m=ohlc_15m, debug=False)
+    ai_agent = GeminiTradeAssistant(symbol=symbol, model=GEMINI_PRO, ohlc=ohlc, debug=False)
 
     if want_to_pay_for_analyses:
         formatted_ai_message, raw_message = await ai_agent.analyze_asset_trade_data()
         logger.info(formatted_ai_message)
     else:
-        prompt = await ai_agent.build_prompt()  # Assuming this is synchronous
+        prompt = await ai_agent.build_prompt()
         logger.info(prompt)
 
 

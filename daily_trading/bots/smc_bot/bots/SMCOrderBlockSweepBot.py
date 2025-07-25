@@ -33,17 +33,23 @@ class SMCOrderBlockSweepBot(SMCBotBase):
         """Analyze a single symbol and generate SMC signals."""
         logger.info(f"Starting analysis for {symbol}")
         try:
-            ohlc_main = await self.fetch_ohlc_data(symbol, self.main_tf, num_candles=120)
+            ohlc_1d = await self.fetch_ohlc_data(symbol, "1d", num_candles=14)
             ohlc_4h = await self.fetch_ohlc_data(symbol, "4h", num_candles=24)
+            ohlc_1h = await self.fetch_ohlc_data(symbol, self.main_tf, num_candles=120)
             ohlc_15m = await self.fetch_ohlc_data(symbol, "15m", num_candles=100)
-            if ohlc_main.empty:
+
+            if ohlc_1h.empty:
                 logger.error(f"No data for {symbol}, skipping...")
                 await self.ob_sweep_strategy.telegram_bot.send_message(f"No data for {symbol}")
                 return
 
-            analysis = await self.ob_sweep_strategy.analyze_smc(symbol, ohlc_main)
+            analysis = await self.ob_sweep_strategy.analyze_smc(symbol, ohlc_1h)
             analysis.title = "🧱🧹Order Block Sweep"
-            await self.generate_signal(symbol, analysis, ohlc_4h=ohlc_4h, ohlc_1h=ohlc_main, ohlc_15m=ohlc_15m)
+            await self.generate_signal(symbol, analysis,
+                                       ohlc_1d=ohlc_1d,
+                                       ohlc_4h=ohlc_4h,
+                                       ohlc_1h=ohlc_1h,
+                                       ohlc_15m=ohlc_15m)
 
         except Exception as e:
             logger.error(f"Error processing {symbol}: {e}")
@@ -56,10 +62,11 @@ class SMCOrderBlockSweepBot(SMCBotBase):
         while True:
             try:
                 if not self.static_symbols:
-                    needs_refresh = self.needs_symbol_refresh()
+                    needs_refresh = await self.needs_symbol_refresh()
                     if needs_refresh:
                         await self.update_symbols()
                 logger.info(f"Monitoring {len(self.symbols)} symbols")
+                await self.telegram_bot_debug.send_message(f"****** Monitoring {len(self.symbols)} symbols ******")
                 tasks = [self.run_symbol(symbol) for symbol in self.symbols]
                 results = await asyncio.gather(*tasks, return_exceptions=True)
                 for symbol, result in zip(self.symbols, results):

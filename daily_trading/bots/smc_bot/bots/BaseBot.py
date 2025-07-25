@@ -8,8 +8,8 @@ from daily_trading.bots.smc_bot.bots.TelegramBot import TelegramBot
 from daily_trading.bots.smc_bot.detectors.SMCBase import Trend
 from daily_trading.bots.smc_bot.strategy.BosFvgFillStrategy import SignalSummary
 from daily_trading.brokers.BitUnixClient import BitUnixClient
-from daily_trading.settings import logger, TELEGRAM_BOT_CHAT_ID, TELEGRAM_CHANNEL_CHAT_ID
-from daily_trading.technicals.AITradeAssistants.GeminiTradeAssistant import GEMINI_PRO, GeminiTradeAssistant
+from daily_trading.settings import logger, TELEGRAM_DEBUG_CHANNEL_ID, TELEGRAM_CHANNEL_CHAT_ID
+from daily_trading.technicals.AITradeAssistants.GeminiTradeAssistant import GEMINI_PRO, GeminiTradeAssistant, Ohlc
 from daily_trading.technicals.DivergentAssetsFinder import BitUnixDivergentAssetsFinder
 
 
@@ -37,7 +37,7 @@ class SMCBotBase:
         self.static_symbols = symbols
         self.symbols = symbols
         self.telegram_bot = TelegramBot(chat_id=telegram_chat_id)
-        self.telegram_bot_debug = TelegramBot(chat_id=TELEGRAM_BOT_CHAT_ID)
+        self.telegram_bot_debug = TelegramBot(chat_id=TELEGRAM_DEBUG_CHANNEL_ID)
         self.main_tf = main_tf
         self.volume_threshold = symbol_volume_threshold
         self.lookback_days = lookback_days
@@ -216,7 +216,7 @@ class SMCBotBase:
         logger.info("Updating high-volume symbols")
         try:
             results = await self.asset_finder.find_divergent_assets(
-                volume_threshold=10000000,
+                volume_threshold=7000000,
                 lookback_hours=3
             )
             self.symbols = [asset["symbol"] for asset in results["non_correlated"]]
@@ -232,20 +232,22 @@ class SMCBotBase:
             logger.error(f"Failed to update symbols: {e}")
             raise RuntimeError(f"Failed to update symbols: {e}")
 
-    async def generate_signal(self, symbol: str, analysis: SignalSummary, ohlc_4h: pd.DataFrame, ohlc_1h: pd.DataFrame,
+    async def generate_signal(self, symbol: str, analysis: SignalSummary,
+                              ohlc_1d: pd.DataFrame,
+                              ohlc_4h: pd.DataFrame,
+                              ohlc_1h: pd.DataFrame,
                               ohlc_15m: pd.DataFrame):
         """Generate SMC signals."""
         try:
             if analysis.direction != Trend.NEUTRAL.name:
                 last_candle = ohlc_15m.index.max().tz_convert('US/Pacific').strftime('%Y-%m-%d %H:%M')
                 # AI Request
+                ohlc = Ohlc(ohlc_1d, ohlc_4h, ohlc_1h, ohlc_15m)
                 ai_agent = GeminiTradeAssistant(symbol=symbol,
                                                 model=GEMINI_PRO,
-                                                ohlc_4h=ohlc_4h,
-                                                ohlc_1h=ohlc_1h,
-                                                ohlc_15m=ohlc_15m,
+                                                ohlc=ohlc,
                                                 debug=False)
-                can_run_gemini = ai_agent.can_send_request(start_hour=6, end_hour=23)
+                can_run_gemini = ai_agent.can_send_request(start_hour=7, end_hour=22)
                 formatted_ai_message = None
                 if can_run_gemini:
                     formatted_ai_message, raw_message = await ai_agent.analyze_asset_trade_data()

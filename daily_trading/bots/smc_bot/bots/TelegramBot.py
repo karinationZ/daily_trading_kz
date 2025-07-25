@@ -132,3 +132,5 @@ class TelegramBot:
     async def close(self):
         """Close the bot session to release resources."""
         await self.bot.session.close()
+
+

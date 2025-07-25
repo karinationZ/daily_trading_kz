@@ -253,7 +253,6 @@ class CryptoSentimentAnalyzer:
     def get_comprehensive_sentiment(self, symbol: str) -> Dict:
         """Get weighted composite sentiment analysis."""
         symbol = self._validate_symbol(symbol)
-
         market = self.get_market_sentiment()
         news = self.get_news_sentiment(symbol)
 
@@ -404,7 +403,7 @@ class CryptoSentimentAnalyzer:
 def main():
     # Example usage
     analyzer = CryptoSentimentAnalyzer()
-    symbol = "BTCUSDT"
+    symbol = "HUSDT"
     sentiment = analyzer.format_for_trading_prompt(symbol)
     print(sentiment)
 

@@ -123,7 +123,8 @@ class SMCBotBase:
                f"Trend: {analysis.trend}\n"
                f"SMC Events:\n• {events_str}")
         logger.info(msg)
-        await self.telegram_bot.send_message(msg, analysis.fig)
+        is_success = await self.telegram_bot.send_message(msg, analysis.fig)
+        return is_success
 
     async def fetch_ohlc_data(self, symbol: str, timeframe: str, num_candles: int = None) -> pd.DataFrame:
         """Fetch OHLC data with caching to reduce API calls.
@@ -258,9 +259,9 @@ class SMCBotBase:
                     if raw_message['entry']:
                         fig = ai_agent.update_plot_with_entry_data(analysis.fig, raw_message)
                         analysis.fig = fig
-                await self.send_final_message(analysis, last_candle, symbol, title=analysis.title)
+                is_success = await self.send_final_message(analysis, last_candle, symbol, title=analysis.title)
 
-                if formatted_ai_message:
+                if formatted_ai_message and is_success:
                     await self.telegram_bot.send_message(formatted_ai_message)
             else:
                 events = [e for e in analysis.recent_smc_events if e is not None]

@@ -140,9 +140,9 @@ class TelegramBot:
             image.write_image(
                 buffer,
                 format="png",
-                width=1600,
-                height=900,
-                scale=2
+                width=1200,  # Reduced from 1600
+                height=675,  # Reduced from 900
+                scale=1  # Reduced from 2
             )
             buffer.seek(0)
 

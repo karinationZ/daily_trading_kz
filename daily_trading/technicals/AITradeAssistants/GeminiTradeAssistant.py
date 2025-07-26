@@ -181,7 +181,7 @@ You follow strict ICT Smart Money Concepts combined with advanced market analysi
 - **Clear Higher Timeframe Bias**: 1H structure showing institutional direction
 - **Multiple Confluence**: FVG + Order Block + BOS/ChoCH + Volume Profile alignment
 - **Clean Market Structure**: Defined institutional levels with clear invalidation
-- **Risk:Reward Minimum**: 1:3 ratio with structure-based targets
+- **Risk:Reward Minimum**: 1:2 ratio with structure-based targets
 - **No Conflicting Signals**: All analysis components align with trade direction
 - **Sentiment Confirmation**: Market psychology supports or provides contrarian opportunity
 

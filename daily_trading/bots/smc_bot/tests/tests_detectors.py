@@ -16,7 +16,7 @@ from daily_trading.bots.smc_bot.strategy.StrategyBase import SignalSummary
 from daily_trading.settings import logger, TELEGRAM_BOT_CHAT_ID
 from daily_trading.technicals.AITradeAssistants.GeminiTradeAssistant import GEMINI_PRO, GeminiTradeAssistant, Ohlc
 
-symbol = "DIAUSDT"
+symbol = "KERNELUSDT"
 main_tf = "1h"
 lookback_days = 10
 

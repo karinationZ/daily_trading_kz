@@ -19,3 +19,4 @@ TELEGRAM_DEBUG_CHANNEL_ID = os.environ.get("TELEGRAM_DEBUG_CHANNEL_ID")
 
 GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY")
 CRYPTO_PANIC_TOKEN = os.environ.get("CRYPTO_PANIC_TOKEN")
+USE_AI = os.environ.get("USE_AI")

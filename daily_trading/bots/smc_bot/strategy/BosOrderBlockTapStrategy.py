@@ -1,5 +1,5 @@
 from datetime import datetime
-from typing import Dict, Tuple
+from typing import Dict
 
 import pandas as pd
 
@@ -93,9 +93,10 @@ class BosOrderBlockTapStrategy(StrategyBase):
         return nearest_ob, recent_smc_events
 
     async def confirm_ob_tap(self, ohlc_15m: pd.DataFrame, trend: str, symbol: str, nearest_ob: Dict,
-                             cache_key: Tuple[str, str], current_time: datetime):
-        """Step 4: Confirm price taps the nearest 15m OB and generate trade signal."""
+                             current_time: datetime):
+        """Step 4: Confirm price taps the nearest 15m OB, formed at least 5 candles ago, after exiting."""
         recent_smc_events = []
+
         if not nearest_ob:
             event = "No valid OB to confirm tap."
             recent_smc_events.append(event)
@@ -103,6 +104,39 @@ class BosOrderBlockTapStrategy(StrategyBase):
             await self.send_telegram_message(f"{symbol} | Step 4: {event}.", self.ob_fig)
             return recent_smc_events
 
+        # Check if OB was formed at least 5 candles ago
+        candles_since_ob = (current_time - nearest_ob['time']).total_seconds() / (15 * 60)
+        if candles_since_ob < 5:
+            event = f"No valid {trend} OB found (formed at least 5 candles ago)."
+            self.ob_tap_cache.update({symbol: None})
+            recent_smc_events.append(event)
+            logger.info(f"Step 4: {event} for {symbol}")
+            await self.send_telegram_message(f"{symbol} | Step 4: {event}.", self.ob_fig)
+            return recent_smc_events
+
+        # Check if price exited the OB before the current candle
+        recent_candles = ohlc_15m.iloc[-5:-1]  # Check last 4 candles before current
+        exited_ob = False
+        if trend == Trend.BULLISH.name:
+            for _, candle in recent_candles.iterrows():
+                if candle['low'] > nearest_ob['top'] or candle['high'] < nearest_ob['bottom']:
+                    exited_ob = True
+                    break
+        else:  # BEARISH
+            for _, candle in recent_candles.iterrows():
+                if candle['high'] < nearest_ob['bottom'] or candle['low'] > nearest_ob['top']:
+                    exited_ob = True
+                    break
+
+        if not exited_ob:
+            event = f"Price did not exit {trend} OB before tap."
+            self.ob_tap_cache.update({symbol: None})
+            recent_smc_events.append(event)
+            logger.info(f"Step 4: {event} for {symbol}")
+            await self.send_telegram_message(f"{symbol} | Step 4: {event}.", self.ob_fig)
+            return recent_smc_events
+
+        # Confirm tap
         current_candle = ohlc_15m.iloc[-1]
         tap_timestamp = None
         if trend == Trend.BULLISH.name:
@@ -169,7 +203,7 @@ class BosOrderBlockTapStrategy(StrategyBase):
             return signal_summary
 
         # Step 4: Confirm OB tap and generate signal
-        step4_events = await self.confirm_ob_tap(ohlc_15m, trend, symbol, nearest_ob, cache_key, current_time)
+        step4_events = await self.confirm_ob_tap(ohlc_15m, trend, symbol, nearest_ob, current_time)
         recent_smc_events.extend(step4_events)
         signal_summary.recent_smc_events = recent_smc_events
         signal_summary.fig = self.ob_fig

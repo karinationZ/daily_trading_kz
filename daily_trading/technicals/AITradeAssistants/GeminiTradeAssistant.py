@@ -354,7 +354,7 @@ Remember: Your edge comes from identifying where institutions are positioned and
         return fig
 
     @staticmethod
-    def can_send_request(start_hour=8, end_hour=22, end_minute=0):
+    def within_ai_request_hours(start_hour=8, end_hour=22, end_minute=0):
         pacific = pytz.timezone('US/Pacific')
         now = datetime.now(pacific)
         current_time = now.hour * 60 + now.minute
@@ -366,7 +366,7 @@ Remember: Your edge comes from identifying where institutions are positioned and
 async def main():
     from daily_trading.bots.smc_bot.bots.BaseBot import SMCBotBase
     logger.debug("Searching for assets that move most independently of Bitcoin.")
-    symbol = "PUMPFUNUSDT"
+    symbol = "SYRUPUSDT"
     want_to_pay_for_analyses = True
     bot = SMCBotBase(symbols=[symbol], main_tf="1h")
 

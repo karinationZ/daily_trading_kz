@@ -36,7 +36,7 @@ class SMCOrderBlockSweepBot(SMCBotBase):
         try:
             ohlc_1d = await self.fetch_ohlc_data(symbol, "1d", num_candles=14)
             ohlc_4h = await self.fetch_ohlc_data(symbol, "4h", num_candles=24)
-            ohlc_1h = await self.fetch_ohlc_data(symbol, self.main_tf, num_candles=120)
+            ohlc_1h = await self.fetch_ohlc_data(symbol, "1h", num_candles=120)
             ohlc_15m = await self.fetch_ohlc_data(symbol, "15m", num_candles=100)
 
             if ohlc_1h.empty:

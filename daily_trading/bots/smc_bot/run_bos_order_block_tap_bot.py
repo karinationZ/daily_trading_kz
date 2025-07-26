@@ -1,7 +1,7 @@
 import asyncio
 
 from daily_trading.bots.smc_bot.bots.SMCBosOrderBlockTapBot import SMCBosOrderBlockTapBot
-from daily_trading.settings import TELEGRAM_CHANNEL_CHAT_ID
+from daily_trading.settings import TELEGRAM_CHANNEL_CHAT_ID, TELEGRAM_BOT_CHAT_ID
 
 
 async def main():

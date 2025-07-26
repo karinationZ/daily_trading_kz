@@ -8,7 +8,7 @@ from daily_trading.bots.smc_bot.bots.TelegramBot import TelegramBot
 from daily_trading.bots.smc_bot.detectors.SMCBase import Trend
 from daily_trading.bots.smc_bot.strategy.BosFvgFillStrategy import SignalSummary
 from daily_trading.brokers.BitUnixClient import BitUnixClient
-from daily_trading.settings import logger, TELEGRAM_CHANNEL_CHAT_ID, TELEGRAM_DEBUG_CHANNEL_ID
+from daily_trading.settings import logger, TELEGRAM_CHANNEL_CHAT_ID, TELEGRAM_DEBUG_CHANNEL_ID, USE_AI
 from daily_trading.technicals.AITradeAssistants.GeminiTradeAssistant import GEMINI_PRO, GeminiTradeAssistant, Ohlc
 from daily_trading.technicals.DivergentAssetsFinder import BitUnixDivergentAssetsFinder
 
@@ -252,9 +252,9 @@ class SMCBotBase:
                                                 model=GEMINI_PRO,
                                                 ohlc=ohlc,
                                                 debug=False)
-                can_run_gemini = ai_agent.can_send_request(start_hour=7, end_hour=22)
+                within_ai_hours = ai_agent.within_ai_request_hours(start_hour=8, end_hour=21)
                 formatted_ai_message = None
-                if can_run_gemini:
+                if within_ai_hours and USE_AI.lower() == "true":
                     formatted_ai_message, raw_message = await ai_agent.analyze_asset_trade_data()
                     if raw_message['entry']:
                         fig = ai_agent.update_plot_with_entry_data(analysis.fig, raw_message)

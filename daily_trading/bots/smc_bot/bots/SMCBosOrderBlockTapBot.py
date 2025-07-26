@@ -27,7 +27,7 @@ class SMCBosOrderBlockTapBot(SMCBotBase):
 
         self.chat_id = telegram_chat_id
         self.bos_15m_ob_tap_strategy = BosOrderBlockTapStrategy(main_tf, debug, telegram_chat_id=self.chat_id)
-        self.strategy_name = "🧱🔥BOS + 15 MIN Order Block Tap"
+        self.strategy_name = "🧱🔥BOS + 15M Order Block Tap"
 
     async def run_symbol(self, symbol: str):
         """Analyze a single symbol and generate SMC signals."""
@@ -35,7 +35,7 @@ class SMCBosOrderBlockTapBot(SMCBotBase):
         try:
             ohlc_1d = await self.fetch_ohlc_data(symbol, "1d", num_candles=14)
             ohlc_4h = await self.fetch_ohlc_data(symbol, "4h", num_candles=24)
-            ohlc_1h = await self.fetch_ohlc_data(symbol, self.main_tf, num_candles=120)
+            ohlc_1h = await self.fetch_ohlc_data(symbol, "1h", num_candles=120)
             ohlc_15m = await self.fetch_ohlc_data(symbol, "15m", num_candles=100)
 
             if ohlc_1h.empty or ohlc_15m.empty:
@@ -63,6 +63,7 @@ class SMCBosOrderBlockTapBot(SMCBotBase):
         Update symbols every 2 hours and runs analysis for each symbol concurrently.
         """
         logger.info("Starting SMCTradingBot main loop")
+        await self.sleep_until_next_interval(10)
         while True:
             try:
                 if not self.static_symbols:
@@ -76,9 +77,9 @@ class SMCBosOrderBlockTapBot(SMCBotBase):
                 for symbol, result in zip(self.symbols, results):
                     if isinstance(result, Exception):
                         logger.error(f"Error processing {symbol}: {result}")
-                await self.sleep_until_next_interval(interval_minutes=17)
+                await self.sleep_until_next_interval(interval_minutes=19)
 
             except Exception as e:
                 logger.error(f"Error in main loop: {e}")
-                await self.sleep_until_next_interval(interval_minutes=17)
+                await self.sleep_until_next_interval(interval_minutes=19)
                 continue

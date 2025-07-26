@@ -233,5 +233,5 @@ async def test_merge_ob_and_bos():
     fig = ob_detector.merge_bos_ob_plots(ohlc_15m, bos_signals, ob_signals=ob_signals)
     fig.show()
 
-
-
+    bot = TelegramBot(chat_id=TELEGRAM_BOT_CHAT_ID)
+    await bot.send_message(text="TEST TEST Message", image=fig)

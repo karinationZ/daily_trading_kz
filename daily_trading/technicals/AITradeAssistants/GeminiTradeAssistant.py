@@ -354,7 +354,7 @@ Remember: Your edge comes from identifying where institutions are positioned and
         return fig
 
     @staticmethod
-    def can_send_request(start_hour=6, end_hour=23, end_minute=0):
+    def can_send_request(start_hour=8, end_hour=22, end_minute=0):
         pacific = pytz.timezone('US/Pacific')
         now = datetime.now(pacific)
         current_time = now.hour * 60 + now.minute

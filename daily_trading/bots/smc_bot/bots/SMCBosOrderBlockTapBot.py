@@ -38,7 +38,7 @@ class SMCBosOrderBlockTapBot(SMCBotBase):
             ohlc_1h = await self.fetch_ohlc_data(symbol, "1h", num_candles=120)
             ohlc_15m = await self.fetch_ohlc_data(symbol, "15m", num_candles=100)
 
-            if ohlc_1h.empty or ohlc_15m.empty:
+            if any(ohlc.empty for ohlc in [ohlc_1d, ohlc_4h, ohlc_1h, ohlc_15m]):
                 logger.error(f"No data for {symbol}, skipping...")
                 await self.bos_15m_ob_tap_strategy.telegram_bot.send_message(f"No data for {symbol}")
                 return

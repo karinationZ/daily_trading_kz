@@ -5,6 +5,7 @@ import pandas as pd
 
 from daily_trading.settings import logger
 
+GET_READY_ALERT = "ALERT - Get Ready"
 BULLISH = 1
 BEARISH = 0
 NEUTRAL = -1

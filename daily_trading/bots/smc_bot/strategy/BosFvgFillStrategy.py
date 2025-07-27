@@ -3,7 +3,7 @@ import pandas as pd
 from daily_trading.bots.smc_bot.detectors.BosChochDetector import BosChochDetector
 from daily_trading.bots.smc_bot.detectors.FvgDetector import FvgDetector
 from daily_trading.bots.smc_bot.detectors.HighLowDetector import HighLowDetector
-from daily_trading.bots.smc_bot.detectors.SMCBase import Trend
+from daily_trading.bots.smc_bot.detectors.SMCBase import GET_READY_ALERT, Trend
 from daily_trading.bots.smc_bot.strategy.StrategyBase import SignalSummary, StrategyBase
 
 
@@ -137,7 +137,7 @@ class BosFvgFillStrategy(StrategyBase):
                     self.last_mitigated_fvg_level_map[symbol] = None
                     self._current_fvg_id_map[symbol] = None
                 else:
-                    recent_smc_events.append(f"Price partially mitigated {trend} FVG by {mitigation_percent:.2f}%")
+                    recent_smc_events.append(f"{GET_READY_ALERT} - Price partially mitigated {trend} FVG.")
             else:  # BEARISH
                 # Update last_mitigated_fvg_level, constrain to FVG top
                 if self.last_mitigated_fvg_level_map.get(symbol) is None or candle_high > \
@@ -151,7 +151,7 @@ class BosFvgFillStrategy(StrategyBase):
                     self.last_mitigated_fvg_level_map[symbol] = None
                     self._current_fvg_id_map[symbol] = None
                 else:
-                    recent_smc_events.append(f"Price partially mitigated {trend} FVG by {mitigation_percent:.2f}%")
+                    recent_smc_events.append(f"{GET_READY_ALERT} - Price partially mitigated {trend} FVG.")
         else:
             recent_smc_events.append(f"Current price is outside of the {trend} FVG.")
 
@@ -197,6 +197,8 @@ class BosFvgFillStrategy(StrategyBase):
         # Step 4: Confirm Pull Back - FVG mitigation
         fvg_mitigated, step_4_events = await self.confirm_fvg_mitigation(symbol, ohlc_15m, trend, nearest_fvg)
         recent_smc_events.extend(step_4_events)
+        if GET_READY_ALERT in step_4_events[-1]:
+            signal_summary.direction = GET_READY_ALERT
 
         if not fvg_mitigated:
             signal_summary.recent_smc_events = recent_smc_events

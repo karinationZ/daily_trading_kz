@@ -5,7 +5,7 @@ import pandas as pd
 import pytz
 
 from daily_trading.bots.smc_bot.bots.TelegramBot import TelegramBot
-from daily_trading.bots.smc_bot.detectors.SMCBase import Trend
+from daily_trading.bots.smc_bot.detectors.SMCBase import GET_READY_ALERT, Trend
 from daily_trading.bots.smc_bot.strategy.BosFvgFillStrategy import SignalSummary
 from daily_trading.brokers.BitUnixClient import BitUnixClient
 from daily_trading.settings import logger, TELEGRAM_CHANNEL_CHAT_ID, TELEGRAM_DEBUG_CHANNEL_ID, USE_AI
@@ -244,8 +244,8 @@ class SMCBotBase:
                               ohlc_15m: pd.DataFrame):
         """Generate SMC signals."""
         try:
-            if analysis.direction != Trend.NEUTRAL.name:
-                last_candle = ohlc_15m.index.max().tz_convert('US/Pacific').strftime('%Y-%m-%d %H:%M')
+            last_candle = ohlc_15m.index.max().tz_convert('US/Pacific').strftime('%Y-%m-%d %H:%M')
+            if analysis.direction in [Trend.BULLISH.name, Trend.BEARISH.name]:
                 # AI Request
                 ohlc = Ohlc(ohlc_1d, ohlc_4h, ohlc_1h, ohlc_15m)
                 ai_agent = GeminiTradeAssistant(symbol=symbol,
@@ -263,6 +263,10 @@ class SMCBotBase:
 
                 if formatted_ai_message and is_success:
                     await self.telegram_bot.send_message(formatted_ai_message)
+
+            elif analysis.direction == GET_READY_ALERT:
+                await self.send_final_message(analysis, last_candle, symbol, title=analysis.title)
+
             else:
                 events = [e for e in analysis.recent_smc_events if e is not None]
                 events_str = '\n • '.join([event[0] if isinstance(event, list) else event for event in events])

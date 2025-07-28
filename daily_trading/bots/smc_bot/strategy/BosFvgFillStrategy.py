@@ -92,18 +92,7 @@ class BosFvgFillStrategy(StrategyBase):
         return nearest_fvg, recent_smc_events
 
     async def confirm_fvg_mitigation(self, symbol, ohlc_15m: pd.DataFrame, trend: str, fvg_signal: dict):
-        """
-        Confirm if the current candle mitigates an FVG by 60% or more.
-
-        Args:
-            symbol: Asset
-            ohlc_15m (pd.DataFrame): OHLC data with at least one row.
-            trend (str): Trend direction ('BULLISH' or 'BEARISH').
-            fvg_signal (dict): FVG signal with 'top', 'bottom', 'time'.
-
-        Returns:
-            tuple[bool, list[str]]: (fvg_mitigated, recent_smc_events)
-        """
+        """Confirm if the current candle mitigates an FVG by 60% or more."""
         recent_smc_events = []
 
         fvg_top = fvg_signal['top']
@@ -121,39 +110,31 @@ class BosFvgFillStrategy(StrategyBase):
             self.last_mitigated_fvg_level_map[symbol] = None
             self._current_fvg_id_map[symbol] = id(fvg_signal)
 
-        if candle_low <= fvg_top and candle_high >= fvg_bottom:
+        if fvg_bottom <= current_candle['close'] <= fvg_top:
             recent_smc_events.append(f"Current price is in {trend} FVG.")
 
+        if candle_low <= fvg_top and candle_high >= fvg_bottom:
+            # Update last_mitigated_fvg_level based on trend
+            current_level = self.last_mitigated_fvg_level_map.get(symbol)
             if trend == Trend.BULLISH.name:
-                # Update last_mitigated_fvg_level, constrain to FVG bottom
-                if self.last_mitigated_fvg_level_map.get(symbol) is None \
-                        or candle_low < self.last_mitigated_fvg_level_map[symbol]:
+                if current_level is None or candle_low < current_level:
                     self.last_mitigated_fvg_level_map[symbol] = max(candle_low, fvg_bottom)
                 mitigation_depth = fvg_top - self.last_mitigated_fvg_level_map[symbol]
-                mitigation_percent = (mitigation_depth / fvg_range) * 100 if fvg_range > 0 else 0
-                if mitigation_percent >= 60:
-                    fvg_mitigated = True
-                    recent_smc_events.append(
-                        f"{symbol} - Price mitigated {trend} FVG by {mitigation_percent:.2f}% (>= 60%)")
-                    self.last_mitigated_fvg_level_map[symbol] = None
-                    self._current_fvg_id_map[symbol] = None
-                else:
-                    recent_smc_events.append(
-                        f"{GET_READY_ALERT} - Price partially mitigated ({mitigation_percent}%) {trend} FVG.")
             else:  # BEARISH
-                # Update last_mitigated_fvg_level, constrain to FVG top
-                if self.last_mitigated_fvg_level_map.get(symbol) is None or candle_high > \
-                        self.last_mitigated_fvg_level_map[symbol]:
+                if current_level is None or candle_high > current_level:
                     self.last_mitigated_fvg_level_map[symbol] = min(candle_high, fvg_top)
                 mitigation_depth = self.last_mitigated_fvg_level_map[symbol] - fvg_bottom
-                mitigation_percent = (mitigation_depth / fvg_range) * 100 if fvg_range > 0 else 0
-                if mitigation_percent >= 60:
-                    fvg_mitigated = True
-                    recent_smc_events.append(f"Price mitigated ({mitigation_percent}%) {trend} FVG by {mitigation_percent:.2f}% (>= 60%)")
-                    self.last_mitigated_fvg_level_map[symbol] = None
-                    self._current_fvg_id_map[symbol] = None
-                else:
-                    recent_smc_events.append(f"{GET_READY_ALERT} - Price partially mitigated {trend} FVG.")
+
+            mitigation_percent = int((mitigation_depth / fvg_range) * 100) if fvg_range > 0 else 0
+            if mitigation_percent >= 60:
+                fvg_mitigated = True
+                msg = f"{symbol} - Price mitigated {trend} FVG by {mitigation_percent}% (>= 60%)" if trend == Trend.BULLISH.name else f"Price mitigated {trend} FVG by {mitigation_percent}% (>= 60%)"
+                recent_smc_events.append(msg)
+                self.last_mitigated_fvg_level_map[symbol] = None
+                self._current_fvg_id_map[symbol] = None
+            elif mitigation_percent > 0:
+                recent_smc_events.append(
+                    f"{GET_READY_ALERT} - Price partially mitigated ({mitigation_percent}%) {trend} FVG.")
         else:
             recent_smc_events.append(f"Current price is outside of the {trend} FVG.")
 

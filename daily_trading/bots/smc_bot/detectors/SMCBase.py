@@ -11,6 +11,12 @@ BEARISH = 0
 NEUTRAL = -1
 
 
+class Signal(Enum):
+    """Trend enumeration with integer values"""
+    SHORT = "SHORT"
+    LONG = "LONG"
+
+
 class Trend(Enum):
     """Trend enumeration with integer values"""
     BULLISH = 1

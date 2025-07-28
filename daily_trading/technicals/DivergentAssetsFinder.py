@@ -69,7 +69,7 @@ class BitUnixDivergentAssetsFinder:
         correlation, _ = pearsonr(btc_returns, symbol_returns)
         return correlation if not np.isnan(correlation) else None
 
-    async def find_non_correlated_assets(self, correlation_threshold=0.3, volume_threshold=30000000, lookback_hours=24):
+    async def find_non_correlated_assets(self, correlation_threshold=0.2, volume_threshold=30000000, lookback_hours=24):
         """Find assets with weak correlation to BTC"""
         high_volume_symbols = self.get_high_volume_symbols(threshold=volume_threshold)
         logger.info(f"Found {len(high_volume_symbols)} high volume symbols")
@@ -135,7 +135,7 @@ class BitUnixDivergentAssetsFinder:
                 })
 
         results.sort(key=lambda x: x["correlation"])
-        non_correlated = [r for r in results if abs(r["correlation"]) < 0.3]
+        non_correlated = [r for r in results if abs(r["correlation"]) < 0.2]
         inverse_correlated = [r for r in results if r["correlation"] < -0.7]
 
         output = {
@@ -169,12 +169,12 @@ if __name__ == "__main__":
 
     # Run async method
     results = asyncio.run(finder.find_divergent_assets(
-        volume_threshold=10000000,
+        volume_threshold=7000000,
         lookback_hours=3
     ))
 
     # Log results
-    logger.info("\nNon-correlated assets (correlation between -0.3 and 0.3):")
+    logger.info("\nNon-correlated assets (correlation between -0.2 and 0.2):")
     logger.info(f"Found {len(results['non_correlated'])} asset(s)")
     for asset in results["non_correlated"]:
         logger.info(f"{asset['symbol']}: Correlation = {asset['correlation']:.3f} | Volume: {asset['volume']:.2f}")

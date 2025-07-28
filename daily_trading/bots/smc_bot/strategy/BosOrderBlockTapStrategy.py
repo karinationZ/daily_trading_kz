@@ -6,7 +6,7 @@ import pandas as pd
 from daily_trading.bots.smc_bot.detectors.BosChochDetector import BosChochDetector
 from daily_trading.bots.smc_bot.detectors.HighLowDetector import HighLowDetector
 from daily_trading.bots.smc_bot.detectors.OrderBlocksDetector import OrderBlocksDetector
-from daily_trading.bots.smc_bot.detectors.SMCBase import Trend
+from daily_trading.bots.smc_bot.detectors.SMCBase import Signal, Trend
 from daily_trading.bots.smc_bot.strategy.StrategyBase import SignalSummary, StrategyBase
 from daily_trading.settings import logger
 
@@ -209,7 +209,7 @@ class BosOrderBlockTapStrategy(StrategyBase):
         signal_summary.fig = self.ob_fig
 
         if self.ob_tap_cache.get(symbol):
-            signal_summary.direction = "LONG" if trend == Trend.BULLISH.name else "SHORT"
+            signal_summary.direction = Signal.LONG.value if trend == Trend.BULLISH.name else Signal.SHORT.value
             event = f"Generated {signal_summary.direction} signal for {symbol} at {current_time}."
             recent_smc_events.append(event)
             logger.info(f"Step 4: {event}")

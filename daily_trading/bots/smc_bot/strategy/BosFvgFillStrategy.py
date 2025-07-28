@@ -3,7 +3,7 @@ import pandas as pd
 from daily_trading.bots.smc_bot.detectors.BosChochDetector import BosChochDetector
 from daily_trading.bots.smc_bot.detectors.FvgDetector import FvgDetector
 from daily_trading.bots.smc_bot.detectors.HighLowDetector import HighLowDetector
-from daily_trading.bots.smc_bot.detectors.SMCBase import GET_READY_ALERT, Trend
+from daily_trading.bots.smc_bot.detectors.SMCBase import GET_READY_ALERT, Signal, Trend
 from daily_trading.bots.smc_bot.strategy.StrategyBase import SignalSummary, StrategyBase
 
 
@@ -133,7 +133,8 @@ class BosFvgFillStrategy(StrategyBase):
                 mitigation_percent = (mitigation_depth / fvg_range) * 100 if fvg_range > 0 else 0
                 if mitigation_percent >= 60:
                     fvg_mitigated = True
-                    recent_smc_events.append(f"Price mitigated {trend} FVG by {mitigation_percent:.2f}% (>= 60%)")
+                    recent_smc_events.append(
+                        f"{symbol} - Price mitigated {trend} FVG by {mitigation_percent:.2f}% (>= 60%)")
                     self.last_mitigated_fvg_level_map[symbol] = None
                     self._current_fvg_id_map[symbol] = None
                 else:
@@ -171,7 +172,7 @@ class BosFvgFillStrategy(StrategyBase):
         recent_smc_events.extend(trend_event)
 
         # Step 2: Detect BOS & ChoCH signals
-        bos_events = await self.detect_bos_choch( self.detectors['bos_1h'], ohlc_1h, trend, symbol)
+        bos_events = await self.detect_bos_choch(self.detectors['bos_1h'], ohlc_1h, trend, symbol)
         recent_smc_events.extend(bos_events)
         signal_summary = SignalSummary(
             direction=Trend.NEUTRAL.name,
@@ -218,7 +219,7 @@ class BosFvgFillStrategy(StrategyBase):
         # self.last_mitigated_fvg = nearest_fvg
 
         # Step 5: Generate final signal
-        signal = "LONG" if trend == Trend.BULLISH.name else "SHORT"
+        signal = Signal.LONG.value if trend == Trend.BULLISH.name else Signal.SHORT.value
         event = f"Generated {signal} signal for {symbol} based on FVG mitigation."
         recent_smc_events.append(event)
         signal_summary.direction = signal

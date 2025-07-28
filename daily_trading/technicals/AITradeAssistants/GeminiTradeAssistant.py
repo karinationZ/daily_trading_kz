@@ -199,7 +199,7 @@ You follow strict ICT Smart Money Concepts combined with advanced market analysi
 - **Session Timing**: Optimal execution based on volume and volatility
 - **Alternative Scenarios**: What to watch if primary analysis doesn't play out
 
-## Response must short, clear, precise and easy to understand. Use abbreviations (i.e FVG) instead full names..
+## Response must short, clear, precise and easy to understand.
 ## Response Output Format:
 
 ### For HIGH-PROBABILITY SETUPS ONLY:
@@ -366,7 +366,7 @@ Remember: Your edge comes from identifying where institutions are positioned and
 async def main():
     from daily_trading.bots.smc_bot.bots.BaseBot import SMCBotBase
     logger.debug("Searching for assets that move most independently of Bitcoin.")
-    symbol = "PUMPFUNUSDT"
+    symbol = "ENAUSDT"
     want_to_pay_for_analyses = True
     bot = SMCBotBase(symbols=[symbol], main_tf="1h")
 

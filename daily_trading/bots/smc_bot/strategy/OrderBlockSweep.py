@@ -8,7 +8,7 @@ from daily_trading.bots.smc_bot.detectors.CandlePatternDetector import CandlePat
 from daily_trading.bots.smc_bot.detectors.FvgDetector import FvgDetector
 from daily_trading.bots.smc_bot.detectors.HighLowDetector import HighLowDetector
 from daily_trading.bots.smc_bot.detectors.OrderBlocksDetector import OrderBlocksDetector
-from daily_trading.bots.smc_bot.detectors.SMCBase import Trend
+from daily_trading.bots.smc_bot.detectors.SMCBase import Signal, Trend
 from daily_trading.bots.smc_bot.strategy.StrategyBase import SignalSummary, StrategyBase
 from daily_trading.settings import logger
 
@@ -214,9 +214,9 @@ class OrderBlockSweepStrategy(StrategyBase):
         signal_summary.recent_smc_events = recent_smc_events
         if rejection_confirmed:
             if trend == Trend.BULLISH.name:
-                signal_summary.direction = "LONG"
+                signal_summary.direction = Signal.LONG.value
             else:
-                signal_summary.direction = "SHORT"
+                signal_summary.direction = Signal.SHORT.value
         else:
             logger.info(f"No trading signal. Current SMC events: {json.dumps(recent_smc_events, indent=1)}")
             return signal_summary

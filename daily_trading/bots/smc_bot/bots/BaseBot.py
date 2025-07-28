@@ -5,7 +5,7 @@ import pandas as pd
 import pytz
 
 from daily_trading.bots.smc_bot.bots.TelegramBot import TelegramBot
-from daily_trading.bots.smc_bot.detectors.SMCBase import GET_READY_ALERT, Trend
+from daily_trading.bots.smc_bot.detectors.SMCBase import GET_READY_ALERT, Signal, Trend
 from daily_trading.bots.smc_bot.strategy.BosFvgFillStrategy import SignalSummary
 from daily_trading.brokers.BitUnixClient import BitUnixClient
 from daily_trading.settings import logger, TELEGRAM_CHANNEL_CHAT_ID, TELEGRAM_DEBUG_CHANNEL_ID, USE_AI
@@ -245,7 +245,8 @@ class SMCBotBase:
         """Generate SMC signals."""
         try:
             last_candle = ohlc_15m.index.max().tz_convert('US/Pacific').strftime('%Y-%m-%d %H:%M')
-            if analysis.direction in [Trend.BULLISH.name, Trend.BEARISH.name]:
+
+            if analysis.direction in [Signal.LONG.value, Signal.SHORT.value]:
                 # AI Request
                 ohlc = Ohlc(ohlc_1d, ohlc_4h, ohlc_1h, ohlc_15m)
                 ai_agent = GeminiTradeAssistant(symbol=symbol,

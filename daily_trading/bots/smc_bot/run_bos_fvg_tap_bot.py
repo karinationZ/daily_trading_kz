@@ -5,7 +5,7 @@ from daily_trading.settings import TELEGRAM_CHANNEL_CHAT_ID
 
 
 async def main():
-    bot = SMCBosFvgFillBot(symbols=[],
+    bot = SMCBosFvgFillBot(symbols=["ENAUSDT"],
                            lookback_days=10,
                            main_tf="1h",
                            symbol_volume_threshold=7000000,

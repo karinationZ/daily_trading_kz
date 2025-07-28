@@ -166,7 +166,7 @@ class TelegramBot:
             logger.info(f"Telegram message sent successfully.")
             return True
         except Exception as e:
-            logger.error(f"Error sending single message: {str(e)}")
+            logger.error(f"Error sending single message: {str(e)}. Message: {text}")
             return False
 
     async def _send_long_message(self, text: str, image: Optional[go.Figure] = None) -> bool:

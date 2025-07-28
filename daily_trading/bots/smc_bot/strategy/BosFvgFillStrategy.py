@@ -138,7 +138,8 @@ class BosFvgFillStrategy(StrategyBase):
                     self.last_mitigated_fvg_level_map[symbol] = None
                     self._current_fvg_id_map[symbol] = None
                 else:
-                    recent_smc_events.append(f"{GET_READY_ALERT} - Price partially mitigated {trend} FVG.")
+                    recent_smc_events.append(
+                        f"{GET_READY_ALERT} - Price partially mitigated ({mitigation_percent}%) {trend} FVG.")
             else:  # BEARISH
                 # Update last_mitigated_fvg_level, constrain to FVG top
                 if self.last_mitigated_fvg_level_map.get(symbol) is None or candle_high > \
@@ -148,7 +149,7 @@ class BosFvgFillStrategy(StrategyBase):
                 mitigation_percent = (mitigation_depth / fvg_range) * 100 if fvg_range > 0 else 0
                 if mitigation_percent >= 60:
                     fvg_mitigated = True
-                    recent_smc_events.append(f"Price mitigated {trend} FVG by {mitigation_percent:.2f}% (>= 60%)")
+                    recent_smc_events.append(f"Price mitigated ({mitigation_percent}%) {trend} FVG by {mitigation_percent:.2f}% (>= 60%)")
                     self.last_mitigated_fvg_level_map[symbol] = None
                     self._current_fvg_id_map[symbol] = None
                 else:

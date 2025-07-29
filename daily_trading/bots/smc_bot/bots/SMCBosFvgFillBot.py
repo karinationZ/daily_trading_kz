@@ -40,7 +40,6 @@ class SMCBosFvgFillBot(SMCBotBase):
 
             if any(ohlc.empty for ohlc in [ohlc_1d, ohlc_4h, ohlc_1h, ohlc_15m]):
                 logger.error(f"No data for {symbol}, skipping...")
-                await self.bos_strategy.telegram_bot.send_message(f"No data for {symbol}")
                 return
 
             analysis = await self.bos_strategy.analyze_smc(symbol, ohlc_1h=ohlc_1h, ohlc_15m=ohlc_15m)

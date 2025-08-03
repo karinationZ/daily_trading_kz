@@ -166,8 +166,18 @@ class TelegramBot:
             logger.info(f"Telegram message sent successfully.")
             return True
         except Exception as e:
-            logger.error(f"Error sending single message: {str(e)}. Message: {text}")
-            return False
+            logger.error(
+                f"Error sending single message. Retrying to send just a text, no chart. {str(e)}. Message: {text}")
+            await asyncio.wait_for(
+                self.bot.send_message(
+                    chat_id=self.chat_id,
+                    text=text,
+                    parse_mode=ParseMode.HTML
+                ),
+                timeout=45
+            )
+            logger.info(f"Telegram message without image sent successfully.")
+            return True
 
     async def _send_long_message(self, text: str, image: Optional[go.Figure] = None) -> bool:
         """Split and send long messages (internal helper)."""

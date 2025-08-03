@@ -16,7 +16,7 @@ from daily_trading.bots.smc_bot.strategy.StrategyBase import SignalSummary
 from daily_trading.settings import logger, TELEGRAM_BOT_CHAT_ID
 from daily_trading.technicals.AITradeAssistants.GeminiTradeAssistant import GEMINI_PRO, GeminiTradeAssistant, Ohlc
 
-symbol = "ASRUSDT"
+symbol = "BTCUSDT"
 main_tf = "1h"
 lookback_days = 10
 
@@ -110,10 +110,10 @@ async def test_levels_break():
 @pytest.mark.asyncio
 async def test_liquidity_sweep():
     bot = SMCBotBase(symbols=[symbol], lookback_days=lookback_days, main_tf=main_tf)
-    ohlc = await bot.fetch_ohlc_data(symbol, main_tf)
+    ohlc = await bot.fetch_ohlc_data(symbol, main_tf, num_candles=120)
 
-    with pd.option_context('display.max_rows', None, 'display.max_columns', None):
-        logger.info("\n{}", ohlc.tail(50).to_string())
+    # with pd.option_context('display.max_rows', None, 'display.max_columns', None):
+    #     logger.info("\n{}", ohlc.tail(50).to_string())
 
     detector = LiquiditySweepDetector(main_tf)
     results = detector.calculate_liquidity_sweeps(ohlc, plot=True)

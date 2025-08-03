@@ -366,7 +366,7 @@ Remember: Your edge comes from identifying where institutions are positioned and
 async def main():
     from daily_trading.bots.smc_bot.bots.BaseBot import SMCBotBase
     logger.debug("Searching for assets that move most independently of Bitcoin.")
-    symbol = "TRXUSDT"
+    symbol = "MAGICUSDT"
     want_to_pay_for_analyses = True
     bot = SMCBotBase(symbols=[symbol], main_tf="1h")
 

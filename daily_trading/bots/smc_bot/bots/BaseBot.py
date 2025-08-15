@@ -8,7 +8,7 @@ from daily_trading.bots.smc_bot.bots.TelegramBot import TelegramBot
 from daily_trading.bots.smc_bot.detectors.SMCBase import GET_READY_ALERT, Signal, Trend
 from daily_trading.bots.smc_bot.strategy.BosFvgFillStrategy import SignalSummary
 from daily_trading.brokers.BitUnixClient import BitUnixClient
-from daily_trading.settings import logger, TELEGRAM_CHANNEL_CHAT_ID, TELEGRAM_DEBUG_CHANNEL_ID, USE_AI
+from daily_trading.settings import logger, TELEGRAM_MAIN_CHANNEL_CHAT_ID, TELEGRAM_MY_DEBUG_BOT_ID, USE_AI
 from daily_trading.technicals.AITradeAssistants.GeminiTradeAssistant import GEMINI_PRO, GeminiTradeAssistant, Ohlc
 from daily_trading.technicals.DivergentAssetsFinder import BitUnixDivergentAssetsFinder
 
@@ -23,7 +23,7 @@ class SMCBotBase:
     def __init__(self, symbols, main_tf: str = '1h',
                  symbol_volume_threshold: float = 30000000,
                  lookback_days: int = 1,
-                 telegram_chat_id=TELEGRAM_CHANNEL_CHAT_ID
+                 telegram_chat_id=TELEGRAM_MAIN_CHANNEL_CHAT_ID
                  ):
         """
         Initialize SMCTradingBot.
@@ -37,7 +37,7 @@ class SMCBotBase:
         self.static_symbols = symbols
         self.symbols = symbols
         self.telegram_bot = TelegramBot(chat_id=telegram_chat_id)
-        self.telegram_bot_debug = TelegramBot(chat_id=TELEGRAM_DEBUG_CHANNEL_ID)
+        self.telegram_bot_debug = TelegramBot(chat_id=TELEGRAM_MY_DEBUG_BOT_ID)
         self.main_tf = main_tf
         self.volume_threshold = symbol_volume_threshold
         self.lookback_days = lookback_days

@@ -3,7 +3,7 @@ import traceback
 from daily_trading.settings import logger
 from daily_trading.bots.smc_bot.bots.BaseBot import SMCBotBase
 from daily_trading.bots.smc_bot.strategy.BosOrderBlockTapStrategy import BosOrderBlockTapStrategy
-from daily_trading.settings import TELEGRAM_CHANNEL_CHAT_ID
+from daily_trading.settings import TELEGRAM_MAIN_CHANNEL_CHAT_ID
 
 
 class SMCBosOrderBlockTapBot(SMCBotBase):

@@ -1,7 +1,7 @@
 import asyncio
 
 from daily_trading.bots.smc_bot.bots.SMCBosFvgFillBot import SMCBosFvgFillBot
-from daily_trading.settings import TELEGRAM_CHANNEL_CHAT_ID
+from daily_trading.settings import TELEGRAM_MAIN_CHANNEL_CHAT_ID
 
 
 async def main():
@@ -9,7 +9,7 @@ async def main():
                            lookback_days=10,
                            main_tf="1h",
                            symbol_volume_threshold=7000000,
-                           debug=False, telegram_chat_id=TELEGRAM_CHANNEL_CHAT_ID)
+                           debug=False, telegram_chat_id=TELEGRAM_MAIN_CHANNEL_CHAT_ID)
     await bot.run()
 
 

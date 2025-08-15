@@ -3,7 +3,7 @@ import traceback
 
 from daily_trading.bots.smc_bot.bots.BaseBot import SMCBotBase
 from daily_trading.bots.smc_bot.strategy.SupportResistanceStrategy import SupportResistanceStrategy
-from daily_trading.settings import logger, TELEGRAM_DEBUG_CHANNEL_ID
+from daily_trading.settings import logger, TELEGRAM_MAIN_CHANNEL_CHAT_ID
 
 DEFAULT_SYMBOLS = ["BTCUSDT", "ETHUSDT", "SOLUSDT", "XRPUSDT", "ADAUSDT"]
 

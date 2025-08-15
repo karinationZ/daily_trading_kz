@@ -13,9 +13,9 @@ logger.add(sys.stdout, level="INFO", colorize=True, format=fmt)
 PROJECT_DIR = os.path.dirname(os.path.abspath(__file__))
 # Telegram configuration from environment variables
 TELEGRAM_TOKEN = os.environ.get("TELEGRAM_BOT_API_KEY")
+TELEGRAM_MAIN_CHANNEL_CHAT_ID = os.environ.get("TELEGRAM_CHANNEL_ID")
 TELEGRAM_BOT_CHAT_ID = os.environ.get("TELEGRAM_BOT_CHAT_ID")
-TELEGRAM_CHANNEL_CHAT_ID = os.environ.get("TELEGRAM_CHANNEL_ID")
-TELEGRAM_DEBUG_CHANNEL_ID = os.environ.get("TELEGRAM_DEBUG_CHANNEL_ID")
+TELEGRAM_MY_DEBUG_BOT_ID = os.environ.get("TELEGRAM_DEBUG_CHANNEL_ID")
 
 GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY")
 CRYPTO_PANIC_TOKEN = os.environ.get("CRYPTO_PANIC_TOKEN")

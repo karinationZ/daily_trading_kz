@@ -2,7 +2,7 @@ import asyncio
 
 from daily_trading.bots.smc_bot.bots.BaseBot import SMCBotBase
 from daily_trading.bots.smc_bot.strategy.OrderBlockSweep import OrderBlockSweepStrategy
-from daily_trading.settings import logger, TELEGRAM_CHANNEL_CHAT_ID
+from daily_trading.settings import logger, TELEGRAM_MAIN_CHANNEL_CHAT_ID
 
 
 class SMCOrderBlockSweepBot(SMCBotBase):
@@ -19,7 +19,7 @@ class SMCOrderBlockSweepBot(SMCBotBase):
     """
 
     def __init__(self, symbols, main_tf: str = '1h', symbol_volume_threshold: float = 30000000, lookback_days: int = 1,
-                 debug=False, telegram_chat_id=TELEGRAM_CHANNEL_CHAT_ID):
+                 debug=False, telegram_chat_id=TELEGRAM_MAIN_CHANNEL_CHAT_ID):
 
         super().__init__(symbols,
                          main_tf,

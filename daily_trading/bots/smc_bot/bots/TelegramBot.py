@@ -44,7 +44,7 @@ class TelegramBot:
         """
         self.parse_mode = parse_mode
         self.disable_notification = disable_notification
-        self.chat_id = chat_id if chat_id else TELEGRAM_CHANNEL_CHAT_ID
+        self.chat_id = chat_id if chat_id else TELEGRAM_MAIN_CHANNEL_CHAT_ID
 
         timeout_config = aiohttp.ClientTimeout(
             total=total_timeout,

@@ -169,7 +169,7 @@ if __name__ == "__main__":
 
     # Run async method
     results = asyncio.run(finder.find_divergent_assets(
-        volume_threshold=7000000,
+        volume_threshold=10000000,
         lookback_hours=3
     ))
 

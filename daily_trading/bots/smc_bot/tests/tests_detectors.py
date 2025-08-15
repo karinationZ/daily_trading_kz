@@ -7,7 +7,8 @@ from daily_trading.bots.smc_bot.detectors.BosChochDetector import BosChochDetect
 from daily_trading.bots.smc_bot.detectors.FakeBreakoutDetector import FakeBreakoutDetector
 from daily_trading.bots.smc_bot.detectors.FvgDetector import FvgDetector
 from daily_trading.bots.smc_bot.detectors.HighLowDetector import HighLowDetector
-from daily_trading.bots.smc_bot.detectors.LevelsBreakDetector import LevelsBreakDetector
+from daily_trading.bots.smc_bot.detectors.LevelsDetector import LevelsDetector
+from daily_trading.bots.smc_bot.detectors.LiquidityGrabDetector import LiquidityGrabDetector
 from daily_trading.bots.smc_bot.detectors.LiquidityPoolDetector import LiquidityPoolDetector
 from daily_trading.bots.smc_bot.detectors.LiquiditySweepDetector import LiquiditySweepDetector
 from daily_trading.bots.smc_bot.detectors.OrderBlocksDetector import OrderBlocksDetector
@@ -16,9 +17,9 @@ from daily_trading.bots.smc_bot.strategy.StrategyBase import SignalSummary
 from daily_trading.settings import logger, TELEGRAM_BOT_CHAT_ID
 from daily_trading.technicals.AITradeAssistants.GeminiTradeAssistant import GEMINI_PRO, GeminiTradeAssistant, Ohlc
 
-symbol = "BTCUSDT"
+symbol = "ILVUSDT"
 main_tf = "1h"
-lookback_days = 10
+lookback_days = 5
 
 
 @pytest.mark.asyncio
@@ -92,17 +93,6 @@ async def test_high_low():
         logger.info("\n{}", ohlc.tail(50).to_string())
     detector = HighLowDetector(main_tf)
     results = detector.calculate_high_low_swings(ohlc, plot=True)
-    fig = results["fig"]
-    fig.show()
-
-
-@pytest.mark.asyncio
-async def test_levels_break():
-    bot = SMCBotBase(symbols=[symbol], lookback_days=lookback_days, main_tf=main_tf)
-    ohlc = await bot.fetch_ohlc_data(symbol, main_tf)
-
-    detector = LevelsBreakDetector(main_tf)
-    results = detector.calculate_support_resistance_breaks(ohlc, plot=True)
     fig = results["fig"]
     fig.show()
 
@@ -235,3 +225,31 @@ async def test_merge_ob_and_bos():
 
     bot = TelegramBot(chat_id=TELEGRAM_BOT_CHAT_ID)
     await bot.send_message(text="TEST TEST Message", image=fig)
+
+
+@pytest.mark.asyncio
+async def test_liq_grab():
+    bot = SMCBotBase(symbols=[symbol], lookback_days=lookback_days, main_tf=main_tf)
+    ohlc = await bot.fetch_ohlc_data(symbol, "15m", num_candles=120)
+    with pd.option_context('display.max_rows', None, 'display.max_columns', None):
+        logger.info("\n{}", ohlc.tail(50).to_string())
+
+    ob_detector = LiquidityGrabDetector(main_tf)
+    results = ob_detector.calculate_liquidity_grabs(ohlc, plot=True)
+    logger.info(results["signals"])
+    fig = results["fig"]
+    fig.show()
+
+
+@pytest.mark.asyncio
+async def test_support_resistance_levels():
+    symbol = "BTCUSDT"
+    bot = SMCBotBase(symbols=[symbol], main_tf="1h")
+    # Fetch OHLC data within async context
+    ohlc_htf = await bot.fetch_ohlc_data(symbol, "4h", num_candles=540)
+    ohlc_ltf = await bot.fetch_ohlc_data(symbol, "15m", num_candles=200)
+
+    detector = LevelsDetector(main_tf="15m", pivot_length=5, strength=1)
+    results = detector.calculate_support_resistance_levels(ohlc_htf, plot=True)
+    fig = detector.plot_htf_levels_on_ltf(ohlc_ltf, results)
+    fig.show()

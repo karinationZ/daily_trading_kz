@@ -87,8 +87,8 @@ class BackTester:
             logger.debug(f"Processing candle at {current_time}")
             trade_signal = await self.strategy.analyze_smc(
                 symbol=self.symbol,
-                ohlc_1h=ohlc_1h_past,
-                ohlc_15m=ohlc_15m_past
+                ohlc_htf=ohlc_1h_past,
+                ohlc_ltf=ohlc_15m_past
             )
 
             if trade_signal.direction != "NEUTRAL":

@@ -1,0 +1,33 @@
+version: '3.8'
+services:
+  order_block_sweep:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        MAKE_COMMAND: run_order_block_sweep_bot
+    image: bot-order-block-sweep
+
+  bos_ob_tap:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        MAKE_COMMAND: run_bos_ob_tap_bot
+    image: bot-bos-ob-tap
+
+  bos_fvg_tap:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        MAKE_COMMAND: run_bos_fvg_tap_bot
+    image: bot-bos-fvg-tap
+
+  support_resistance:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        MAKE_COMMAND: run_support_resistance_bot
+    image: bot-support_resistance

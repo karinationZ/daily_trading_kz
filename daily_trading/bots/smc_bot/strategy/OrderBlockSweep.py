@@ -112,7 +112,7 @@ class OrderBlockSweepStrategy(StrategyBase):
         # Update cache
         self.ob_tap_cache.update({symbol: tap_timestamp})
 
-        new_ob_event = f"Current candle tapped {trend} OB at {tap_timestamp}."
+        new_ob_event = f"Current candle tapped 1H OB."
         if await self.manage_cache_event(cache_key, new_ob_event, current_time):
             recent_smc_events.append(new_ob_event)
             logger.info(f"Step 3: {new_ob_event} for {symbol}")

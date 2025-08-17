@@ -117,7 +117,7 @@ class LevelsDetector(SMCBase):
                 fig.add_annotation(
                     x=ohlc_ltf.index[-1],
                     y=sr['price'],
-                    text=f"{sr['price']:.2f}",
+                    text=f"{sr['price']}",
                     showarrow=False,
                     xanchor="left",
                     yanchor="middle",
@@ -133,8 +133,9 @@ class LevelsDetector(SMCBase):
             interval = pd.Timedelta(minutes=1)
         x_range_max = ohlc_ltf.index[-1] + interval * 0.5
 
+        tf_str = self.get_time_frame_name(ohlc_ltf)
         fig.update_layout(
-            title=f"{symbol} |Support & Resistance Levels | Last Candle: {last_candle} (PT)",
+            title=f"{symbol} |Support & Resistance Levels | Last Candle: {last_candle} (PT) | {tf_str} TF",
             xaxis_title="Time",
             yaxis_title="Price",
             xaxis_rangeslider_visible=False,
@@ -159,10 +160,10 @@ class LevelsDetector(SMCBase):
         return True
 
     def _plot_levels(self, ohlc, sr_info_list):
+        tf_str = self.get_time_frame_name(ohlc)
         ohlc = ohlc.sort_index().tail(self.plot_tail)
         symbol = ohlc['symbol'].iloc[0] if 'symbol' in ohlc.columns else 'Unknown'
-        fig = make_subplots(rows=1, cols=1,
-                            subplot_titles=[f"{symbol} | Support and Resistance Levels | TF: {self.main_tf}"])
+        fig = make_subplots(rows=1, cols=1)
 
         fig.add_trace(go.Candlestick(
             x=ohlc.index,
@@ -183,18 +184,31 @@ class LevelsDetector(SMCBase):
                     x=[start_time, end_time],
                     y=[sr['price'], sr['price']],
                     mode='lines',
-                    line=dict(color='orange' if sr['type'] == 'Resistance' else 'green', width=1),
+                    line=dict(color='blue', width=1),
                     name=sr['type'],
                     showlegend=False
                 ), row=1, col=1)
+                # Add price text annotation
+                fig.add_annotation(
+                    x=end_time,
+                    y=sr['price'],
+                    text=f"{sr['price']}",
+                    showarrow=False,
+                    xanchor="left",
+                    yanchor="middle",
+                    font=dict(size=10, color='blue'),
+                    xshift=5
+                )
 
         last_candle = ohlc.index.max().tz_convert('US/Pacific').strftime('%Y-%m-%d %H:%M')
+        # Extend x-axis to ensure last candle is fully visible
+        x_range_end = ohlc.index[-1] + pd.Timedelta(minutes=120)  # Increased buffer to 30 minutes
         fig.update_layout(
-            title=f"{symbol} | Support and Resistance Levels | Last Candle: {last_candle} (PT) | TF: {self.main_tf}",
+            title=f"{symbol} | Support and Resistance Levels | Last Candle: {last_candle} (PT) | TF: {tf_str}",
             xaxis_title="Time",
             yaxis_title="Price",
             xaxis_rangeslider_visible=False,
-            xaxis=dict(range=[ohlc.index[0], ohlc.index[-1]]),
+            xaxis=dict(range=[ohlc.index[0], x_range_end]),
             margin=dict(l=50, r=50, t=100, b=100),
         )
         fig.update_xaxes(
@@ -206,7 +220,6 @@ class LevelsDetector(SMCBase):
             row=1, col=1
         )
         return fig
-
     def calculate_atr(self, ohlc, period):
         high_low = ohlc['high'] - ohlc['low']
         high_close = (ohlc['high'] - ohlc['close'].shift(1)).abs()

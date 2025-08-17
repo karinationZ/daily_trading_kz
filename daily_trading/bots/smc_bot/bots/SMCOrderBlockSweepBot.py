@@ -66,7 +66,8 @@ class SMCOrderBlockSweepBot(SMCBotBase):
                     if needs_refresh:
                         await self.update_symbols()
                 logger.info(f"Monitoring {len(self.symbols)} symbols")
-                await self.telegram_bot_debug.send_message(f"****** Monitoring {len(self.symbols)} symbols ******")
+                await self.telegram_bot_debug.send_message(
+                    f"****** SMCOrderBlockSweepBot - Monitoring {len(self.symbols)} symbols ******")
                 tasks = [self.run_symbol(symbol) for symbol in self.symbols]
                 results = await asyncio.gather(*tasks, return_exceptions=True)
                 for symbol, result in zip(self.symbols, results):

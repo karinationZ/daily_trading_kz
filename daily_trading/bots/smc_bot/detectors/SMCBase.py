@@ -267,3 +267,16 @@ class SMCBase:
         elif ma_bearish and slope < -slope_threshold:
             return Trend.BEARISH.name
         return Trend.NEUTRAL.name
+
+    @staticmethod
+    def get_time_frame_name(ohlc: pd.DataFrame):
+        tf_days = (ohlc.index[-1] - ohlc.index[-2]).components.days
+        if tf_days:
+            return f"{tf_days}D"
+        tf_hours = (ohlc.index[-1] - ohlc.index[-2]).components.hours
+        if tf_hours:
+            return f"{tf_hours}H"
+        tf_minutes = (ohlc.index[-1] - ohlc.index[-2]).components.minutes
+        if tf_minutes:
+            return f"{tf_minutes}M"
+        return "Unknown"

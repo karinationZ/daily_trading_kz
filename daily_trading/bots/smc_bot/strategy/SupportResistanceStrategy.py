@@ -19,11 +19,10 @@ class SupportResistanceStrategy(StrategyBase):
 
     def __init__(self, main_tf: str, debug: bool, telegram_chat_id):
         super().__init__(main_tf, debug, telegram_chat_id=telegram_chat_id)
-        self.strength = 1
+        self.strength = 4
         self.detectors = {
             'swing_1h': HighLowDetector(main_tf),  # Detects HH/HL/LL/LH on 1H
-            'levels_detector': LevelsDetector(main_tf=main_tf, pivot_length=5, strength=self.strength)
-            # Detects S&R on 4H
+            'levels_detector': LevelsDetector(main_tf=main_tf, pivot_length=3, strength=self.strength)
         }
         self.sr_signals = None
         self.recent_sr_signal = None
@@ -84,7 +83,7 @@ class SupportResistanceStrategy(StrategyBase):
         level_type = level_signal['type']
         current_candle = ohlc_15m.iloc[-1]
         current_price = current_candle['close']
-        threshold = self.detectors["levels_4h"].calculate_atr(ohlc_15m, period=14).iloc[-1]
+        threshold = self.detectors["levels_detector"].calculate_atr(ohlc_15m, period=14).iloc[-1]
 
         if symbol not in self.last_tested_level_map or self.last_tested_level_map[symbol] != id(level_signal):
             self.last_tested_level_map[symbol] = None

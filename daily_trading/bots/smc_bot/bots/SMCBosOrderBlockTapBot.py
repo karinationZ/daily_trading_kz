@@ -1,9 +1,9 @@
 import asyncio
 import traceback
-from daily_trading.settings import logger
+
 from daily_trading.bots.smc_bot.bots.BaseBot import SMCBotBase
 from daily_trading.bots.smc_bot.strategy.BosOrderBlockTapStrategy import BosOrderBlockTapStrategy
-from daily_trading.settings import TELEGRAM_MAIN_CHANNEL_CHAT_ID
+from daily_trading.settings import logger
 
 
 class SMCBosOrderBlockTapBot(SMCBotBase):
@@ -69,8 +69,9 @@ class SMCBosOrderBlockTapBot(SMCBotBase):
                     needs_refresh = await self.needs_symbol_refresh()
                     if needs_refresh:
                         await self.update_symbols()
-                logger.info(f"Monitoring {len(self.symbols)} symbols")
-                await self.telegram_bot_debug.send_message(f"****** Monitoring {len(self.symbols)} symbols ******")
+                        logger.info(f"Monitoring {len(self.symbols)} symbols")
+                await self.telegram_bot_debug.send_message(
+                    f"****** SMCBosOrderBlockTapBot Monitoring {len(self.symbols)} symbols ******")
                 tasks = [self.run_symbol(symbol) for symbol in self.symbols]
                 results = await asyncio.gather(*tasks, return_exceptions=True)
                 for symbol, result in zip(self.symbols, results):

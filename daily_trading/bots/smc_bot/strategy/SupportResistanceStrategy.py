@@ -83,7 +83,7 @@ class SupportResistanceStrategy(StrategyBase):
         level_type = level_signal['type']
         current_candle = ohlc_15m.iloc[-1]
         current_price = current_candle['close']
-        threshold = self.detectors["levels_detector"].calculate_atr(ohlc_15m, period=14).iloc[-1]
+        threshold = self.detectors["levels_detector"].calculate_atr(ohlc_15m, period=14).iloc[-1] / 2
 
         if symbol not in self.last_tested_level_map or self.last_tested_level_map[symbol] != id(level_signal):
             self.last_tested_level_map[symbol] = None

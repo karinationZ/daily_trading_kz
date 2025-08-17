@@ -14,6 +14,7 @@ class LevelsDetector(SMCBase):
         self.atr_length = 20
         self.too_close_atr = 1.0 / 8.0
         self.max_sr_info_size = 10
+        self.atr = None
 
     def calculate_support_resistance_levels(self, ohlc, plot=True):
         ohlc = self.validate_data(ohlc)
@@ -211,4 +212,5 @@ class LevelsDetector(SMCBase):
         high_close = (ohlc['high'] - ohlc['close'].shift(1)).abs()
         low_close = (ohlc['low'] - ohlc['close'].shift(1)).abs()
         true_range = pd.concat([high_low, high_close, low_close], axis=1).max(axis=1)
-        return true_range.rolling(window=period).mean()
+        self.atr = true_range.rolling(window=period).mean()
+        return self.atr

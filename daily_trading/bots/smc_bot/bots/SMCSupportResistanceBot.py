@@ -17,7 +17,7 @@ class SMCSupportResistanceBot(SMCBotBase):
     Generate ALERT signal.
     """
 
-    def __init__(self, symbols, main_tf: str = '15m', symbol_volume_threshold: float = 30000000, lookback_days: int = 1,
+    def __init__(self, symbols, main_tf: str = '4h', symbol_volume_threshold: float = 30000000, lookback_days: int = 1,
                  debug=False, telegram_chat_id=TELEGRAM_MAIN_CHANNEL_CHAT_ID):
 
         super().__init__(symbols, main_tf,

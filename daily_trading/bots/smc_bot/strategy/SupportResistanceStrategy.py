@@ -22,7 +22,8 @@ class SupportResistanceStrategy(StrategyBase):
         self.strength = 1
         self.detectors = {
             'swing_1h': HighLowDetector(main_tf),  # Detects HH/HL/LL/LH on 1H
-            'levels_1d': LevelsDetector(main_tf="1d", pivot_length=5, strength=self.strength)  # Detects S&R on 1D
+            'levels_detector': LevelsDetector(main_tf=main_tf, pivot_length=5, strength=self.strength)
+            # Detects S&R on 4H
         }
         self.sr_signals = None
         self.recent_sr_signal = None
@@ -38,7 +39,7 @@ class SupportResistanceStrategy(StrategyBase):
             recent_smc_events.append(f"Trend is {trend}. Exiting level search step.")
             return None, recent_smc_events
 
-        sr_result = self.detectors["levels_1d"].calculate_support_resistance_levels(ohlc_15m, plot=True)
+        sr_result = self.detectors["levels_detector"].calculate_support_resistance_levels(ohlc_15m, plot=True)
         self.sr_fig = sr_result["fig"]
 
         support_levels = sr_result["support_levels"]
@@ -83,8 +84,7 @@ class SupportResistanceStrategy(StrategyBase):
         level_type = level_signal['type']
         current_candle = ohlc_15m.iloc[-1]
         current_price = current_candle['close']
-        price_range = current_candle['high'] - current_candle['low']
-        threshold = price_range * 0.005 if price_range > 0 else current_price * 0.005
+        threshold = self.detectors["levels_4h"].calculate_atr(ohlc_15m, period=14).iloc[-1]
 
         if symbol not in self.last_tested_level_map or self.last_tested_level_map[symbol] != id(level_signal):
             self.last_tested_level_map[symbol] = None
@@ -114,7 +114,7 @@ class SupportResistanceStrategy(StrategyBase):
         recent_smc_events.extend(trend_event)
 
         # Step 2: Detect Support/Resistance levels
-        sr_result = self.detectors["levels_1d"].calculate_support_resistance_levels(ohlc_htf, plot=True)
+        sr_result = self.detectors["levels_detector"].calculate_support_resistance_levels(ohlc_htf, plot=True)
         self.sr_signals = sr_result
         self.sr_fig = sr_result["fig"]
         self.recent_sr_signal = (sr_result["support_levels"] + sr_result["resistance_levels"])[-1] if (
@@ -154,5 +154,6 @@ class SupportResistanceStrategy(StrategyBase):
         event = f"Generated signal for {symbol} based on {nearest_level['type']} level interaction."
         recent_smc_events.append(event)
         signal_summary.direction = GET_READY_ALERT
+        signal_summary.fig = self.detectors["levels_detector"].plot_htf_levels_on_ltf(ohlc_ltf, self.sr_signals)
         signal_summary.recent_smc_events = recent_smc_events
         return signal_summary

@@ -243,7 +243,7 @@ async def test_liq_grab():
 
 @pytest.mark.asyncio
 async def test_support_resistance_levels():
-    symbol = "ZORAUSDT"
+    symbol = "EPICUSDT"
     bot = SMCBotBase(symbols=[symbol], main_tf="1h")
     # Fetch OHLC data within async context
     ohlc_htf = await bot.fetch_ohlc_data(symbol, "4h", num_candles=540)
@@ -251,7 +251,7 @@ async def test_support_resistance_levels():
 
     detector = LevelsDetector(main_tf="15m", pivot_length=3, strength=4)
     results = detector.calculate_support_resistance_levels(ohlc_htf, plot=True)
-    # fig = results["fig"]
-    # fig.show()
+    fig = results["fig"]
+    fig.show()
     fig = detector.plot_htf_levels_on_ltf(ohlc_ltf, results)
     fig.show()

@@ -38,11 +38,10 @@ class SupportResistanceStrategy(StrategyBase):
             recent_smc_events.append(f"Trend is {trend}. Exiting level search step.")
             return None, recent_smc_events
 
-        sr_result = self.detectors["levels_detector"].calculate_support_resistance_levels(ohlc_15m, plot=True)
-        self.sr_fig = sr_result["fig"]
+        self.sr_fig = self.sr_signals["fig"]
 
-        support_levels = sr_result["support_levels"]
-        resistance_levels = sr_result["resistance_levels"]
+        support_levels = self.sr_signals["support_levels"]
+        resistance_levels = self.sr_signals["resistance_levels"]
         if not (support_levels or resistance_levels):
             event = "No Support/Resistance levels found!"
             recent_smc_events.append(event)
@@ -51,28 +50,22 @@ class SupportResistanceStrategy(StrategyBase):
         current_price = ohlc_15m.iloc[-1]['close']
         nearest_level = None
         min_distance = float('inf')
-        is_bullish_trend = trend == Trend.BULLISH.name
+        # is_bullish_trend = trend == Trend.BULLISH.name
 
         for level in support_levels + resistance_levels:
             if level['strength'] < self.strength or level.get('tested', False):
                 continue
             distance = abs(level['price'] - current_price)
-            level_type = level['type']
-            if is_bullish_trend and level_type == 'Support' and level['price'] < current_price:
-                if distance < min_distance:
-                    nearest_level = level
-                    min_distance = distance
-            elif not is_bullish_trend and level_type == 'Resistance' and level['price'] > current_price:
-                if distance < min_distance:
-                    nearest_level = level
-                    min_distance = distance
+            if distance < min_distance:
+                nearest_level = level
+                min_distance = distance
 
         if not nearest_level:
             event = "No valid Support/Resistance level found."
             recent_smc_events.append(event)
             return None, recent_smc_events
 
-        event = f"Found nearest {trend} {nearest_level['type']} level at {nearest_level['price']}."
+        event = f"Found nearest level at {nearest_level['price']}."
         recent_smc_events.append(event)
         return nearest_level, recent_smc_events
 

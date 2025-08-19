@@ -395,7 +395,7 @@ class OrderBlocksDetector(SMCBase):
             type='date',
             tickformat="%H:%M",
             tickmode='linear',
-            dtick=900000,  # 15-minute intervals
+            dtick=7200000,  # 2-hour intervals
             tickangle=45,
             row=1, col=1
         )

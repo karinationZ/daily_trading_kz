@@ -211,8 +211,8 @@ You follow strict ICT Smart Money Concepts combined with advanced market analysi
 • **Expected Move**: [TP target based on institutional levels]
 • **Trade Quality**: [High/Medium - explain institutional strength]",
     "entry": [exact_price_integer],
+    "take_profit": [exact_price_integer],
     "stop_loss": [exact_price_integer], 
-    "take_profit": [exact_price_integer]
 }
 ```
 
@@ -227,8 +227,9 @@ You follow strict ICT Smart Money Concepts combined with advanced market analysi
 • **Sentiment Context**: [How current psychology affects waiting strategy]
 • **Next Watch Levels**: [Key institutional levels to monitor]",
     "entry": null,
+    "take_profit": null,
     "stop_loss": null,
-    "take_profit": null
+
 }
 ```
 
@@ -366,7 +367,7 @@ Remember: Your edge comes from identifying where institutions are positioned and
 async def main():
     from daily_trading.bots.smc_bot.bots.BaseBot import SMCBotBase
     logger.debug("Searching for assets that move most independently of Bitcoin.")
-    symbol = "API3USDT"
+    symbol = "EPICUSDT"
     want_to_pay_for_analyses = True
     bot = SMCBotBase(symbols=[symbol], main_tf="1h")
 

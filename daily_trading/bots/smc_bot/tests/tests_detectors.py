@@ -14,7 +14,7 @@ from daily_trading.bots.smc_bot.detectors.LiquiditySweepDetector import Liquidit
 from daily_trading.bots.smc_bot.detectors.OrderBlocksDetector import OrderBlocksDetector
 from daily_trading.bots.smc_bot.detectors.VolumeProfiler import VolumeProfileCollector
 from daily_trading.bots.smc_bot.strategy.StrategyBase import SignalSummary
-from daily_trading.settings import logger, TELEGRAM_BOT_CHAT_ID
+from daily_trading.settings import logger, TELEGRAM_MY_DEBUG_BOT_ID
 from daily_trading.technicals.AITradeAssistants.GeminiTradeAssistant import GEMINI_PRO, GeminiTradeAssistant, Ohlc
 
 symbol = "ILVUSDT"
@@ -155,7 +155,7 @@ async def test_vol_prof():
     results = detector.calculate_volume_profile(ohlc, plot=True)
     fig = results["fig"]
     # fig.show()
-    bot = TelegramBot(chat_id=TELEGRAM_BOT_CHAT_ID)
+    bot = TelegramBot(chat_id=TELEGRAM_MY_DEBUG_BOT_ID)
 
     await bot.send_message(
         text="""🎯BOS + FVG Fill - CFXUSDT 2025-07-25 08:30
@@ -223,7 +223,7 @@ async def test_merge_ob_and_bos():
     fig = ob_detector.merge_bos_ob_plots(ohlc_15m, bos_signals, ob_signals=ob_signals)
     fig.show()
 
-    bot = TelegramBot(chat_id=TELEGRAM_BOT_CHAT_ID)
+    bot = TelegramBot(chat_id=TELEGRAM_MY_DEBUG_BOT_ID)
     await bot.send_message(text="TEST TEST Message", image=fig)
 
 
@@ -255,3 +255,9 @@ async def test_support_resistance_levels():
     fig.show()
     fig = detector.plot_htf_levels_on_ltf(ohlc_ltf, results)
     fig.show()
+
+@pytest.mark.asyncio
+async def test_telegram():
+    bot = TelegramBot(chat_id=TELEGRAM_MY_DEBUG_BOT_ID)
+    await bot.send_message(
+        text="<b>Bold text</b>")

@@ -8,7 +8,7 @@ from daily_trading.bots.smc_bot.bots.TelegramBot import TelegramBot
 from daily_trading.bots.smc_bot.detectors.SMCBase import GET_READY_ALERT, Signal, Trend
 from daily_trading.bots.smc_bot.strategy.BosFvgFillStrategy import SignalSummary
 from daily_trading.brokers.BitUnixClient import BitUnixClient
-from daily_trading.settings import logger, TELEGRAM_MAIN_CHANNEL_CHAT_ID, TELEGRAM_MY_DEBUG_BOT_ID, USE_AI
+from daily_trading.settings import logger, TELEGRAM_MAIN_CHANNEL_CHAT_ID, TELEGRAM_DEBUG_CHANNEL_ID, USE_AI
 from daily_trading.technicals.AITradeAssistants.GeminiTradeAssistant import GEMINI_PRO, GeminiTradeAssistant, Ohlc
 from daily_trading.technicals.DivergentAssetsFinder import BitUnixDivergentAssetsFinder
 
@@ -37,7 +37,7 @@ class SMCBotBase:
         self.static_symbols = symbols
         self.symbols = symbols
         self.telegram_bot = TelegramBot(chat_id=telegram_chat_id)
-        self.telegram_bot_debug = TelegramBot(chat_id=TELEGRAM_MY_DEBUG_BOT_ID)
+        self.telegram_bot_debug = TelegramBot(chat_id=TELEGRAM_DEBUG_CHANNEL_ID)
         self.main_tf = main_tf
         self.volume_threshold = symbol_volume_threshold
         self.lookback_days = lookback_days
@@ -241,7 +241,7 @@ class SMCBotBase:
                               ohlc_1d: pd.DataFrame,
                               ohlc_4h: pd.DataFrame,
                               ohlc_1h: pd.DataFrame,
-                              ohlc_15m: pd.DataFrame):
+                              ohlc_15m: pd.DataFrame, send_non_signal=True):
         """Generate SMC signals."""
         try:
             last_candle = ohlc_15m.index.max().tz_convert('US/Pacific').strftime('%Y-%m-%d %H:%M')
@@ -276,8 +276,7 @@ class SMCBotBase:
                       f"Trend: {analysis.trend}\n" \
                       f"SMC Events:\n • {events_str}\n"
                 logger.info(msg)
-                # TODO - DELETE IT
-                if analysis.direction == Trend.NEUTRAL.name:
+                if send_non_signal:
                     await self.telegram_bot_debug.send_message(msg, analysis.fig)
         except Exception as e:
             logger.error(f"Error processing {symbol}: {e}")

@@ -52,7 +52,7 @@ class SMCSupportResistanceBot(SMCBotBase):
                                        ohlc_1d=ohlc_1d,
                                        ohlc_4h=ohlc_4h,
                                        ohlc_1h=ohlc_1h,
-                                       ohlc_15m=ohlc_15m)
+                                       ohlc_15m=ohlc_15m, send_non_signal=False)
 
         except Exception as e:
             # Enhanced error logging with full traceback

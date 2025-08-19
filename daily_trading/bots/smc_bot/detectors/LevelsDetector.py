@@ -147,7 +147,7 @@ class LevelsDetector(SMCBase):
             type='date',
             tickformat="%H:%M",
             tickmode='linear',
-            dtick=900000,
+            dtick=7200000,  # 2-hour intervals
             tickangle=45
         )
 
@@ -215,7 +215,7 @@ class LevelsDetector(SMCBase):
             type='date',
             tickformat="%H:%M",
             tickmode='linear',
-            dtick=4 * 3600 * 1000,
+            dtick=7200000,  # 2-hour intervals
             tickangle=45,
             row=1, col=1
         )

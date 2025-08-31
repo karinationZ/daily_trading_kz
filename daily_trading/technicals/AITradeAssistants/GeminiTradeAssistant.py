@@ -4,14 +4,15 @@ from dataclasses import dataclass
 from datetime import datetime
 
 import pandas as pd
+import plotly.graph_objects as go
 import pytz
 from google import genai
-import plotly.graph_objects as go
+
 from daily_trading.bots.smc_bot.detectors.BosChochDetector import BosChochDetector
 from daily_trading.bots.smc_bot.detectors.FvgDetector import FvgDetector
 from daily_trading.bots.smc_bot.detectors.HighLowDetector import HighLowDetector
 from daily_trading.bots.smc_bot.detectors.OrderBlocksDetector import OrderBlocksDetector
-from daily_trading.bots.smc_bot.detectors.VolumeProfiler import VolumeProfileCollector
+from daily_trading.bots.smc_bot.detectors.VolumeProfiler import VolumeProfiler
 from daily_trading.settings import GEMINI_API_KEY, logger
 from daily_trading.technicals.CryptoSentimentAnalyzer import CryptoSentimentAnalyzer
 
@@ -80,7 +81,7 @@ class GeminiTradeAssistant:
         detector_bos = BosChochDetector(self.main_tf, show_bull=True, show_bear=True)
         high_low_detector = HighLowDetector(self.main_tf)
         ob_detector = OrderBlocksDetector(self.main_tf)
-        vol_profiler = VolumeProfileCollector(main_tf="1h")
+        vol_profiler = VolumeProfiler(main_tf="1h")
         analyzer = CryptoSentimentAnalyzer()
         sentiment_summary = analyzer.format_for_trading_prompt(symbol)
         logger.info(f"Sentiment: {sentiment_summary}")
@@ -278,8 +279,8 @@ Remember: Your edge comes from identifying where institutions are positioned and
                 formatted_ai_message = f"\n*** 🤖📊 AI Analysis | {self.symbol} ***\n" \
                                        f"\n{raw_message['message']}\n" \
                                        f"\nEntry: {raw_message['entry']}" \
-                                       f"\nSL: {raw_message['stop_loss']}" \
-                                       f"\nTP: {raw_message['take_profit']}"
+                                       f"\nTP: {raw_message['take_profit']}" \
+                                       f"\nSL: {raw_message['stop_loss']}"
                 return formatted_ai_message, raw_message
             except (KeyError, json.JSONDecodeError) as e:
                 logger.error(f"Error parsing Gemini response: {e}")
@@ -367,7 +368,7 @@ Remember: Your edge comes from identifying where institutions are positioned and
 async def main():
     from daily_trading.bots.smc_bot.bots.BaseBot import SMCBotBase
     logger.debug("Searching for assets that move most independently of Bitcoin.")
-    symbol = "MUSDT"
+    symbol = "CROUSDT"
     want_to_pay_for_analyses = True
     bot = SMCBotBase(symbols=[symbol], main_tf="1h")
 

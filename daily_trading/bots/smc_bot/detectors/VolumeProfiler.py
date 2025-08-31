@@ -6,7 +6,7 @@ from plotly.subplots import make_subplots
 from daily_trading.settings import logger
 
 
-class VolumeProfileCollector:
+class VolumeProfiler:
     """
     Class to collect and analyze volume profile data, calculating up/down volumes, POC, and Value Area.
     Follows Pine Script logic for fixed-range volume profile.

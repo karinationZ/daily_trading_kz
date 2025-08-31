@@ -12,7 +12,8 @@ from daily_trading.bots.smc_bot.detectors.LiquidityGrabDetector import Liquidity
 from daily_trading.bots.smc_bot.detectors.LiquidityPoolDetector import LiquidityPoolDetector
 from daily_trading.bots.smc_bot.detectors.LiquiditySweepDetector import LiquiditySweepDetector
 from daily_trading.bots.smc_bot.detectors.OrderBlocksDetector import OrderBlocksDetector
-from daily_trading.bots.smc_bot.detectors.VolumeProfiler import VolumeProfileCollector
+from daily_trading.bots.smc_bot.detectors.VCPBreakoutDetector import VCPBreakoutDetector
+from daily_trading.bots.smc_bot.detectors.VolumeProfiler import VolumeProfiler
 from daily_trading.bots.smc_bot.strategy.StrategyBase import SignalSummary
 from daily_trading.settings import logger, TELEGRAM_MY_DEBUG_BOT_ID
 from daily_trading.technicals.AITradeAssistants.GeminiTradeAssistant import GEMINI_PRO, GeminiTradeAssistant, Ohlc
@@ -151,7 +152,7 @@ async def test_vol_prof():
     with pd.option_context('display.max_rows', None, 'display.max_columns', None):
         logger.info("\n{}", ohlc.to_string())
 
-    detector = VolumeProfileCollector(main_tf="1h")
+    detector = VolumeProfiler(main_tf="1h")
     results = detector.calculate_volume_profile(ohlc, plot=True)
     fig = results["fig"]
     # fig.show()
@@ -255,6 +256,21 @@ async def test_support_resistance_levels():
     fig.show()
     fig = detector.plot_htf_levels_on_ltf(ohlc_ltf, results)
     fig.show()
+
+
+@pytest.mark.asyncio
+async def test_support_resistance_levels():
+    symbol = "SKLUSDT"
+    bot = SMCBotBase(symbols=[symbol], main_tf="1h")
+    # Fetch OHLC data within async context
+    ohlc_4h = await bot.fetch_ohlc_data(symbol, "4h", num_candles=200)
+    ohlc_1h = await bot.fetch_ohlc_data(symbol, "1h", num_candles=200)
+    ohlc_15m = await bot.fetch_ohlc_data(symbol, "15m", num_candles=200)
+    detector = VCPBreakoutDetector(main_tf="15m")
+    results = detector.calculate_vcp_breakout(ohlc_4h, ohlc_1h, ohlc_15m, plot=True)
+    fig = results["fig"]
+    fig.show()
+
 
 @pytest.mark.asyncio
 async def test_telegram():

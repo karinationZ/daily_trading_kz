@@ -21,8 +21,8 @@ def date_to_unix_timestamp(date_time: datetime):
 if __name__ == "__main__":
     logger.info("Fetching trade history...")
     cl = BitUnixClient()
-    start_date = datetime(2025, 6, 1)
-    end_date = datetime(2025, 6, 15)
+    start_date = datetime(2025, 8, 28)
+    end_date = datetime(2025, 8, 30)
 
     all_trades = []
     # Loop through March in 3-day increments
@@ -45,7 +45,7 @@ if __name__ == "__main__":
         current_start = current_end
 
     if all_trades:
-        print(f"Total trades found for March: {len(all_trades)}")
+        print(f"Total trades found.")
         cl.save_trades_history_to_csv(all_trades)
     else:
         logger.warning("No trades found for March.")

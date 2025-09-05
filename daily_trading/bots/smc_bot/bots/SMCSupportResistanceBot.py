@@ -5,7 +5,7 @@ from daily_trading.bots.smc_bot.bots.BaseBot import SMCBotBase
 from daily_trading.bots.smc_bot.strategy.SupportResistanceStrategy import SupportResistanceStrategy
 from daily_trading.settings import logger
 
-DEFAULT_SYMBOLS = ["BTCUSDT"]
+DEFAULT_SYMBOLS = ["XAUTUSDT"]
 
 
 class SMCSupportResistanceBot(SMCBotBase):

@@ -2,6 +2,7 @@ import asyncio
 import json
 from dataclasses import dataclass
 from datetime import datetime
+from enum import Enum
 
 import pandas as pd
 import plotly.graph_objects as go
@@ -11,6 +12,7 @@ from google import genai
 from daily_trading.bots.smc_bot.detectors.BosChochDetector import BosChochDetector
 from daily_trading.bots.smc_bot.detectors.FvgDetector import FvgDetector
 from daily_trading.bots.smc_bot.detectors.HighLowDetector import HighLowDetector
+from daily_trading.bots.smc_bot.detectors.LevelsDetector import LevelsDetector
 from daily_trading.bots.smc_bot.detectors.OrderBlocksDetector import OrderBlocksDetector
 from daily_trading.bots.smc_bot.detectors.VolumeProfiler import VolumeProfiler
 from daily_trading.settings import GEMINI_API_KEY, logger
@@ -27,6 +29,11 @@ TEST_PROMPT = """
         """
 
 
+class PromptType(Enum):
+    ICT_SMC = 1
+    BREAK_OR_BOUNCE = 2
+
+
 @dataclass
 class AssetData:
     symbol: str
@@ -37,6 +44,7 @@ class AssetData:
     pivot_low_points: list
     ob_signals: list
     vol_profile: dict
+    support_resistance_data: dict
     ohlc_1d: dict
     ohlc_1h: dict
     ohlc_4h: dict
@@ -81,15 +89,20 @@ class GeminiTradeAssistant:
         detector_bos = BosChochDetector(self.main_tf, show_bull=True, show_bear=True)
         high_low_detector = HighLowDetector(self.main_tf)
         ob_detector = OrderBlocksDetector(self.main_tf)
+        support_levels_detector = LevelsDetector(main_tf="15m", pivot_length=3, strength=4)
         vol_profiler = VolumeProfiler(main_tf="1h")
         analyzer = CryptoSentimentAnalyzer()
         sentiment_summary = analyzer.format_for_trading_prompt(symbol)
+
         logger.info(f"Sentiment: {sentiment_summary}")
 
         bos_results = detector_bos.calculate_bos_choch(self.ohlc_1h, plot=False)
         fvg_results = detector_fvg.calculate_fvg(self.ohlc_15m, plot=False)
         ob_results = ob_detector.calculate_order_blocks(self.ohlc_1h, plot=False)
         vol_profiler_results = vol_profiler.calculate_volume_profile(self.ohlc_4h, plot=False)
+        support_resistance_results = support_levels_detector.calculate_support_resistance_levels(self.ohlc_4h,
+                                                                                                 plot=False)
+
         del vol_profiler_results["fig"]
 
         return AssetData(
@@ -104,7 +117,8 @@ class GeminiTradeAssistant:
             ohlc_1h=ohlc_1h_subset,
             ohlc_15m=ohlc_15m_subset,
             ohlc_4h=ohlc_4h_subset,
-            vol_profile=vol_profiler_results
+            vol_profile=vol_profiler_results,
+            support_resistance_data=support_resistance_results
         )
 
     async def build_prompt(self) -> str:
@@ -253,6 +267,124 @@ Remember: Your edge comes from identifying where institutions are positioned and
 """
         return prompt
 
+    async def build_break_or_bounce_prompt(self) -> str:
+        """Build the prompt for Gemini API based on Break or Bounce Strategy."""
+        data = await self.fetch_data()
+        prompt = f"""
+You are an elite trading assistant for {data.symbol} using the Break or Bounce Strategy with an 80% win rate. 
+Your expertise lies in analyzing support/resistance levels, pivot points, multi-timeframe OHLC, volume profile, 
+and market sentiment to identify high-probability trades.
+
+## Trading Methodology
+- Analyze price action at key levels to predict Break (Continuation) or Bounce (Reversal).
+- Use multi-timeframe analysis: 1D for global trend, 4H for level approach, 1H/15M for entry precision.
+- Integrate volume profile to confirm level strength.
+- Factor sentiment for trade confidence (>70% alignment).
+
+## Bounce Checklist
+- Move into level is long, sharp, overextended.
+- Price slams into level with big bars (exhaustion).
+- Daily ATR mostly used up before level.
+- Level retested from far away (stretched).
+- Higher-TF trend opposes approach.
+- Messy consolidation under/above level.
+- Tags extreme high/low of day/week.
+- Runs into level too quickly (no pauses).
+- Approach against global trend.
+
+## Break Checklist
+- Squeezes into level (small, tight bars).
+- Consolidation before approach.
+- Narrow sideways hugging level.
+- Approach with many small bars (pressure).
+- Frequent nearby retests (absorbing liquidity).
+- Accumulation on higher TF.
+- Higher-TF trend supports breakout.
+- Room to run beyond (no nearby levels).
+- Local/global trends align.
+- Empty space ahead.
+- Bars close strongly (no wicks against).
+- Intraday highs/lows unbroken (energy building).
+
+## Input Data
+- Crypto Coin: {data.symbol}
+- OHLC 1D Data: {data.ohlc_1d}
+- OHLC 4H Data: {data.ohlc_4h}
+- OHLC 1H Data: {data.ohlc_1h}
+- OHLC 15M Data: {data.ohlc_15m}
+- Support Levels Data: {data.support_resistance_data}
+- 15M Fair Value Gap locations for entry, SL, TP: {data.fvg_signals}
+- 4H Volume Profile: {data.vol_profile}
+- Market Sentiment: {data.sentiment} """ + """
+
+## Analysis Framework
+### Trend Analysis
+- Global trend (1D) and local trend (4H/1H).
+- Identify nearest key level price is approaching.
+
+### Checklist Scoring
+- Score Bounce and Break checklists (count matching items).
+- Predict Bounce (reversal) or Break (continuation) based on higher score.
+
+### Volume Profile
+- Confirm level strength with high-volume nodes.
+- Identify accumulation/distribution patterns.
+
+### Sentiment Integration
+- Ensure sentiment aligns with trade direction (>70% confidence).
+- Use sentiment for contrarian or confirmation bias.
+
+## Trading Decision Framework
+### Entry Criteria
+- Clear trend alignment across timeframes.
+- Checklist score favors Bounce or Break with volume confirmation.
+- 15M candle confirms entry (reversal pattern or break close).
+- Sentiment supports trade direction.
+
+### Trade Setup
+- Bounce: Long at support, short at resistance.
+- Break: Long above resistance, short below support.
+- SL: Below/above level or recent swing (1-2% ATR risk).
+- TP: Next key level or 2-3x risk, clear of volume nodes.
+
+### Risk Management
+- Risk 1-2% per trade.
+- Clear invalidation level for SL.
+- Ensure R:R ratio ≥ 1:2.
+
+## Response Format (JSON)
+### For HIGH-PROBABILITY SETUPS ONLY:
+```json
+{
+        "message": "• **Setup Summary**: [Clear trade direction and reasoning]\\n• **Key Confluence**: [2-3 checklist matches supporting trade]\\n• **Entry Logic**: [Why this price level based on strategy]\\n• **Volume Profile Context**: [How volume supports setup]\\n• **Sentiment Edge**: [How sentiment aligns or adds edge]\\n• **Risk Management**: [SL reasoning and R:R ratio]\\n• **Expected Move**: [TP target based on levels]\\n• **Trade Quality**: [High/Medium - explain strength]",
+    "entry": [exact_price_integer],
+    "take_profit": [exact_price_integer],
+    "stop_loss": [exact_price_integer]
+}
+```
+
+### For NO CLEAR SETUP:
+```json
+{
+        "message": "• **No Clear Entry Opportunity**\\n• **Conflicting Signals**: [Specific checklist or trend conflicts]\\n• **What's Missing**: [Lacking confluence factors]\\n• **Market State**: [Choppy/ranging/transitional issues]\\n• **Waiting For**: [Conditions for high-probability setup]\\n• **Sentiment Context**: [How sentiment affects strategy]\\n• **Next Watch Levels**: [Key levels to monitor]",
+    "entry": null,
+    "take_profit": null,
+    "stop_loss": null
+}
+```
+
+## Trading Rules
+- Quality over quantity: Only trade with strong checklist confluence.
+- Never trade against higher-TF trend.
+- Wait for clear setups with 15M confirmation.
+- Use volume profile to validate key levels.
+- Define clear invalidation for every trade.
+
+## Philosophy
+"My edge comes from precise Break or Bounce setups with multi-timeframe confluence, volume profile validation, and sentiment alignment. I wait for high-probability trades where checklists, trends, and volume align, avoiding unclear or conflicting signals to preserve capital."
+"""
+        return prompt
+
     async def call_gemini_api(self, prompt: str):
         try:
             logger.warning("$$$$$ Making Gemini API Request $$$$")
@@ -264,8 +396,13 @@ Remember: Your edge comes from identifying where institutions are positioned and
             logger.error(f"Gemini API failed: {e}")
             return {"error": f"API call failed: {e}"}
 
-    async def analyze_asset_trade_data(self):
-        my_prompt = await self.build_prompt()
+    async def analyze_asset_trade_data(self, prompt_type=PromptType.ICT_SMC):
+        if prompt_type == PromptType.BREAK_OR_BOUNCE:
+            my_prompt = await self.build_break_or_bounce_prompt()
+        elif prompt_type == PromptType.ICT_SMC:
+            my_prompt = await self.build_prompt()
+        else:
+            raise ValueError("Invalid prompt type specified.")
         if self.debug:
             my_prompt = TEST_PROMPT
         response = await self.call_gemini_api(my_prompt)
@@ -368,8 +505,8 @@ Remember: Your edge comes from identifying where institutions are positioned and
 async def main():
     from daily_trading.bots.smc_bot.bots.BaseBot import SMCBotBase
     logger.debug("Searching for assets that move most independently of Bitcoin.")
-    symbol = "CROUSDT"
-    want_to_pay_for_analyses = True
+    symbol = "ATHUSDT"
+    want_to_pay_for_analyses = False
     bot = SMCBotBase(symbols=[symbol], main_tf="1h")
 
     # Fetch OHLC data within async context
@@ -383,10 +520,10 @@ async def main():
     ai_agent = GeminiTradeAssistant(symbol=symbol, model=GEMINI_PRO, ohlc=ohlc, debug=False)
 
     if want_to_pay_for_analyses:
-        formatted_ai_message, raw_message = await ai_agent.analyze_asset_trade_data()
+        formatted_ai_message, raw_message = await ai_agent.analyze_asset_trade_data(prompt_type=PromptType.BREAK_OR_BOUNCE)
         logger.info(formatted_ai_message)
     else:
-        prompt = await ai_agent.build_prompt()
+        prompt = await ai_agent.build_break_or_bounce_prompt()
         logger.info(prompt)
 
 

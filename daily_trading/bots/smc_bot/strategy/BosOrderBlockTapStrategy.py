@@ -106,7 +106,7 @@ class BosOrderBlockTapStrategy(StrategyBase):
 
         # Check if OB was formed at least 5 candles ago
         candles_since_ob = (current_time - nearest_ob['time']).total_seconds() / (15 * 60)
-        if candles_since_ob < 2:
+        if candles_since_ob < 1:
             event = f"No valid {trend} OB found (formed at least 5 candles ago)."
             self.ob_tap_cache.update({symbol: None})
             recent_smc_events.append(event)

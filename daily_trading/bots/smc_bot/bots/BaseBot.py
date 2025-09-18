@@ -8,7 +8,7 @@ from daily_trading.bots.smc_bot.bots.TelegramBot import TelegramBot
 from daily_trading.bots.smc_bot.detectors.SMCBase import GET_READY_ALERT, Signal, Trend
 from daily_trading.bots.smc_bot.strategy.BosFvgFillStrategy import SignalSummary
 from daily_trading.brokers.BitUnixClient import BitUnixClient
-from daily_trading.settings import logger, TELEGRAM_MAIN_CHANNEL_CHAT_ID, TELEGRAM_DEBUG_CHANNEL_ID, USE_AI
+from daily_trading.settings import logger, TELEGRAM_DEBUG_CHANNEL_ID, TELEGRAM_MAIN_CHANNEL_CHAT_ID, USE_AI
 from daily_trading.technicals.AITradeAssistants.GeminiTradeAssistant import GEMINI_PRO, GeminiTradeAssistant, Ohlc
 from daily_trading.technicals.DivergentAssetsFinder import BitUnixDivergentAssetsFinder
 
@@ -280,4 +280,3 @@ class SMCBotBase:
                     await self.telegram_bot_debug.send_message(msg, analysis.fig)
         except Exception as e:
             logger.error(f"Error processing {symbol}: {e}")
-

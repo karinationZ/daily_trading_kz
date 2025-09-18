@@ -520,7 +520,7 @@ async def main():
     ai_agent = GeminiTradeAssistant(symbol=symbol, model=GEMINI_PRO, ohlc=ohlc, debug=False)
 
     if want_to_pay_for_analyses:
-        formatted_ai_message, raw_message = await ai_agent.analyze_asset_trade_data(prompt_type=PromptType.BREAK_OR_BOUNCE)
+        formatted_ai_message, raw_message = await ai_agent.analyze_asset_trade_data(prompt_type=PromptType.ICT_SMC)
         logger.info(formatted_ai_message)
     else:
         prompt = await ai_agent.build_break_or_bounce_prompt()

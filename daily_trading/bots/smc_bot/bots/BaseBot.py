@@ -137,7 +137,7 @@ class SMCBotBase:
         Returns:
             pd.DataFrame: OHLC data with time index and float columns.
         """
-        logger.info(f"Fetching OHLC data for {symbol} ({timeframe})")
+        logger.info(f"Fetching OHLC data for {symbol.upper()} ({timeframe})")
         timeframe_mapping = {
             "1m": "1m", "3m": "3m", "5m": "5m", "15m": "15m", "30m": "30m",
             "1h": "1h", "2h": "2h", "4h": "4h", "6h": "6h", "12h": "12h", "1d": "1d"

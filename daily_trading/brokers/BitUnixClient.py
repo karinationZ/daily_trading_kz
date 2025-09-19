@@ -114,8 +114,9 @@ class BitUnixClient:
             dict: Response from the API containing kline data
         """
         url = f"{self.BASE_URL}/api/v1/futures/market/kline"
+        s = symbol.upper()
         query_params = {
-            "symbol": symbol,
+            "symbol": s,
             "interval": interval,
             "limit": limit,
             "type": kline_type

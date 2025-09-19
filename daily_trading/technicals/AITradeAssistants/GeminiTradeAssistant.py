@@ -505,7 +505,7 @@ and market sentiment to identify high-probability trades.
 async def main():
     from daily_trading.bots.smc_bot.bots.BaseBot import SMCBotBase
     logger.debug("Searching for assets that move most independently of Bitcoin.")
-    symbol = "ATHUSDT"
+    symbol = "athUSDT"
     want_to_pay_for_analyses = False
     bot = SMCBotBase(symbols=[symbol], main_tf="1h")
 

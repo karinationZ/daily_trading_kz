@@ -41,7 +41,7 @@ class SMCBotBase:
         self.main_tf = main_tf
         self.volume_threshold = symbol_volume_threshold
         self.lookback_days = lookback_days
-        self.default_symbols = ["BTCUSDT"]
+        self.default_symbols = ["BTCUSDT", "XAUTUSDT", "ETHUSDT"]
         self.client = BitUnixClient()
         self.asset_finder = BitUnixDivergentAssetsFinder()
         self.timezone = pytz.UTC
@@ -225,10 +225,11 @@ class SMCBotBase:
                 lookback_hours=3
             )
             self.symbols = [asset["symbol"] for asset in results["non_correlated"]]
+            self.symbols.extend(self.default_symbols)
 
-            if not self.symbols:
-                logger.info(f"There are no divergent assets, using default symbols - {self.default_symbols}")
-                self.symbols = self.default_symbols
+            # if not self.symbols:
+            #     logger.info(f"There are no divergent assets, using default symbols - {self.default_symbols}")
+            #     self.symbols = self.default_symbols
 
             logger.info(f"Updated symbols: {self.symbols}")
             self.symbols_update_timestamp = datetime.now(self.timezone)

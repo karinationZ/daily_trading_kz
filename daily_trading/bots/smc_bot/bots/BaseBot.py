@@ -8,7 +8,8 @@ from daily_trading.bots.smc_bot.bots.TelegramBot import TelegramBot
 from daily_trading.bots.smc_bot.detectors.SMCBase import GET_READY_ALERT, Signal, Trend
 from daily_trading.bots.smc_bot.strategy.BosFvgFillStrategy import SignalSummary
 from daily_trading.brokers.BitUnixClient import BitUnixClient
-from daily_trading.settings import logger, TELEGRAM_DEBUG_CHANNEL_ID, TELEGRAM_MAIN_CHANNEL_CHAT_ID, USE_AI
+from daily_trading.settings import logger, TELEGRAM_DEBUG_CHANNEL_ID, TELEGRAM_MAIN_CHANNEL_CHAT_ID, \
+    TELEGRAM_MY_DEBUG_BOT_ID, USE_AI
 from daily_trading.technicals.AITradeAssistants.GeminiTradeAssistant import GEMINI_PRO, GeminiTradeAssistant, Ohlc
 from daily_trading.technicals.DivergentAssetsFinder import BitUnixDivergentAssetsFinder
 
@@ -38,6 +39,7 @@ class SMCBotBase:
         self.symbols = symbols
         self.telegram_bot = TelegramBot(chat_id=telegram_chat_id)
         self.telegram_bot_debug = TelegramBot(chat_id=TELEGRAM_DEBUG_CHANNEL_ID)
+        self.telegram_my_debug_bot = TelegramBot(chat_id=TELEGRAM_MY_DEBUG_BOT_ID)
         self.main_tf = main_tf
         self.volume_threshold = symbol_volume_threshold
         self.lookback_days = lookback_days
@@ -124,6 +126,11 @@ class SMCBotBase:
                f"SMC Events:\n• {events_str}")
         logger.info(msg)
         is_success = await self.telegram_bot.send_message(msg, analysis.fig)
+
+        # Send to my debug bot as well if symbol is in default_symbols like BTCUSDT, ETHUSDT, XAUTUSDT
+        if symbol in self.default_symbols and action not in [Trend.NEUTRAL.name, "Сидим в засаде"]:
+            await self.telegram_my_debug_bot.send_message(msg, analysis.fig)
+
         return is_success
 
     async def fetch_ohlc_data(self, symbol: str, timeframe: str, num_candles: int = None) -> pd.DataFrame:

@@ -196,7 +196,7 @@ class BitUnixClient:
     def save_trades_history_to_csv(trades_history):
         """Convert trade data to CSV format and include totals for Fee and realizedPNL"""
         filename = PROJECT_DIR + "/artifacts/history/trade_history.csv"
-
+        os.makedirs(os.path.dirname(filename), exist_ok=True)
         # Initialize totals
         total_fee = 0
         total_realized_pnl = 0

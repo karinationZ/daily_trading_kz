@@ -127,9 +127,9 @@ class SMCBotBase:
         logger.info(msg)
         is_success = await self.telegram_bot.send_message(msg, analysis.fig)
 
-        # Send to my debug bot as well if symbol is in default_symbols like BTCUSDT, ETHUSDT, XAUTUSDT
-        if symbol in self.default_symbols and action not in [Trend.NEUTRAL.name, "Сидим в засаде"]:
-            await self.telegram_my_debug_bot.send_message(msg, analysis.fig)
+        # # Send to my debug bot as well if symbol is in default_symbols like BTCUSDT, ETHUSDT, XAUTUSDT
+        # if symbol in self.default_symbols and action not in [Trend.NEUTRAL.name, "Сидим в засаде"]:
+        #     await self.telegram_my_debug_bot.send_message(msg, analysis.fig)
 
         return is_success
 

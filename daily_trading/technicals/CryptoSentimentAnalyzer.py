@@ -64,35 +64,37 @@ class CryptoSentimentAnalyzer:
         self._rate_limit()
         url = "https://api.alternative.me/fng/"
 
-        try:
-            response = self.session.get(url, timeout=10)
-            response.raise_for_status()
-            data = response.json()
-
-            if not data.get('data') or not data['data']:
-                raise ValueError("No data in API response")
-
-            latest = data['data'][0]
-            fear_greed_value = self._safe_int_conversion(latest.get('value'))
-
-            if fear_greed_value is None:
-                raise ValueError("Invalid fear greed value")
-
-            return {
-                'fear_greed_value': fear_greed_value,
-                'fear_greed_classification': latest.get('value_classification', 'unknown'),
-                'timestamp': latest.get('timestamp', str(int(time.time()))),
-                'data_available': True
-            }
-        except Exception as e:
-            logger.error(f"Market sentiment error: {str(e)}")
-            return {
-                'fear_greed_value': None,
-                'fear_greed_classification': 'error',
-                'timestamp': str(int(time.time())),
-                'data_available': False,
-                'error': str(e)
-            }
+        #
+        # try:
+        #     response = self.session.get(url, timeout=10)
+        #     response.raise_for_status()
+        #     data = response.json()
+        #
+        #     if not data.get('data') or not data['data']:
+        #         raise ValueError("No data in API response")
+        #
+        #     latest = data['data'][0]
+        #     fear_greed_value = self._safe_int_conversion(latest.get('value'))
+        #
+        #     if fear_greed_value is None:
+        #         raise ValueError("Invalid fear greed value")
+        #
+        #     return {
+        #         'fear_greed_value': fear_greed_value,
+        #         'fear_greed_classification': latest.get('value_classification', 'unknown'),
+        #         'timestamp': latest.get('timestamp', str(int(time.time()))),
+        #         'data_available': True
+        #     }
+        # except Exception as e:
+        #     logger.error(f"Market sentiment error: {str(e)}")
+        #     return {
+        #         'fear_greed_value': None,
+        #         'fear_greed_classification': 'error',
+        #         'timestamp': str(int(time.time())),
+        #         'data_available': False,
+        #         'error': str(e)
+        #     }
+        return {}  # Temporarily disabled as paid API is required
 
     def _calculate_source_weight(self, post: Dict) -> float:
         """Calculate source credibility weight."""

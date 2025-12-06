@@ -17,7 +17,7 @@ from daily_trading.bots.smc_bot.strategy.StrategyBase import SignalSummary
 from daily_trading.settings import logger, TELEGRAM_MY_DEBUG_BOT_ID
 from daily_trading.technicals.AITradeAssistants.GeminiTradeAssistant import GEMINI_PRO, GeminiTradeAssistant, Ohlc
 
-symbol = "ILVUSDT"
+symbol = "BTCUSDT"
 main_tf = "1h"
 lookback_days = 5
 
@@ -243,8 +243,8 @@ async def test_liq_grab():
 
 @pytest.mark.asyncio
 async def test_support_resistance_levels():
-    symbol = "EPICUSDT"
-    bot = SMCBotBase(symbols=[symbol], main_tf="1h")
+    symbol = "ES"
+    bot = SMCBotBase(symbols=[symbol], main_tf="1h", market_type="futures")
     # Fetch OHLC data within async context
     ohlc_htf = await bot.fetch_ohlc_data(symbol, "4h", num_candles=540)
     ohlc_ltf = await bot.fetch_ohlc_data(symbol, "15m", num_candles=200)

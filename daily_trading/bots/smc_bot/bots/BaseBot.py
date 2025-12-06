@@ -8,6 +8,7 @@ from daily_trading.bots.smc_bot.bots.TelegramBot import TelegramBot
 from daily_trading.bots.smc_bot.detectors.SMCBase import GET_READY_ALERT, Signal, Trend
 from daily_trading.bots.smc_bot.strategy.BosFvgFillStrategy import SignalSummary
 from daily_trading.brokers.BitUnixClient import BitUnixClient
+from daily_trading.brokers.YFinance import YFinanceClient
 from daily_trading.settings import logger, TELEGRAM_DEBUG_CHANNEL_ID, TELEGRAM_MAIN_CHANNEL_CHAT_ID, \
     TELEGRAM_MY_DEBUG_BOT_ID, USE_AI
 from daily_trading.technicals.AITradeAssistants.GeminiTradeAssistant import GEMINI_PRO, GeminiTradeAssistant, Ohlc
@@ -24,8 +25,8 @@ class SMCBotBase:
     def __init__(self, symbols, main_tf: str = '1h',
                  symbol_volume_threshold: float = 30000000,
                  lookback_days: int = 1,
-                 telegram_chat_id=TELEGRAM_MAIN_CHANNEL_CHAT_ID
-                 ):
+                 telegram_chat_id=TELEGRAM_MAIN_CHANNEL_CHAT_ID,
+                 market_type: str = "crypto"):
         """
         Initialize SMCTradingBot.
 
@@ -44,7 +45,9 @@ class SMCBotBase:
         self.volume_threshold = symbol_volume_threshold
         self.lookback_days = lookback_days
         self.default_symbols = ["BTCUSDT", "XAUTUSDT", "ETHUSDT"]
-        self.client = BitUnixClient()
+        self.market_type = market_type
+        self.bitunix_client = BitUnixClient()
+        self.yahoo_finance_client = YFinanceClient()
         self.asset_finder = BitUnixDivergentAssetsFinder()
         self.timezone = pytz.UTC
         self.symbols_update_timestamp = None
@@ -145,10 +148,6 @@ class SMCBotBase:
             pd.DataFrame: OHLC data with time index and float columns.
         """
         logger.info(f"Fetching OHLC data for {symbol.upper()} ({timeframe})")
-        timeframe_mapping = {
-            "1m": "1m", "3m": "3m", "5m": "5m", "15m": "15m", "30m": "30m",
-            "1h": "1h", "2h": "2h", "4h": "4h", "6h": "6h", "12h": "12h", "1d": "1d"
-        }
         try:
             required_candles = self.lookback_candles.get(timeframe, 24) + 2
             num_candles = required_candles if num_candles is None else num_candles
@@ -166,14 +165,23 @@ class SMCBotBase:
 
             while len(set(timestamps := [int(k["time"]) for k in all_klines])) < fetch_candles and api_calls < 10:
                 fetch_limit = min(max_limit, fetch_candles - len(set(timestamps)))
-                kline_data = self.client.get_klines(
-                    symbol=symbol,
-                    interval=timeframe_mapping.get(timeframe, "1h"),
-                    start_time=start_time,
-                    end_time=current_end,
-                    limit=fetch_limit,
-                    kline_type="LAST_PRICE"
-                )
+                if self.market_type == "crypto":
+                    kline_data = self.bitunix_client.get_klines(
+                        symbol=symbol,
+                        interval=timeframe,
+                        start_time=start_time,
+                        end_time=current_end,
+                        limit=fetch_limit,
+                        kline_type="LAST_PRICE"
+                    )
+                else:
+                    kline_data = self.yahoo_finance_client.get_klines(
+                        symbol=symbol,
+                        interval=timeframe,
+                        start_time=start_time,
+                        end_time=current_end,
+                        limit=fetch_limit,
+                    )
                 api_calls += 1
                 if not kline_data:
                     current_end = start_time

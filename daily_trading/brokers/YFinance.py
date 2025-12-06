@@ -121,7 +121,6 @@ class YFinanceClient:
 
 # Usage example
 if __name__ == "__main__":
-    # No API token needed!
     client = YFinanceClient()
 
     # Example 1: Fetch last 10 15-minute candles for S&P 500
@@ -133,52 +132,3 @@ if __name__ == "__main__":
         print(f"Latest candle: {result['data'][-1]}")
 
     print("\n" + "=" * 50 + "\n")
-
-    # Example 2: Fetch 1-hour data for Nasdaq futures
-    print("Fetching NQ (Nasdaq) 1-hour data...")
-    result = client.get_klines("NQ", "1h", limit=20)
-    print(f"Code: {result['code']}, Message: {result['msg']}")
-    print(f"Number of candles: {len(result['data'])}")
-    if result['data']:
-        print(f"First candle: {result['data'][0]}")
-        print(f"Last candle: {result['data'][-1]}")
-
-    print("\n" + "=" * 50 + "\n")
-
-    # Example 3: Fetch with specific time range (last 7 days)
-    end = int(datetime.now().timestamp() * 1000)
-    start = int((datetime.now() - timedelta(days=7)).timestamp() * 1000)
-
-    print("Fetching GC (Gold) 4-hour data for last 7 days...")
-    result = client.get_klines("GC", "4h", start_time=start, end_time=end, limit=50)
-    print(f"Code: {result['code']}, Message: {result['msg']}")
-    print(f"Number of candles: {len(result['data'])}")
-
-    print("\n" + "=" * 50 + "\n")
-
-    # Example 4: Fetch daily data (works great)
-    print("Fetching ES daily data for last 30 days...")
-    result = client.get_klines("ES", "1d", limit=30)
-    print(f"Code: {result['code']}, Message: {result['msg']}")
-    print(f"Number of candles: {len(result['data'])}")
-
-    print("\n" + "=" * 50 + "\n")
-
-    # Example 5: Using with your existing BitUnix-style code
-    print("Testing drop-in replacement compatibility...")
-    symbols = ["ES", "NQ", "GC"]
-    for sym in symbols:
-        result = client.get_klines(sym, "15m", limit=5)
-        if result['code'] == 0 and result['data']:
-            latest = result['data'][-1]
-            print(f"{sym}: Close={latest['close']}, Volume={latest['quoteVol']}")
-        else:
-            print(f"{sym}: {result['msg']}")
-
-    t = {'open': '3132.01',
-         'high': '3191.54',
-         'low': '2980.96',
-         'close': '3020.38',
-         'quoteVol': '515355.854',
-         'baseVol': '1595337468.65839',
-         'time': '1764892800000'}

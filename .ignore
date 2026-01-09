@@ -1,1 +1,2 @@
 *.csv
+/daily_trading/bots/smc_bot/tests

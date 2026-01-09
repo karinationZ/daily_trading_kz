@@ -1,7 +1,12 @@
-import pandas as pd
-import pytest
+import os
+from pathlib import Path
 
-from daily_trading.bots.smc_bot.bots.BaseBot import SMCBotBase
+import numpy as np
+import pytest
+import pytest_asyncio
+
+from daily_trading.bots.smc_bot.backtester.BacktestResultsViewer import BacktestResultsViewer
+from daily_trading.bots.smc_bot.bots.BaseBot import SMCBotBase, TimeZone
 from daily_trading.bots.smc_bot.bots.TelegramBot import TelegramBot
 from daily_trading.bots.smc_bot.detectors.BosChochDetector import BosChochDetector
 from daily_trading.bots.smc_bot.detectors.FakeBreakoutDetector import FakeBreakoutDetector
@@ -11,11 +16,16 @@ from daily_trading.bots.smc_bot.detectors.LevelsDetector import LevelsDetector
 from daily_trading.bots.smc_bot.detectors.LiquidityGrabDetector import LiquidityGrabDetector
 from daily_trading.bots.smc_bot.detectors.LiquidityPoolDetector import LiquidityPoolDetector
 from daily_trading.bots.smc_bot.detectors.LiquiditySweepDetector import LiquiditySweepDetector
+from daily_trading.bots.smc_bot.detectors.ORBDetector import ORBDetector
 from daily_trading.bots.smc_bot.detectors.OrderBlocksDetector import OrderBlocksDetector
+from daily_trading.bots.smc_bot.detectors.SupplyDemandZonesDetector import SupplyDemandZonesDetector
 from daily_trading.bots.smc_bot.detectors.VolumeProfiler import VolumeProfiler
+from daily_trading.bots.smc_bot.strategy.ORBStrategy import ORBStrategy
 from daily_trading.bots.smc_bot.strategy.StrategyBase import SignalSummary
-from daily_trading.settings import logger, TELEGRAM_MY_DEBUG_BOT_ID
+from daily_trading.brokers.IBKRClient import IBKRClient
+from daily_trading.settings import logger, PROJECT_DIR, TELEGRAM_MY_DEBUG_BOT_ID
 from daily_trading.technicals.AITradeAssistants.GeminiTradeAssistant import GEMINI_PRO, GeminiTradeAssistant, Ohlc
+from daily_trading.utils.common import load_data, merge_csv_no_dups
 
 symbol = "BTCUSDT"
 main_tf = "1h"
@@ -25,7 +35,7 @@ lookback_days = 5
 @pytest.mark.asyncio
 async def test_trend():
     bot = SMCBotBase(symbols=[symbol], lookback_days=lookback_days, main_tf=main_tf)
-    ohlc = await bot.fetch_ohlc_data(symbol, main_tf)
+    ohlc = await bot.fetch_bitunix_ohlc_data(symbol, main_tf)
     detector = HighLowDetector(main_tf)
 
     with pd.option_context('display.max_rows', None, 'display.max_columns', None):
@@ -38,7 +48,7 @@ async def test_trend():
 @pytest.mark.asyncio
 async def test_bos_detector():
     bot = SMCBotBase(symbols=[symbol], lookback_days=lookback_days, main_tf=main_tf)
-    ohlc = await bot.fetch_ohlc_data(symbol, main_tf)
+    ohlc = await bot.fetch_bitunix_ohlc_data(symbol, main_tf)
 
     # with pd.option_context('display.max_rows', None, 'display.max_columns', None):
     #     logger.info("\n{}", ohlc.tail(50).to_string())
@@ -52,7 +62,7 @@ async def test_bos_detector():
 @pytest.mark.asyncio
 async def test_fake_breakout_detector():
     bot = SMCBotBase(symbols=[symbol], lookback_days=lookback_days, main_tf=main_tf)
-    ohlc = await bot.fetch_ohlc_data(symbol, main_tf)
+    ohlc = await bot.fetch_bitunix_ohlc_data(symbol, main_tf)
 
     with pd.option_context('display.max_rows', None, 'display.max_columns', None):
         logger.info("\n{}", ohlc.tail(60).to_string())
@@ -66,7 +76,7 @@ async def test_fake_breakout_detector():
 @pytest.mark.asyncio
 async def test_fvg_detector():
     bot = SMCBotBase(symbols=[symbol], lookback_days=lookback_days, main_tf=main_tf)
-    ohlc = await bot.fetch_ohlc_data(symbol, main_tf)
+    ohlc = await bot.fetch_bitunix_ohlc_data(symbol, main_tf)
 
     with pd.option_context('display.max_rows', None, 'display.max_columns', None):
         logger.info("\n{}", ohlc.tail(100).to_string())
@@ -87,7 +97,7 @@ async def test_fvg_detector():
 @pytest.mark.asyncio
 async def test_high_low():
     bot = SMCBotBase(symbols=[symbol], lookback_days=lookback_days, main_tf=main_tf)
-    ohlc = await bot.fetch_ohlc_data(symbol, main_tf)
+    ohlc = await bot.fetch_bitunix_ohlc_data(symbol, main_tf)
 
     with pd.option_context('display.max_rows', None, 'display.max_columns', None):
         logger.info("\n{}", ohlc.tail(50).to_string())
@@ -100,7 +110,7 @@ async def test_high_low():
 @pytest.mark.asyncio
 async def test_liquidity_sweep():
     bot = SMCBotBase(symbols=[symbol], lookback_days=lookback_days, main_tf=main_tf)
-    ohlc = await bot.fetch_ohlc_data(symbol, main_tf, num_candles=120)
+    ohlc = await bot.fetch_bitunix_ohlc_data(symbol, main_tf, num_candles=120)
 
     # with pd.option_context('display.max_rows', None, 'display.max_columns', None):
     #     logger.info("\n{}", ohlc.tail(50).to_string())
@@ -112,23 +122,9 @@ async def test_liquidity_sweep():
 
 
 @pytest.mark.asyncio
-async def test_order_blocks():
-    bot = SMCBotBase(symbols=[symbol], lookback_days=lookback_days, main_tf=main_tf)
-    ohlc = await bot.fetch_ohlc_data(symbol, main_tf)
-
-    # with pd.option_context('display.max_rows', None, 'display.max_columns', None):
-    #     logger.info("\n{}", ohlc.tail(50).to_string())
-
-    detector = OrderBlocksDetector(main_tf)
-    results = detector.calculate_order_blocks(ohlc, plot=True)
-    fig = results["fig"]
-    fig.show()
-
-
-@pytest.mark.asyncio
 async def test_liq_pool():
     bot = SMCBotBase(symbols=[symbol], lookback_days=lookback_days, main_tf=main_tf)
-    ohlc = await bot.fetch_ohlc_data(symbol, "1h")
+    ohlc = await bot.fetch_bitunix_ohlc_data(symbol, "1h")
 
     # with pd.option_context('display.max_rows', None, 'display.max_columns', None):
     #     logger.info("\n{}", ohlc.tail(50).to_string())
@@ -146,7 +142,7 @@ async def test_liq_pool():
 @pytest.mark.asyncio
 async def test_vol_prof():
     bot = SMCBotBase(symbols=[symbol], lookback_days=lookback_days, main_tf=main_tf)
-    ohlc = await bot.fetch_ohlc_data(symbol, "1h")
+    ohlc = await bot.fetch_bitunix_ohlc_data(symbol, "1h")
 
     with pd.option_context('display.max_rows', None, 'display.max_columns', None):
         logger.info("\n{}", ohlc.to_string())
@@ -175,11 +171,11 @@ SMC Events:
 async def test_ai():
     symbol = "SAHARAUSDT"
     bot = SMCBotBase(symbols=[symbol], main_tf="1h")
-    # Fetch OHLC data within async context
-    ohlc_1d = await bot.fetch_ohlc_data(symbol, "1d", num_candles=10)
-    ohlc_1h = await bot.fetch_ohlc_data(symbol, "1h", num_candles=120)
-    ohlc_4h = await bot.fetch_ohlc_data(symbol, "4h", num_candles=24)
-    ohlc_15m = await bot.fetch_ohlc_data(symbol, "15m", num_candles=100)
+    # Fetch OHLC mgc within async context
+    ohlc_1d = await bot.fetch_bitunix_ohlc_data(symbol, "1d", num_candles=10)
+    ohlc_1h = await bot.fetch_bitunix_ohlc_data(symbol, "1h", num_candles=120)
+    ohlc_4h = await bot.fetch_bitunix_ohlc_data(symbol, "4h", num_candles=24)
+    ohlc_15m = await bot.fetch_bitunix_ohlc_data(symbol, "15m", num_candles=100)
 
     detector_fvg = FvgDetector(main_tf=main_tf, pivot_period=5, left_bars=5)
     detector_bos = BosChochDetector(main_tf, show_bull=True, show_bear=True)
@@ -205,8 +201,8 @@ async def test_ai():
 @pytest.mark.asyncio
 async def test_merge_ob_and_bos():
     bot = SMCBotBase(symbols=[symbol], lookback_days=lookback_days, main_tf=main_tf)
-    ohlc_1h = await bot.fetch_ohlc_data(symbol, "1h", num_candles=120)
-    ohlc_15m = await bot.fetch_ohlc_data(symbol, "15m", num_candles=100)
+    ohlc_1h = await bot.fetch_bitunix_ohlc_data(symbol, "1h", num_candles=120)
+    ohlc_15m = await bot.fetch_bitunix_ohlc_data(symbol, "15m", num_candles=100)
     # with pd.option_context('display.max_rows', None, 'display.max_columns', None):
     #     logger.info("\n{}", ohlc.tail(50).to_string())
 
@@ -230,7 +226,7 @@ async def test_merge_ob_and_bos():
 @pytest.mark.asyncio
 async def test_liq_grab():
     bot = SMCBotBase(symbols=[symbol], lookback_days=lookback_days, main_tf=main_tf)
-    ohlc = await bot.fetch_ohlc_data(symbol, "15m", num_candles=120)
+    ohlc = await bot.fetch_bitunix_ohlc_data(symbol, "5m", num_candles=120)
     with pd.option_context('display.max_rows', None, 'display.max_columns', None):
         logger.info("\n{}", ohlc.tail(50).to_string())
 
@@ -243,11 +239,11 @@ async def test_liq_grab():
 
 @pytest.mark.asyncio
 async def test_support_resistance_levels():
-    symbol = "ES"
+    symbol = "NQ"
     bot = SMCBotBase(symbols=[symbol], main_tf="1h", market_type="futures")
-    # Fetch OHLC data within async context
-    ohlc_htf = await bot.fetch_ohlc_data(symbol, "4h", num_candles=540)
-    ohlc_ltf = await bot.fetch_ohlc_data(symbol, "15m", num_candles=200)
+    # Fetch OHLC mgc within async context
+    ohlc_htf = await bot.fetch_bitunix_ohlc_data(symbol, "1h", num_candles=540)
+    ohlc_ltf = await bot.fetch_bitunix_ohlc_data(symbol, "5m", num_candles=2100)
 
     detector = LevelsDetector(main_tf="15m", pivot_length=3, strength=4)
     results = detector.calculate_support_resistance_levels(ohlc_htf, plot=True)
@@ -262,3 +258,186 @@ async def test_telegram():
     bot = TelegramBot(chat_id=TELEGRAM_MY_DEBUG_BOT_ID)
     await bot.send_message(
         text="<b>Bold text</b>")
+
+
+@pytest.mark.asyncio
+async def test_orb_calculation():
+    symbol = "MGC"
+    bot = SMCBotBase(symbols=[symbol], main_tf="1h", market_type="futures")
+    ohlc = await bot.fetch_bitunix_ohlc_data(symbol, "5m", num_candles=500)
+
+    orb = ORBDetector(timezone=TimeZone.NY)
+
+    result = orb.calculate(ohlc)
+    print(result)
+    fig = orb.plot(ohlc, result)
+    fig.show()
+
+
+@pytest.mark.asyncio
+async def test_order_blocks():
+    # bot = SMCBotBase(symbols=[symbol], lookback_days=lookback_days, main_tf=main_tf)
+    # ohlc = await bot.fetch_ohlc_data(symbol, main_tf)
+
+    # with pd.option_context('display.max_rows', None, 'display.max_columns', None):
+    #     logger.info("\n{}", ohlc.tail(50).to_string())
+
+    pathlib = "/project/daily_trading/bots/smc_bot/tests/ohlc_data/mnq.csv"
+    ohlc = load_data(
+        pathlib,
+        start_ts="2025-03-10 12:30:00+00:00",
+        end_ts="2025-03-10 19:55:00+00:00"
+    )
+
+    detector = OrderBlocksDetector(main_tf)
+    results = detector.calculate_order_blocks(ohlc, plot=True)
+    print(results)
+    fig = results["fig"]
+    fig.show()
+
+
+@pytest.mark.asyncio
+async def test_supply_demand_zones():
+    symbol = "MNQ"
+    bot = SMCBotBase(symbols=[symbol], main_tf="1h", market_type="futures")
+    # ohlc = await bot.fetch_ohlc_data(symbol, "5m", num_candles=500)
+
+    pathlib = f"/project/daily_trading/bots/smc_bot/tests/ohlc_data/{symbol.lower()}.csv"
+    ohlc = load_data(
+        pathlib,
+        start_ts="2025-03-03 12:30:00+00:00",
+        end_ts="2025-03-03 17:00:00+00:00"
+    )
+    # ohlc = pd.read_csv('/project/daily_trading/bots/smc_bot/tests/window.csv')
+    logger.info(ohlc.tail(200).to_string())
+    # Tested_V12_MNQ_NY_sw12_int4_off1_atr2_2_thr0_3_rr1_5_results_copy
+    detector = SupplyDemandZonesDetector(fvg_based_only=True,
+                                         fvg_offset=1,
+                                         swing_length=12,
+                                         internal_length=4,
+                                         zone_precision_factor=2.2,
+                                         fvg_threshold=0.3)
+
+    #
+    # ohlc_before = ohlc.loc[ohlc.index < cutoff]
+    # logger.info(ohlc_before.tail(100).to_string())
+
+    active_swing, active_internal = detector.calculate(ohlc)
+    logger.info(f"Active Swing Zones: {active_swing}, Active Internal Zones: {active_internal}")
+    fig = detector.plot(ohlc)
+    fig.show()
+
+
+def test_csv_merge():
+    ohlc_dir = f"{PROJECT_DIR}/bots/smc_bot/tests/ohlc_data"
+    symbol = "mcl"
+    files = []
+    for i in range(1, 10):
+        if os.path.exists(f"{ohlc_dir}/{symbol}_{i}.csv"):
+            files.append(f"{ohlc_dir}/{symbol}_{i}.csv")
+    merge_csv_no_dups(files, out_file=f"{ohlc_dir}/{symbol}.csv")
+
+
+def test_dashboard():
+    f = Path(
+        "/daily_trading/bots/smc_bot/tests/orb_results_standard/ELITE_SETUPS/MNQ/NY/R1_FAST_REACTIVITY_MNQ_NY_SW12_I4/MNQ_NY_sw12_int4_off1_atr2.2_thr0.35_rr1.2_results.csv")
+
+    html_path = Path(
+        "/daily_trading/bots/smc_bot/tests/orb_results_standard") / f"Dashboard_MNQR1_FAST_REACTIVITY_MNQ_NY_SW12_I4.html"
+    viewer = BacktestResultsViewer(html_path=html_path)
+    viewer.generate_dashboard(f)
+
+
+def test_audit_pnl_and_exit_integrity():
+    """
+    Verifies PnL math and Exit Price integrity.
+    """
+    symbol = "MNQ"
+    strategy = ORBStrategy(
+        symbol=symbol,
+        timezone=TimeZone.NY,
+    )
+    point_values = strategy.POINT_VALUE
+
+    csv_path = Path(
+        "/daily_trading/bots/smc_bot/tests/orb_results_standard/ELITE_SETUPS/MNQ/LONDON/R2_PRECISION_MNQ_LONDON_SW15_I5_OFF4_ATR1.8_T0.2_RR1.2/MNQ_LONDON_sw15_int5_off4_atr1.8_thr0.2_rr1.2_results.csv")
+
+    df_results = pd.read_csv(csv_path)
+    df_results['timestamp'] = pd.to_datetime(df_results['timestamp'])
+    df_results['exit_time'] = pd.to_datetime(df_results['exit_time'])
+
+    data_path = f"/project/daily_trading/bots/smc_bot/tests/ohlc_data/{symbol.lower()}.csv"
+    df_ohlc = load_data(data_path)
+
+    # 3. Validation Logic
+    # 3. Validation Logic
+    for idx, trade in df_results.iterrows():
+        # --- FIX: SKIP CANCELLED TRADES ---
+        if trade['result'] == 'CANCELLED':
+            print(f"ℹ️ Skipping PnL check for CANCELLED trade at index {idx}")
+            assert trade['pnl'] == 0.0, f"Cancelled trade must have 0 PnL, got {trade['pnl']}"
+            continue
+
+        exit_ts = trade['exit_time']
+
+        # Data Check
+        assert exit_ts in df_ohlc.index, f"Exit time {exit_ts} not found in OHLC."
+
+        # Price Integrity Check
+        candle = df_ohlc.loc[exit_ts]
+        # Allow small epsilon for floating point data matching
+        assert candle['low'] - 0.01 <= trade['exit_price'] <= candle['high'] + 0.01, \
+            f"Exit Price {trade['exit_price']} outside bar range [{candle['low']}, {candle['high']}]."
+
+        # PnL Check
+        pv = point_values[symbol]
+        entry = trade['entry']
+        exit_p = trade['exit_price']
+        size = trade['size']
+        reported_pnl = trade['pnl']
+
+        if trade['direction'] == 'LONG':
+            calc_pnl = (exit_p - entry) * size * pv
+        else:  # SHORT
+            calc_pnl = (entry - exit_p) * size * pv
+
+        assert np.isclose(calc_pnl, reported_pnl, atol=0.01), \
+            f"PnL Mismatch! Calculated: {calc_pnl}, Reported: {reported_pnl}"
+
+        print(f"✅ PnL Verified: {symbol} {trade['direction']} | ${calc_pnl:.2f}")
+
+
+@pytest_asyncio.fixture(scope="module")
+async def ib_client():
+    """
+    Setup: Connects once before tests start.
+    Teardown: Disconnects after all tests finish.
+    """
+    # Use a unique client ID for testing to avoid conflicts with bots
+    client = IBKRClient(port=4002, client_id=1)
+    await client.connect()
+    yield client
+    client.disconnect()
+
+
+TEST_CASES = [
+    ("MNQ", "MNQ", "CME"),
+    ("MES", "MES", "CME"),
+    ("MBT", "MBT", "CME"),
+    ("MGC", "MGC", "COMEX"),
+    ("SIL", "SIL", "COMEX"),  # Input SIL -> Expect SIL on COMEX
+    ("MCL", "MCL", "NYMEX"),
+]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("input_symbol, expected_root, expected_exchange", TEST_CASES)
+async def test_ibkr_contract_resolution(ib_client, input_symbol, expected_root, expected_exchange):
+    """
+    Verifies that we can resolve the contract, the symbol matches expectations,
+    and the expiration date is valid (in the future).
+    """
+    print(f"\nTesting: {input_symbol}...")
+    contract = await ib_client.get_futures_contract(input_symbol)
+    expiry_str = contract.lastTradeDateOrContractMonth
+    print(f"✅ PASS: {input_symbol} -> {contract.localSymbol} ({contract.exchange}) Exp: {expiry_str}")

@@ -41,7 +41,7 @@ class FuturesFilter:
             prev_day_high, prev_day_low = float(prev_day_data["high"]), float(prev_day_data["low"])
             prev_day_timestamp = int(prev_day_data["time"])
 
-            # Verify that the data is actually from the previous day
+            # Verify that the mgc is actually from the previous day
             now = datetime.now(timezone.utc)
             today_midnight = now.replace(hour=0, minute=0, second=0, microsecond=0)
             yesterday_midnight = today_midnight - timedelta(days=1)

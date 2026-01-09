@@ -76,7 +76,7 @@ class GeminiTradeAssistant:
         self.debug = debug
 
     async def fetch_data(self) -> AssetData:
-        """Fetch OHLC data and calculate ICT signals."""
+        """Fetch OHLC mgc and calculate ICT signals."""
 
         symbol = self.ohlc_1d["symbol"].iloc[0]
 
@@ -124,7 +124,7 @@ class GeminiTradeAssistant:
 
         #     async def build_prompt(self) -> str:
         #         """Build the prompt for Gemini API based on ICT Smart Money Concepts."""
-        #         data = await self.fetch_data()
+        #         mgc = await self.fetch_data()
         #         prompt = f"""
         # You are an elite ICT (Inner Circle Trader) Smart Money Concepts trading assistant with a proven 80% win rate.
         # Your expertise lies in analyzing institutional order flow, market structure, volume profile analysis, and market sentiment integration to identify high-probability trading opportunities.
@@ -141,18 +141,18 @@ class GeminiTradeAssistant:
         # - Multi-timeframe confluence for precision entries
         #
         # ## Input Data:
-        # - **Crypto Coin**: {data.symbol}
-        # - **OHLC 1D Data**: {data.ohlc_1d}
-        # - **OHLC 4H Data**: {data.ohlc_4h}
-        # - **OHLC 1H Data**: {data.ohlc_1h}
-        # - **OHLC 15MIN Data** - Entry timeframe for precise entry, SL, TP execution: {data.ohlc_15m}
-        # - **15MIN FVG Signals** - Fair Value Gap locations for precise entry, SL, TP calculation: {data.fvg_signals}
-        # - **1H BOS (Break of Structure) Signals**: {data.bos_choch_signals}
-        # - **1H Pivot Highs** - Recent swing highs: {data.pivot_high_points}
-        # - **1H Pivot Lows** - Recent swing lows: {data.pivot_low_points}
-        # - **1H Order Blocks** - Institutional order blocks: {data.ob_signals}
-        # - **4H Volume Profile** - Volume Profile insights into trading activity using 4H OHLC: {data.vol_profile}
-        # - **Market Sentiment Analysis**: {data.sentiment}""" + """
+        # - **Crypto Coin**: {mgc.symbol}
+        # - **OHLC 1D Data**: {mgc.ohlc_1d}
+        # - **OHLC 4H Data**: {mgc.ohlc_4h}
+        # - **OHLC 1H Data**: {mgc.ohlc_1h}
+        # - **OHLC 15MIN Data** - Entry timeframe for precise entry, SL, TP execution: {mgc.ohlc_15m}
+        # - **15MIN FVG Signals** - Fair Value Gap locations for precise entry, SL, TP calculation: {mgc.fvg_signals}
+        # - **1H BOS (Break of Structure) Signals**: {mgc.bos_choch_signals}
+        # - **1H Pivot Highs** - Recent swing highs: {mgc.pivot_high_points}
+        # - **1H Pivot Lows** - Recent swing lows: {mgc.pivot_low_points}
+        # - **1H Order Blocks** - Institutional order blocks: {mgc.ob_signals}
+        # - **4H Volume Profile** - Volume Profile insights into trading activity using 4H OHLC: {mgc.vol_profile}
+        # - **Market Sentiment Analysis**: {mgc.sentiment}""" + """
         #
         # ## Analysis Framework:
         #
@@ -171,7 +171,7 @@ class GeminiTradeAssistant:
         #
         # ### 3. Market Sentiment Integration
         # - **Fear & Greed Index**: Market psychology for contrarian opportunities
-        # - **News Sentiment**: Recent developments affecting {data.symbol}
+        # - **News Sentiment**: Recent developments affecting {mgc.symbol}
         # - **Composite Sentiment**: Overall sentiment score and institutional divergence
         # - **Sentiment-Structure Confluence**: When sentiment aligns with or contradicts technical structure
         # - **Risk Assessment**: How sentiment affects position sizing and institutional behavior
@@ -375,7 +375,7 @@ If current price is far from Entry: Output the SETUP anyway as a Limit Order. Do
         entry = raw_message['entry']
         stop_loss = raw_message['stop_loss']
         take_profit = raw_message['take_profit']
-        # Get x-axis range from candlestick data
+        # Get x-axis range from candlestick mgc
         x_range = fig.data[0]['x']  # Assumes candlestick is first trace
         x_start, x_end = x_range[0], x_range[-1]
 
@@ -454,20 +454,20 @@ async def main():
     Futures: GC, ES, NQ
     Crypto: BTCUSDT, ETHUSDT, XAUTUSDT
     """
-    symbol = "BTCUSDT"
+    symbol = "MGC"
     want_to_pay_for_analyses = True  # change to False for free prompt only
 
     # ‼️⚠️‼️ CHANGE MARKET TYPE BASED ON SYMBOL ‼️⚠️‼️
-    market_type = "crypto"  # 🚨change to "futures" for futures symbols like GC, ES, NQ
+    market_type = "futures"  # 🚨change to "futures" for futures symbols like GC, ES, NQ
 
     bot = SMCBotBase(symbols=[symbol], main_tf="1h", market_type=market_type)
 
-    # Fetch OHLC data within async context
+    # Fetch OHLC mgc within async context
 
-    ohlc_1d = await bot.fetch_ohlc_data(symbol, "1d", num_candles=10)
-    ohlc_1h = await bot.fetch_ohlc_data(symbol, "1h", num_candles=120)
-    ohlc_15m = await bot.fetch_ohlc_data(symbol, "15m", num_candles=100)
-    ohlc_4h = await bot.fetch_ohlc_data(symbol, "4h", num_candles=18)
+    ohlc_1d = await bot.fetch_bitunix_ohlc_data(symbol, "1d", num_candles=10)
+    ohlc_1h = await bot.fetch_bitunix_ohlc_data(symbol, "1h", num_candles=120)
+    ohlc_15m = await bot.fetch_bitunix_ohlc_data(symbol, "15m", num_candles=200)
+    ohlc_4h = await bot.fetch_bitunix_ohlc_data(symbol, "4h", num_candles=18)
     ohlc = Ohlc(ohlc_1d, ohlc_4h, ohlc_1h, ohlc_15m)
 
     ai_agent = GeminiTradeAssistant(symbol=symbol, model=GEMINI_PRO, ohlc=ohlc, debug=False)

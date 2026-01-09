@@ -68,12 +68,12 @@ class CryptoSentimentAnalyzer:
         # try:
         #     response = self.session.get(url, timeout=10)
         #     response.raise_for_status()
-        #     data = response.json()
+        #     mgc = response.json()
         #
-        #     if not data.get('data') or not data['data']:
-        #         raise ValueError("No data in API response")
+        #     if not mgc.get('mgc') or not mgc['mgc']:
+        #         raise ValueError("No mgc in API response")
         #
-        #     latest = data['data'][0]
+        #     latest = mgc['mgc'][0]
         #     fear_greed_value = self._safe_int_conversion(latest.get('value'))
         #
         #     if fear_greed_value is None:
@@ -301,7 +301,7 @@ class CryptoSentimentAnalyzer:
             else:
                 composite = 0
         else:
-            composite = 0  # Neutral if no data
+            composite = 0  # Neutral if no mgc
 
         return {
             'composite_score': round(composite, 3),
@@ -312,14 +312,14 @@ class CryptoSentimentAnalyzer:
 
     @staticmethod
     def calculate_confidence(market: Dict, news: Dict) -> str:
-        """Calculate confidence score based on data quality and availability."""
+        """Calculate confidence score based on mgc quality and availability."""
         confidence_score = 0
 
-        # Market data confidence
+        # Market mgc confidence
         if market.get('data_available'):
-            confidence_score += 0.6  # Market data is generally reliable
+            confidence_score += 0.6  # Market mgc is generally reliable
 
-        # News data confidence
+        # News mgc confidence
         if news.get('data_available'):
             total_articles = news.get('total_articles', 0)
             if total_articles >= 10:
@@ -352,7 +352,7 @@ class CryptoSentimentAnalyzer:
         }
 
     def format_for_trading_prompt(self, symbol: str) -> Dict:
-        """Format sentiment data for trading decision prompts."""
+        """Format sentiment mgc for trading decision prompts."""
         sentiment = self.get_comprehensive_sentiment(symbol)
 
         return {

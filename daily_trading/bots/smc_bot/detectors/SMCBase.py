@@ -11,10 +11,11 @@ BEARISH = 0
 NEUTRAL = -1
 
 
-class Signal(Enum):
+class BIAS(Enum):
     """Trend enumeration with integer values"""
     SHORT = "SHORT"
     LONG = "LONG"
+    NEUTRAL = "NEUTRAL"
 
 
 class Trend(Enum):
@@ -233,18 +234,21 @@ class SMCBase:
             min_confirmation: int = 2
     ) -> str:
         """
-        Fixed version of original function with better validation and parameters.
+        Improved Trend Detection: SMA Crossover + Linear Regression Slope.
+        Includes NaN protection and dynamic thresholding.
         """
-        # Input validation
         if len(ohlc_data) < max(long_ma, slope_lookback) + min_confirmation:
             return Trend.NEUTRAL.name
 
-        # Calculate moving averages
+        # Calculate MAs
         short_sma = ohlc_data['close'].rolling(window=short_ma).mean()
         long_sma = ohlc_data['close'].rolling(window=long_ma).mean()
 
-        # Calculate slope
+        # Slope Calculation with NaN Protection
         recent_data = ohlc_data['close'].tail(slope_lookback)
+        if not np.isfinite(recent_data).all():
+            return Trend.NEUTRAL.name
+
         x = np.arange(len(recent_data))
         slope, _ = np.polyfit(x, recent_data, 1)
 
@@ -252,31 +256,119 @@ class SMCBase:
         mean_close = recent_data.mean()
         slope_threshold = mean_close * slope_threshold_pct
 
-        # Trend conditions with confirmation
-        ma_bullish = all(
-            short_sma.iloc[-i] > long_sma.iloc[-i]
-            for i in range(1, min_confirmation + 1)
-        )
-        ma_bearish = all(
-            short_sma.iloc[-i] < long_sma.iloc[-i]
-            for i in range(1, min_confirmation + 1)
-        )
+        # MA Alignment Check
+        ma_bullish = all(short_sma.iloc[-i] > long_sma.iloc[-i] for i in range(1, min_confirmation + 1))
+        ma_bearish = all(short_sma.iloc[-i] < long_sma.iloc[-i] for i in range(1, min_confirmation + 1))
 
         if ma_bullish and slope > slope_threshold:
             return Trend.BULLISH.name
         elif ma_bearish and slope < -slope_threshold:
             return Trend.BEARISH.name
+
         return Trend.NEUTRAL.name
 
+    # @staticmethod
+    # def detect_trend(
+    #         ohlc_data: pd.DataFrame,
+    #         short_ma: int = 5,
+    #         long_ma: int = 20,
+    #         slope_lookback: int = 20,
+    #         slope_threshold_pct: float = 0.001,
+    #         min_confirmation: int = 2
+    # ) -> str:
+    #     """
+    #     Fixed version of original function with better validation and parameters.
+    #     """
+    #     # Input validation
+    #     if len(ohlc_data) < max(long_ma, slope_lookback) + min_confirmation:
+    #         return Trend.NEUTRAL.name
+    #
+    #     # Calculate moving averages
+    #     short_sma = ohlc_data['close'].rolling(window=short_ma).mean()
+    #     long_sma = ohlc_data['close'].rolling(window=long_ma).mean()
+    #
+    #     # Calculate slope
+    #     recent_data = ohlc_data['close'].tail(slope_lookback)
+    #     x = np.arange(len(recent_data))
+    #     slope, _ = np.polyfit(x, recent_data, 1)
+    #
+    #     # Dynamic slope threshold
+    #     mean_close = recent_data.mean()
+    #     slope_threshold = mean_close * slope_threshold_pct
+    #
+    #     # Trend conditions with confirmation
+    #     ma_bullish = all(
+    #         short_sma.iloc[-i] > long_sma.iloc[-i]
+    #         for i in range(1, min_confirmation + 1)
+    #     )
+    #     ma_bearish = all(
+    #         short_sma.iloc[-i] < long_sma.iloc[-i]
+    #         for i in range(1, min_confirmation + 1)
+    #     )
+    #
+    #     if ma_bullish and slope > slope_threshold:
+    #         return Trend.BULLISH.name
+    #     elif ma_bearish and slope < -slope_threshold:
+    #         return Trend.BEARISH.name
+    #     return Trend.NEUTRAL.name
+
     @staticmethod
-    def get_time_frame_name(ohlc: pd.DataFrame):
-        tf_days = (ohlc.index[-1] - ohlc.index[-2]).components.days
-        if tf_days:
-            return f"{tf_days}D"
-        tf_hours = (ohlc.index[-1] - ohlc.index[-2]).components.hours
-        if tf_hours:
-            return f"{tf_hours}H"
-        tf_minutes = (ohlc.index[-1] - ohlc.index[-2]).components.minutes
-        if tf_minutes:
-            return f"{tf_minutes}M"
-        return "Unknown"
+    def get_time_frame_name(ohlc: pd.DataFrame) -> str:
+        if not isinstance(ohlc.index, pd.DatetimeIndex):
+            raise ValueError("OHLC index must be DatetimeIndex")
+
+        # Determine TF using the most common delta
+        deltas = ohlc.index.to_series().diff().dropna()
+        seconds = int(deltas.dt.total_seconds().mode().iloc[0])
+
+        if seconds % 86400 == 0:
+            return f"{seconds // 86400}D"
+        if seconds % 3600 == 0:
+            return f"{seconds // 3600}H"
+        if seconds % 60 == 0:
+            return f"{seconds // 60}M"
+
+        return f"{seconds}s"
+
+    @staticmethod
+    def calculate_atr_stop_loss(
+            ohlc: pd.DataFrame,
+            entry_price: float,
+            direction: BIAS,
+            atr_length: int = 14,
+            atr_multiplier: float = 1.5,
+    ) -> float:
+        """
+        Smart ATR-based Stop Loss calculation.
+
+        Args:
+            ohlc: DataFrame with 'high', 'low', 'close' columns.
+            entry_price: The price where you intend to enter.
+            direction: 'LONG' or 'SHORT'.
+            atr_length: Lookback period for ATR (default 14).
+            atr_multiplier: Volatility multiplier (default 2.0).
+            tick_size: Minimum price variation (e.g., 0.25 for MNQ).
+
+        Returns:
+            float: A tick-conformed Stop Loss price.
+        """
+        # 1. Efficient Vectorized True Range (TR) Calculation
+        high_low = ohlc['high'] - ohlc['low']
+        high_cp = (ohlc['high'] - ohlc['close'].shift(1)).abs()
+        low_cp = (ohlc['low'] - ohlc['close'].shift(1)).abs()
+
+        tr = pd.concat([high_low, high_cp, low_cp], axis=1).max(axis=1)
+
+        # 2. Calculate ATR using RMA (Running Moving Average - TradingView Standard)
+        # alpha = 1/length matches Pine Script's ta.atr()
+        atr = tr.ewm(alpha=1 / atr_length, min_periods=atr_length, adjust=False).mean().iloc[-1]
+
+        # 3. Calculate Raw Stop Loss
+        atr_distance = atr * atr_multiplier
+
+        if direction == BIAS.LONG:
+            sl = entry_price - atr_distance
+        else:
+            sl = entry_price + atr_distance
+
+        return round(sl, 2)

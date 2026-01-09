@@ -34,10 +34,10 @@ class SMCSupportResistanceBot(SMCBotBase):
         """Analyze a single symbol and generate SMC signals."""
         logger.info(f"Starting analysis for {symbol}")
         try:
-            ohlc_1d = await self.fetch_ohlc_data(symbol, "1d", num_candles=30)
-            ohlc_4h = await self.fetch_ohlc_data(symbol, "4h", num_candles=540)
-            ohlc_1h = await self.fetch_ohlc_data(symbol, "1h", num_candles=120)
-            ohlc_15m = await self.fetch_ohlc_data(symbol, "15m", num_candles=120)
+            ohlc_1d = await self.fetch_bitunix_ohlc_data(symbol, "1d", num_candles=30)
+            ohlc_4h = await self.fetch_bitunix_ohlc_data(symbol, "4h", num_candles=540)
+            ohlc_1h = await self.fetch_bitunix_ohlc_data(symbol, "1h", num_candles=120)
+            ohlc_15m = await self.fetch_bitunix_ohlc_data(symbol, "15m", num_candles=120)
 
             if any(ohlc.empty for ohlc in [ohlc_1d, ohlc_4h, ohlc_1h, ohlc_15m]):
                 logger.error(f"No data for {symbol}, skipping...")

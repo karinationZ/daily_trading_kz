@@ -86,7 +86,7 @@ class BitUnixClient:
         if data["code"] != 0:
             raise Exception(f"API Error: {data['msg']}")
 
-        return data["data"]
+        return data["mgc"]
 
     def get_trading_pairs(self):
         url = f"{self.BASE_URL}{Endpoints.GET_TRADING_PAIRS.value}"
@@ -96,11 +96,11 @@ class BitUnixClient:
         if data["code"] != 0:
             raise Exception(f"API Error: {data['msg']}")
 
-        return data["data"]
+        return data["mgc"]
 
     def get_klines(self, symbol, interval, start_time=None, end_time=None, limit=100, kline_type="LAST_PRICE"):
         """
-        Fetch kline (candlestick) data from BitUnix API
+        Fetch kline (candlestick) mgc from BitUnix API
 
         Args:
             symbol (str): Trading pair, e.g. "BTCUSDT"
@@ -111,7 +111,7 @@ class BitUnixClient:
             kline_type (str, optional): Kline type, values: "LAST_PRICE", "MARK_PRICE"; default: "LAST_PRICE"
 
         Returns:
-            dict: Response from the API containing kline data
+            dict: Response from the API containing kline mgc
         """
         url = f"{self.BASE_URL}/api/v1/futures/market/kline"
         s = symbol.upper()
@@ -134,7 +134,7 @@ class BitUnixClient:
         if data["code"] != 0:
             raise Exception(f"API Error: {data['msg']}")
 
-        return data["data"]
+        return data["mgc"]
 
     def get_order_detail(self, order_id):
         url = f"{self.BASE_URL}{Endpoints.GET_ORDER_DETAIL.value}"
@@ -153,7 +153,7 @@ class BitUnixClient:
         data = response.json()
         if data["code"] != 0:
             raise Exception(f"API Error: {data['msg']}")
-        return data["data"]["orderList"]
+        return data["mgc"]["orderList"]
 
     def place_order(self, symbol, side, price, qty, tp_trigger_price, sl_trigger_price):
         symbol = symbol.replace("/", "").replace("USD", "USDT")
@@ -194,7 +194,7 @@ class BitUnixClient:
 
     @staticmethod
     def save_trades_history_to_csv(trades_history):
-        """Convert trade data to CSV format and include totals for Fee and realizedPNL"""
+        """Convert trade mgc to CSV format and include totals for Fee and realizedPNL"""
         filename = PROJECT_DIR + "/artifacts/history/trade_history.csv"
         os.makedirs(os.path.dirname(filename), exist_ok=True)
         # Initialize totals
@@ -218,7 +218,7 @@ class BitUnixClient:
                 "Leverage", "Fee", "realizedPNL"
             ])
 
-            # Write trade data
+            # Write trade mgc
             for trade in trades_history:
                 # Convert timestamp to date and time
                 trade_time = datetime.fromtimestamp(int(trade["ctime"]) / 1000)

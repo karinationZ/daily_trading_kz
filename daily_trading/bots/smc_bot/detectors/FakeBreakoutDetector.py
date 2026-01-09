@@ -87,7 +87,7 @@ class FakeBreakoutDetector(SMCBase):
         for pivot_time, high_pivot in high_pivots.iterrows():
             pivot_level = high_pivot['level']
 
-            # Get the position of the pivot in the OHLC data
+            # Get the position of the pivot in the OHLC mgc
             try:
                 pivot_idx = ohlc.index.get_loc(pivot_time)
                 window = ohlc.iloc[pivot_idx + 1:pivot_idx + 1 + LOOKAHEAD_CANDLES]

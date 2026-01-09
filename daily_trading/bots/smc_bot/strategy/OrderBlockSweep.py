@@ -8,14 +8,14 @@ from daily_trading.bots.smc_bot.detectors.CandlePatternDetector import CandlePat
 from daily_trading.bots.smc_bot.detectors.FvgDetector import FvgDetector
 from daily_trading.bots.smc_bot.detectors.HighLowDetector import HighLowDetector
 from daily_trading.bots.smc_bot.detectors.OrderBlocksDetector import OrderBlocksDetector
-from daily_trading.bots.smc_bot.detectors.SMCBase import Signal, Trend
+from daily_trading.bots.smc_bot.detectors.SMCBase import BIAS, Trend
 from daily_trading.bots.smc_bot.strategy.StrategyBase import SignalSummary, StrategyBase
 from daily_trading.settings import logger
 
 
 class OrderBlockSweepStrategy(StrategyBase):
     """
-    Analyzes OHLC data for continuation trade signals based on block order sweeps.
+    Analyzes OHLC mgc for continuation trade signals based on block order sweeps.
     Designed for scalping in volatile crypto markets with a 4-step process:
     1. Identify Uptrend or Downtrend on 1H (last 24 candles).
     2. Detect Block Orders (OB) on 1H.
@@ -155,7 +155,7 @@ class OrderBlockSweepStrategy(StrategyBase):
 
     async def analyze_smc(self, symbol: str, ohlc_1h: pd.DataFrame) -> SignalSummary:
         """
-        Analyze OHLC data for continuation signals based on block order sweeps.
+        Analyze OHLC mgc for continuation signals based on block order sweeps.
         """
         current_time = ohlc_1h.index.max()
         logger.info(f"Starting Block Order Sweep analysis for {symbol} - {current_time}")
@@ -219,7 +219,7 @@ class OrderBlockSweepStrategy(StrategyBase):
         #     logger.info(f"No trading signal. Current SMC events: {json.dumps(recent_smc_events, indent=1)}")
         #     return signal_summary
 
-        signal_summary.direction = Signal.LONG.value if trend == Trend.BULLISH.name else Signal.SHORT.value
+        signal_summary.direction = BIAS.LONG.value if trend == Trend.BULLISH.name else BIAS.SHORT.value
 
         # Step 5:  Generate trade
         # Reset OB tapping time

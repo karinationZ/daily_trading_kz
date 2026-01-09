@@ -32,7 +32,7 @@ class BitUnixDivergentAssetsFinder:
 
     @staticmethod
     def format_klines_to_dataframe(klines):
-        """Convert kline data to pandas DataFrame"""
+        """Convert kline mgc to pandas DataFrame"""
         df = pd.DataFrame(klines, columns=["open", "high", "low", "close", "quoteVol", "baseVol", "time"])
         df[["open", "high", "low", "close", "quoteVol", "time"]] = df[
             ["open", "high", "low", "close", "quoteVol", "time"]].apply(pd.to_numeric)
@@ -40,7 +40,7 @@ class BitUnixDivergentAssetsFinder:
         return df.set_index("time")[["close"]]  # Only keep 'close' for correlation
 
     async def fetch_kline_data(self, symbol, interval="5m", lookback_hours=24):
-        """Fetch historical kline data for a symbol"""
+        """Fetch historical kline mgc for a symbol"""
         end_time = int(datetime.now().timestamp() * 1000)
         start_time = int((datetime.now() - timedelta(hours=lookback_hours)).timestamp() * 1000)
 
@@ -76,7 +76,7 @@ class BitUnixDivergentAssetsFinder:
 
         btc_df = await self.fetch_kline_data("BTCUSDT", lookback_hours=lookback_hours)
 
-        # Fetch kline data concurrently
+        # Fetch kline mgc concurrently
         tasks = [
             self.fetch_kline_data(symbol, lookback_hours=lookback_hours)
             for symbol, _ in high_volume_symbols if symbol != "BTCUSDT"
@@ -112,7 +112,7 @@ class BitUnixDivergentAssetsFinder:
 
         btc_df = await self.fetch_kline_data("BTCUSDT", lookback_hours=lookback_hours)
 
-        # Fetch kline data concurrently
+        # Fetch kline mgc concurrently
         tasks = [
             self.fetch_kline_data(symbol, lookback_hours=lookback_hours)
             for symbol, _ in high_volume_symbols if symbol != "BTCUSDT"

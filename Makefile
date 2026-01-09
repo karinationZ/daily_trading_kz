@@ -13,3 +13,7 @@ run_bos_15m_ob_tap_bot:
 run_support_resistance_bot:
 	@echo "Starting Support & Resistance Bot"
 	poetry run python3 daily_trading/bots/smc_bot/run_support_resistance_bot.py
+
+run_orb_bot:
+	@echo "Starting ORB Institutional Sniper..."
+	poetry run python3 daily_trading/bots/smc_bot/run_orb_bot.py

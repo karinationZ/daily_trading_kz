@@ -1,7 +1,9 @@
 from abc import ABC
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import datetime
-from typing import List, Optional, Tuple
+from enum import auto, Enum
+from typing import Dict, List, Optional
+from typing import Tuple
 
 import pandas as pd
 import plotly.graph_objects as go
@@ -9,14 +11,41 @@ import plotly.graph_objects as go
 from daily_trading.bots.smc_bot.bots.TelegramBot import TelegramBot
 from daily_trading.bots.smc_bot.detectors.BosChochDetector import BosChochDetector
 from daily_trading.bots.smc_bot.detectors.HighLowDetector import HighLowDetector
-from daily_trading.bots.smc_bot.detectors.SMCBase import SMCBase, Trend
+from daily_trading.bots.smc_bot.detectors.SMCBase import BIAS, SMCBase, Trend
 from daily_trading.settings import logger
+
+
+class TradeStatus(Enum):
+    NONE = "NONE"  # Scanning for ORB breakout
+    PENDING = "PENDING"  # Limit order sent, waiting for price to hit zone
+    FILLED = "FILLED"  # In the market, monitoring SL/TP
+
+
+class TradeAction(Enum):
+    ENTER = auto()
+    CANCEL = auto()
+    EXIT = auto()
+
+
+@dataclass
+class TradeSignal:
+    symbol: str
+    action: TradeAction
+    direction: Optional[BIAS] = None
+    price: Optional[float] = None
+    sl: Optional[float] = None
+    tp: Optional[float] = None
+    size: Optional[int] = None
+    reason: Optional[str] = None
+    timestamp: Optional[datetime] = None
+    metadata: Dict = field(default_factory=dict)
+    fig: Optional[go.Figure] = None
 
 
 @dataclass
 class SignalSummary:
     direction: str
-    trend: str
+    trend: Optional[str] = None
     trend_signal: Optional[list] = None
     recent_smc_events: Optional[list] = None
     fig: Optional[go.Figure] = None
@@ -24,6 +53,7 @@ class SignalSummary:
     recent_bos_signal: Optional[str] = None
     nearest_fvg: Optional[dict] = None
     title: Optional[str] = None
+    trade_signal: Optional[TradeSignal] = None
 
 
 class StrategyBase(ABC):
@@ -98,7 +128,8 @@ class StrategyBase(ABC):
         trend, recent_smc_events = await self.get_trend(ohlc, symbol, cache_key, current_time, fig)
         return trend, recent_smc_events, fig
 
-    async def detect_bos_choch(self, detector: BosChochDetector, ohlc_1h: pd.DataFrame, trend: str, symbol: str) -> List[str]:
+    async def detect_bos_choch(self, detector: BosChochDetector, ohlc_1h: pd.DataFrame, trend: str, symbol: str) -> \
+            List[str]:
         """Step 2: Identify the most recent and valid BOS level in the trend direction."""
         recent_smc_events = []
         results = detector.calculate_bos_choch(ohlc_1h, plot=True)

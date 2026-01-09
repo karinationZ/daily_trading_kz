@@ -108,7 +108,7 @@ class Calculator:
 
     def get_historical_data(self, time_frame: str, time_delta_days: int = None, limit: int = 500) -> pd.DataFrame:
         """
-        Fetch and process historical data using BitUnixClient
+        Fetch and process historical mgc using BitUnixClient
 
         Args:
             time_frame (str): Timeframe for the klines (e.g., "1m", "5m", "1h", "1d")
@@ -116,7 +116,7 @@ class Calculator:
             limit (int, optional): Maximum number of candles to fetch, default 500
 
         Returns:
-            pd.DataFrame: DataFrame with OHLCV data
+            pd.DataFrame: DataFrame with OHLCV mgc
         """
         # Convert time_frame from ccxt format to BitUnix format if needed
         # BitUnix already uses the same format (1m, 5m, 1h, 1d, etc.)
@@ -140,13 +140,13 @@ class Calculator:
             limit=limit
         )
 
-        # Verify data is available
-        assert bars, f"There is no data! BitUnixClient.get_klines() returned empty list for {self.instrument}"
+        # Verify mgc is available
+        assert bars, f"There is no mgc! BitUnixClient.get_klines() returned empty list for {self.instrument}"
 
-        # Create a list to hold the OHLCV data
+        # Create a list to hold the OHLCV mgc
         ohlcv_data = []
 
-        # Format data - BitUnix returns dictionary format whereas ccxt returns arrays
+        # Format mgc - BitUnix returns dictionary format whereas ccxt returns arrays
         for bar in bars:
             ohlcv_data.append([
                 int(bar["time"]),  # timestamp
@@ -240,7 +240,7 @@ class Calculator:
     #     logger.info(f"Average True Range (ATR): {atr}")
     #     return formatted_atr_float
     def calculate_atr(self, time_frame="4h", time_delta=5):
-        # Get historical data
+        # Get historical mgc
         df = self.get_historical_data(time_frame, time_delta + 20, limit=50)
 
         # Reset the index to convert the DatetimeIndex into a column
@@ -264,7 +264,7 @@ class Calculator:
         # Step 1: Calculate initial average range to establish baseline
         initial_ranges = df["high"].iloc[:days1] - df["low"].iloc[:days1]
         if len(initial_ranges) < days1:
-            msg = "Not enough historical data for ATR calculation"
+            msg = "Not enough historical mgc for ATR calculation"
             logger.error(msg)
             raise RuntimeError(msg)
 
@@ -333,7 +333,7 @@ class Calculator:
 
         # Make sure we have at least 2 candles
         if len(df) < 2:
-            logger.warning(f"Not enough data: only {len(df)} candles retrieved")
+            logger.warning(f"Not enough mgc: only {len(df)} candles retrieved")
             return 0.0
 
         # Take just the last 2 candles
@@ -388,7 +388,7 @@ class Calculator:
         Returns:
             tuple: (atr_percentage, should_enter)
         """
-        # Get the daily candle data
+        # Get the daily candle mgc
         daily_data = self.cl.get_klines(symbol=self.instrument, interval="1d", limit=1)
         if not daily_data:
             raise Exception(f"{self.instrument} Does Not Have enough Day Data - New Coin??")

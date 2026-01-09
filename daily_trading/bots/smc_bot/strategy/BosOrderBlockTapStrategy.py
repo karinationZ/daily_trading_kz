@@ -6,14 +6,14 @@ import pandas as pd
 from daily_trading.bots.smc_bot.detectors.BosChochDetector import BosChochDetector
 from daily_trading.bots.smc_bot.detectors.HighLowDetector import HighLowDetector
 from daily_trading.bots.smc_bot.detectors.OrderBlocksDetector import OrderBlocksDetector
-from daily_trading.bots.smc_bot.detectors.SMCBase import Signal, Trend
+from daily_trading.bots.smc_bot.detectors.SMCBase import BIAS, Trend
 from daily_trading.bots.smc_bot.strategy.StrategyBase import SignalSummary, StrategyBase
 from daily_trading.settings import logger
 
 
 class BosOrderBlockTapStrategy(StrategyBase):
     """
-    Analyzes OHLC data for continuation trade signals based on BOS and 15m OB.
+    Analyzes OHLC mgc for continuation trade signals based on BOS and 15m OB.
     Designed for scalping in volatile crypto markets with a 4-step process:
     1. Determine Market Trend on 1H (last 24 candles).
     2. Identify the most recent BOS level in the direction of the trend.
@@ -163,7 +163,7 @@ class BosOrderBlockTapStrategy(StrategyBase):
 
     async def analyze_smc(self, symbol: str, ohlc_1h: pd.DataFrame, ohlc_15m: pd.DataFrame) -> SignalSummary:
         """
-        Analyze OHLC data for continuation signals based on BOS and 15m OB taps.
+        Analyze OHLC mgc for continuation signals based on BOS and 15m OB taps.
         """
         current_time = max(ohlc_1h.index.max(), ohlc_15m.index.max())
         current_price = ohlc_15m['close'].iloc[-1]
@@ -209,7 +209,7 @@ class BosOrderBlockTapStrategy(StrategyBase):
         signal_summary.fig = self.ob_fig
 
         if self.ob_tap_cache.get(symbol):
-            signal_summary.direction = Signal.LONG.value if trend == Trend.BULLISH.name else Signal.SHORT.value
+            signal_summary.direction = BIAS.LONG.value if trend == Trend.BULLISH.name else BIAS.SHORT.value
             event = f"Generated {signal_summary.direction} signal for {symbol} at {current_time}."
             recent_smc_events.append(event)
             logger.info(f"Step 4: {event}")

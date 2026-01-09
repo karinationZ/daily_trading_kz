@@ -1,18 +1,31 @@
 import asyncio
+from dataclasses import dataclass
 from datetime import datetime, timedelta
+from zoneinfo import ZoneInfo
 
 import pandas as pd
 import pytz
 
 from daily_trading.bots.smc_bot.bots.TelegramBot import TelegramBot
-from daily_trading.bots.smc_bot.detectors.SMCBase import GET_READY_ALERT, Signal, Trend
+from daily_trading.bots.smc_bot.detectors.SMCBase import BIAS, GET_READY_ALERT, Trend
 from daily_trading.bots.smc_bot.strategy.BosFvgFillStrategy import SignalSummary
 from daily_trading.brokers.BitUnixClient import BitUnixClient
-from daily_trading.brokers.YFinance import YFinanceClient
+from daily_trading.brokers.IBKRClient import IBKRClient
+# from daily_trading.brokers.YFinance import YFinanceClient
 from daily_trading.settings import logger, TELEGRAM_DEBUG_CHANNEL_ID, TELEGRAM_MAIN_CHANNEL_CHAT_ID, \
     TELEGRAM_MY_DEBUG_BOT_ID, USE_AI
 from daily_trading.technicals.AITradeAssistants.GeminiTradeAssistant import GEMINI_PRO, GeminiTradeAssistant, Ohlc
 from daily_trading.technicals.DivergentAssetsFinder import BitUnixDivergentAssetsFinder
+
+
+# ==========================
+# TimeZone Container
+# ==========================
+@dataclass(frozen=True)
+class TimeZone:
+    UTC = ZoneInfo("UTC")
+    NY = ZoneInfo("America/New_York")
+    LONDON = ZoneInfo("Europe/London")
 
 
 class SMCBotBase:
@@ -34,7 +47,7 @@ class SMCBotBase:
             symbols (list): Trading pair symbols (e.g., ['BTC/USDT', 'ETH/USDT']).
             main_tf (str): Main timeframe for trend/BOS (e.g., '1h').
             symbol_volume_threshold (float): Minimum volume for symbol selection.
-            lookback_days (int): Lookback period in days for OHLC data.
+            lookback_days (int): Lookback period in days for OHLC mgc.
         """
         self.static_symbols = symbols
         self.symbols = symbols
@@ -47,7 +60,7 @@ class SMCBotBase:
         self.default_symbols = ["BTCUSDT", "XAUTUSDT", "ETHUSDT"]
         self.market_type = market_type
         self.bitunix_client = BitUnixClient()
-        self.yahoo_finance_client = YFinanceClient()
+        self.ibkr_client = IBKRClient(port=4002, client_id=88)
         self.asset_finder = BitUnixDivergentAssetsFinder()
         self.timezone = pytz.UTC
         self.symbols_update_timestamp = None
@@ -136,8 +149,8 @@ class SMCBotBase:
 
         return is_success
 
-    async def fetch_ohlc_data(self, symbol: str, timeframe: str, num_candles: int = None) -> pd.DataFrame:
-        """Fetch OHLC data with caching to reduce API calls.
+    async def fetch_bitunix_ohlc_data(self, symbol: str, timeframe: str, num_candles: int = None) -> pd.DataFrame:
+        """Fetch OHLC mgc with caching to reduce API calls.
 
         Args:
             symbol (str): Trading pair (e.g., 'BTC/USDT').
@@ -145,9 +158,9 @@ class SMCBotBase:
             num_candles (int, optional): Number of candles to fetch.
 
         Returns:
-            pd.DataFrame: OHLC data with time index and float columns.
+            pd.DataFrame: OHLC mgc with time index and float columns.
         """
-        logger.info(f"Fetching OHLC data for {symbol.upper()} ({timeframe})")
+        logger.info(f"Fetching OHLC mgc for {symbol.upper()} ({timeframe})")
         try:
             required_candles = self.lookback_candles.get(timeframe, 24) + 2
             num_candles = required_candles if num_candles is None else num_candles
@@ -165,23 +178,15 @@ class SMCBotBase:
 
             while len(set(timestamps := [int(k["time"]) for k in all_klines])) < fetch_candles and api_calls < 10:
                 fetch_limit = min(max_limit, fetch_candles - len(set(timestamps)))
-                if self.market_type == "crypto":
-                    kline_data = self.bitunix_client.get_klines(
-                        symbol=symbol,
-                        interval=timeframe,
-                        start_time=start_time,
-                        end_time=current_end,
-                        limit=fetch_limit,
-                        kline_type="LAST_PRICE"
-                    )
-                else:
-                    kline_data = self.yahoo_finance_client.get_klines(
-                        symbol=symbol,
-                        interval=timeframe,
-                        start_time=start_time,
-                        end_time=current_end,
-                        limit=fetch_limit,
-                    )
+                kline_data = self.bitunix_client.get_klines(
+                    symbol=symbol,
+                    interval=timeframe,
+                    start_time=start_time,
+                    end_time=current_end,
+                    limit=fetch_limit,
+                    kline_type="LAST_PRICE"
+                )
+
                 api_calls += 1
                 if not kline_data:
                     current_end = start_time
@@ -202,7 +207,7 @@ class SMCBotBase:
                     start_time = current_end - (fetch_limit * minutes_per_candle * 60 * 1000)
 
             if not all_klines:
-                logger.error(f"No kline data for {symbol} ({timeframe})")
+                logger.error(f"No kline mgc for {symbol} ({timeframe})")
                 return pd.DataFrame()
 
             df = pd.DataFrame(all_klines, columns=["time", "open", "high", "low", "close", "quoteVol"])
@@ -213,11 +218,32 @@ class SMCBotBase:
             numeric_columns = ["open", "high", "low", "close", "volume"]
             df[numeric_columns] = df[numeric_columns].astype(float)
             df = df[["symbol", "open", "high", "low", "close", "volume"]]
-            logger.info(f"Cached OHLC data for {symbol} ({timeframe}): {len(df)} rows")
+            logger.info(f"Cached OHLC mgc for {symbol} ({timeframe}): {len(df)} rows")
             return df.sort_values(by="time")
+
         except Exception as e:
             logger.error(f"Error fetching OHLC for {symbol} ({timeframe}): {e}")
-            raise e
+        raise e
+
+    async def fetch_ibkr_ohlc_data(self, symbol: str, timeframe: str, num_candles: int = None) -> pd.DataFrame:
+        await self.ibkr_client.connect()
+        kline_data = await self.ibkr_client.get_klines(
+            symbol=symbol,
+            interval=timeframe,
+        )
+        kline_data = kline_data[num_candles:]
+        if not kline_data.empty:
+            # 1. Drop Duplicates based on Index
+            kline_data = kline_data[~kline_data.index.duplicated(keep='last')]
+
+            # 2. Sort by Index (Chronological)
+            kline_data.sort_index(inplace=True)
+
+            # 3. Add 'time' column from Index
+            kline_data['time'] = kline_data.index
+        else:
+            logger.error("IBKR returned empty OHLC data!")
+        return kline_data
 
     async def needs_symbol_refresh(self) -> bool:
         """Check if symbols list needs to be refreshed (empty, never set, or >2h old)."""
@@ -262,7 +288,7 @@ class SMCBotBase:
         try:
             last_candle = ohlc_15m.index.max().tz_convert('US/Pacific').strftime('%Y-%m-%d %H:%M')
 
-            if analysis.direction in [Signal.LONG.value, Signal.SHORT.value]:
+            if analysis.direction in [BIAS.LONG.value, BIAS.SHORT.value]:
                 # AI Request
                 ohlc = Ohlc(ohlc_1d, ohlc_4h, ohlc_1h, ohlc_15m)
                 ai_agent = GeminiTradeAssistant(symbol=symbol,

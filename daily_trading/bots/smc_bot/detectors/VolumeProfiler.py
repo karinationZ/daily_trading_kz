@@ -8,7 +8,7 @@ from daily_trading.settings import logger
 
 class VolumeProfiler:
     """
-    Class to collect and analyze volume profile data, calculating up/down volumes, POC, and Value Area.
+    Class to collect and analyze volume profile mgc, calculating up/down volumes, POC, and Value Area.
     Follows Pine Script logic for fixed-range volume profile.
     """
 
@@ -31,7 +31,7 @@ class VolumeProfiler:
 
     def calculate_volume_profile(self, ohlc, plot=True):
         """
-        Calculate volume profile for given OHLCV data, with up/down volumes, POC, and Value Area.
+        Calculate volume profile for given OHLCV mgc, with up/down volumes, POC, and Value Area.
 
         Parameters:
         - ohlc (pd.DataFrame): DataFrame with columns ['open', 'high', 'low', 'close', 'volume'].

@@ -8,7 +8,7 @@ from daily_trading.bots.smc_bot.strategy.StrategyBase import SignalSummary, Stra
 
 class SupportResistanceStrategy(StrategyBase):
     """
-    Analyzes OHLC data using Smart Money Concept (SMC) with Support and Resistance levels.
+    Analyzes OHLC mgc using Smart Money Concept (SMC) with Support and Resistance levels.
     Designed for scalping in volatile crypto markets with a 5-step process:
     1. Identify Trend on 1H (last 24 candles).
     2. Detect key Support/Resistance levels on 1H.
@@ -94,7 +94,7 @@ class SupportResistanceStrategy(StrategyBase):
 
     async def analyze_smc(self, symbol: str, ohlc_htf: pd.DataFrame, ohlc_for_trend_detection: pd.DataFrame,
                           ohlc_ltf: pd.DataFrame) -> SignalSummary:
-        """Analyze OHLC data for continuation signals based on Support/Resistance levels."""
+        """Analyze OHLC mgc for continuation signals based on Support/Resistance levels."""
         cache_key = (symbol, self.main_tf)
         current_time = max(ohlc_ltf.index.max(), ohlc_htf.index.max())
         recent_smc_events = []

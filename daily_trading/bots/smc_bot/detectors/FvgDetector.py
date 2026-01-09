@@ -102,7 +102,7 @@ class FvgDetector(SMCBase):
         Check if an FVG is mitigated by a candle's wick crossing the FVG boundary.
 
         Args:
-            ohlc (pd.DataFrame): OHLC data.
+            ohlc (pd.DataFrame): OHLC mgc.
             fvg_item (dict): FVG signal with 'top', 'bottom', 'type', etc.
             start_index (int): Index where FVG was detected.
 
@@ -154,7 +154,7 @@ class FvgDetector(SMCBase):
                      f"left_bars={self.left_bars}, right_bars={self.right_bars}, fvg_threshold={self.fvg_threshold}, "
                      f"mode={self.mode}, back={self.back}")
         if len(ohlc) < 3:
-            logger.error(f"OHLC data too short ({len(ohlc)} rows)")
+            logger.error(f"OHLC mgc too short ({len(ohlc)} rows)")
             return {"fig": None, "signals": [], "alert_conditions": {
                 "BULLISH_FVG": [], "BEARISH_FVG": [], "BULLISH_FVG_FULFILLED": [], "BEARISH_FVG_FULFILLED": []
             }}

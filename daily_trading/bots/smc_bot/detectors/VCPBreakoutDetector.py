@@ -43,10 +43,10 @@ class VCPBreakoutDetector(SMCBase):
 
     def detect_contracting_swings(self, ohlc_1h: pd.DataFrame):
         """
-        Detects a series of contracting swing highs and lows on 1-hour timeframe data.
+        Detects a series of contracting swing highs and lows on 1-hour timeframe mgc.
 
         Args:
-            ohlc_1h (pd.DataFrame): OHLCV data for 1-hour timeframe.
+            ohlc_1h (pd.DataFrame): OHLCV mgc for 1-hour timeframe.
 
         Returns:
             tuple[bool, list]: (Whether VCP is detected, list of events).
@@ -120,7 +120,7 @@ class VCPBreakoutDetector(SMCBase):
         Confirms decreasing volume during the contraction phase on 1-hour timeframe.
 
         Args:
-            ohlc_1h (pd.DataFrame): OHLCV data for 1-hour timeframe.
+            ohlc_1h (pd.DataFrame): OHLCV mgc for 1-hour timeframe.
 
         Returns:
             tuple[bool, list]: (Whether volume contraction is confirmed, list of events).
@@ -129,7 +129,7 @@ class VCPBreakoutDetector(SMCBase):
         volume_profile = self.volume_profiler.calculate_volume_profile(ohlc_1h)
         recent_volumes = volume_profile['volumes'][-self.min_swings:]
         if len(recent_volumes) < self.min_swings:
-            event = "Insufficient volume data for confirmation."
+            event = "Insufficient volume mgc for confirmation."
             recent_events.append(event)
             logger.info(event)
             return False, recent_events
@@ -150,7 +150,7 @@ class VCPBreakoutDetector(SMCBase):
         Detects breakout signals on 15-minute timeframe when price crosses key levels.
 
         Args:
-            ohlc_15m (pd.DataFrame): OHLCV data for 15-minute timeframe.
+            ohlc_15m (pd.DataFrame): OHLCV mgc for 15-minute timeframe.
             levels (dict): Dictionary containing support and resistance levels.
             trend (str): Current market trend (BULLISH, BEARISH, or NEUTRAL).
 
@@ -191,8 +191,8 @@ class VCPBreakoutDetector(SMCBase):
         Plots VCP analysis with candlesticks, levels, and breakout signals for debugging.
 
         Args:
-            ohlc_1h (pd.DataFrame): OHLCV data for 1-hour timeframe.
-            ohlc_15m (pd.DataFrame): OHLCV data for 15-minute timeframe.
+            ohlc_1h (pd.DataFrame): OHLCV mgc for 1-hour timeframe.
+            ohlc_15m (pd.DataFrame): OHLCV mgc for 15-minute timeframe.
             levels (dict): Support and resistance levels.
             breakout_dir (str): Breakout direction ('LONG', 'SHORT', or None).
             is_vcp (bool): Whether a VCP was detected.
@@ -263,9 +263,9 @@ class VCPBreakoutDetector(SMCBase):
         Calculates VCP and breakout signals, returning results and plots.
 
         Args:
-            ohlc_1h (pd.DataFrame): OHLCV data for 1-hour timeframe (for swings and volume).
-            ohlc_15m (pd.DataFrame): OHLCV data for 15-minute timeframe (for breakout).
-            ohlc_4h (pd.DataFrame): OHLCV data for 4-hour timeframe (for levels).
+            ohlc_1h (pd.DataFrame): OHLCV mgc for 1-hour timeframe (for swings and volume).
+            ohlc_15m (pd.DataFrame): OHLCV mgc for 15-minute timeframe (for breakout).
+            ohlc_4h (pd.DataFrame): OHLCV mgc for 4-hour timeframe (for levels).
             trend (str): Current market trend (BULLISH, BEARISH, or NEUTRAL).
             plot (bool): Whether to generate plots for debugging.
 

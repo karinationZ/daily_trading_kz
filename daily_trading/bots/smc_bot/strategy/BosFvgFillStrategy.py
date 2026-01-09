@@ -3,13 +3,13 @@ import pandas as pd
 from daily_trading.bots.smc_bot.detectors.BosChochDetector import BosChochDetector
 from daily_trading.bots.smc_bot.detectors.FvgDetector import FvgDetector
 from daily_trading.bots.smc_bot.detectors.HighLowDetector import HighLowDetector
-from daily_trading.bots.smc_bot.detectors.SMCBase import GET_READY_ALERT, Signal, Trend
+from daily_trading.bots.smc_bot.detectors.SMCBase import GET_READY_ALERT, BIAS, Trend
 from daily_trading.bots.smc_bot.strategy.StrategyBase import SignalSummary, StrategyBase
 
 
 class BosFvgFillStrategy(StrategyBase):
     """
-    Analyzes OHLC data using Smart Money Concept (SMC) for continuation trade signals.
+    Analyzes OHLC mgc using Smart Money Concept (SMC) for continuation trade signals.
     Designed for scalping in volatile crypto markets with a 6-step process:
     1. Identify Trend 1H (last 24 candles)
     2. Detect Break of Structure (BOS) on 1H; reset on CHOCH.
@@ -142,7 +142,7 @@ class BosFvgFillStrategy(StrategyBase):
 
     async def analyze_smc(self, symbol: str, ohlc_1h: pd.DataFrame, ohlc_15m: pd.DataFrame) -> SignalSummary:
         """
-        Analyze OHLC data for continuation signals based on Liquidity Pool sweep
+        Analyze OHLC mgc for continuation signals based on Liquidity Pool sweep
         """
         cache_key = (symbol, self.main_tf)
         current_time = max(ohlc_15m.index.max(), ohlc_1h.index.max())
@@ -201,7 +201,7 @@ class BosFvgFillStrategy(StrategyBase):
         # self.last_mitigated_fvg = nearest_fvg
 
         # Step 5: Generate final signal
-        signal = Signal.LONG.value if trend == Trend.BULLISH.name else Signal.SHORT.value
+        signal = BIAS.LONG.value if trend == Trend.BULLISH.name else BIAS.SHORT.value
         event = f"Generated {signal} signal for {symbol} based on FVG mitigation."
         recent_smc_events.append(event)
         signal_summary.direction = signal

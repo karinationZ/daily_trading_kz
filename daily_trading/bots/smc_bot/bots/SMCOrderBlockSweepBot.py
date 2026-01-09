@@ -7,7 +7,7 @@ from daily_trading.settings import logger, TELEGRAM_MAIN_CHANNEL_CHAT_ID
 
 class SMCOrderBlockSweepBot(SMCBotBase):
     """
-    Analyzes OHLC data for continuation trade signals based on block order sweeps.
+    Analyzes OHLC mgc for continuation trade signals based on block order sweeps.
     Designed for scalping in volatile crypto markets with a 4-step process:
     1. Identify Uptrend or Downtrend on 1H (last 24 candles).
     2. Detect Block Orders (OB) on 1H.
@@ -34,13 +34,13 @@ class SMCOrderBlockSweepBot(SMCBotBase):
         """Analyze a single symbol and generate SMC signals."""
         logger.info(f"Starting analysis for {symbol}")
         try:
-            ohlc_1d = await self.fetch_ohlc_data(symbol, "1d", num_candles=14)
-            ohlc_4h = await self.fetch_ohlc_data(symbol, "4h", num_candles=24)
-            ohlc_1h = await self.fetch_ohlc_data(symbol, "1h", num_candles=120)
-            ohlc_15m = await self.fetch_ohlc_data(symbol, "15m", num_candles=100)
+            ohlc_1d = await self.fetch_bitunix_ohlc_data(symbol, "1d", num_candles=14)
+            ohlc_4h = await self.fetch_bitunix_ohlc_data(symbol, "4h", num_candles=24)
+            ohlc_1h = await self.fetch_bitunix_ohlc_data(symbol, "1h", num_candles=120)
+            ohlc_15m = await self.fetch_bitunix_ohlc_data(symbol, "15m", num_candles=100)
 
             if any(ohlc.empty for ohlc in [ohlc_1d, ohlc_4h, ohlc_1h, ohlc_15m]):
-                logger.error(f"No data for {symbol}, skipping...")
+                logger.error(f"No mgc for {symbol}, skipping...")
                 return
 
             analysis = await self.ob_sweep_strategy.analyze_smc(symbol, ohlc_1h)

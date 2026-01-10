@@ -371,7 +371,9 @@ class ORBBot(SMCBotBase):
             await self.ib_client.connect()
             logger.info("✅ IBKR Connection Verified.")
         except Exception as e:
-            logger.critical(f"FATAL: IBKR Connect Failed: {e}")
+            msg = f"FATAL: IBKR Connect Failed: {e}"
+            logger.critical(msg)
+            self.telegram_my_debug_bot.send_message(msg)
             return
 
         await self.telegram_bot.send_message("🚀 ORB Bot ACTIVATED.")
@@ -381,9 +383,12 @@ class ORBBot(SMCBotBase):
                 # Master Clock: NY Time
                 ny_now = datetime.now(ZoneInfo("America/New_York"))
                 current_hour = ny_now.hour + (ny_now.minute / 60)
+                is_weekday = ny_now.weekday() < 5
 
-                # 🟢 ACTIVE WINDOW: 01:45 AM to 17:15 PM (NY Time)
-                if 1.75 <= current_hour <= 17.25:
+                # ==============================================================================
+                # 🟢 ACTIVE WINDOW: 01:45 AM to 17:15 PM (NY Time) AND WEEKDAYS ONLY
+                # ==============================================================================
+                if is_weekday and (1.75 <= current_hour <= 17.25):
 
                     # 1. Fetch Data
                     market_data = {}
@@ -411,16 +416,21 @@ class ORBBot(SMCBotBase):
                 else:
                     # 💤 SLEEP MODE
                     if ny_now.minute == 0:
-                        logger.info(f"💤 MARKET CLOSED. Sleeping... (NY: {ny_now.strftime('%H:%M')})")
+                        msg = f"💤 MARKET CLOSED. Sleeping... (NY: {ny_now.strftime('%H:%M')})"
+                        logger.info(msg)
+                        self.telegram_my_debug_bot.send_message(msg)
 
                     if not self.ib_client.ib.isConnected():
                         try:
                             await self.ib_client.connect()
+                            self.telegram_my_debug_bot.send_message("IBKR client is connected.")
                         except:
                             pass
 
                     await asyncio.sleep(60)
 
             except Exception as e:
-                logger.error(f"LOOP ERROR: {e}")
+                msg = f"LOOP ERROR: {e}"
+                logger.error(msg)
+                self.telegram_my_debug_bot.send_message(msg)
                 await asyncio.sleep(60)

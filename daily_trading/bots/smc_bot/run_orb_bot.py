@@ -1,6 +1,6 @@
 import asyncio
 
-from daily_trading.bots.smc_bot.bots.ORBBot import ORBBot
+from daily_trading.bots.smc_bot.bots.ibkr.orb_bot import ORBBot
 
 
 async def main():

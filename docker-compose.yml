@@ -32,14 +32,14 @@ services:
         MAKE_COMMAND: run_support_resistance_bot
     image: bot-support_resistance
 
-  orb_bot_stack:
+  ibkr_bot_stack:
 #     platform: linux/amd64
     build:
       context: .
       dockerfile: Dockerfile.orb
     environment:
-      TWS_USERID: ${TWS_USERID:}
-      TWS_PASSWORD: ${TWS_PASSWORD:}
+      TWS_USERID: ${TWS_USERID:-}
+      TWS_PASSWORD: ${TWS_PASSWORD:-}
       TWS_PASSWORD_FILE: ${TWS_PASSWORD_FILE:-}
       TRADING_MODE: ${TRADING_MODE:-paper}
       TWS_USERID_PAPER: ${TWS_USERID_PAPER:-}
@@ -72,4 +72,5 @@ services:
       SSH_VNC_PORT: ${SSH_VNC_PORT:-}
     volumes:
       - .:/app
-
+# docker-compose build --no-cache ibkr_bot_stack
+# docker-compose up -d ibkr_bot_stack && docker-compose logs -f ibkr_bot_stack

@@ -377,7 +377,7 @@ class ORBBot(SMCBotBase):
             return
 
         await self.telegram_bot.send_message("🚀 ORB Bot ACTIVATED.")
-
+        last_logged_hour = -1
         while True:
             try:
                 # Master Clock: NY Time
@@ -389,7 +389,7 @@ class ORBBot(SMCBotBase):
                 # 🟢 ACTIVE WINDOW: 01:45 AM to 17:15 PM (NY Time) AND WEEKDAYS ONLY
                 # ==============================================================================
                 if is_weekday and (1.75 <= current_hour <= 17.25):
-
+                    last_logged_hour = -1
                     # 1. Fetch Data
                     market_data = {}
                     for symbol in self.active_symbols:
@@ -415,7 +415,7 @@ class ORBBot(SMCBotBase):
 
                 else:
                     # 💤 SLEEP MODE
-                    if ny_now.minute == 0:
+                    if ny_now.hour != last_logged_hour:
                         msg = f"💤 MARKET CLOSED. Sleeping... (NY: {ny_now.strftime('%H:%M')})"
                         logger.info(msg)
                         self.telegram_my_debug_bot.send_message(msg)

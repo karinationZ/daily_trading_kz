@@ -16,57 +16,25 @@ class SupplyDemandZoneTapStrategy(SMCBase):
     Institutional HTF Zone Tap Strategy.
 
     Logic Hierarchy:
-    1. Context: Calculates 1H Trend and S/D Zones once per hour.
-    2. Filtering: Only allows trades in the direction of the 1H Trend.
-    3. Trigger: Monitors 5m TF for a 'Tap' (Touch) of the 1H Zone.
-    4. Confirmation: 5m candle must show 'Absorption' (wick) and not be a 'Falling Knife'.
-    5. Execution: Limit order placed at the 1H zone edge.
-    6. Safety: Hard cutoff at session end and automatic mitigation of zones after one trade.
+        - Trigger: Monitors 5m TF for a 'Tap' (Touch) of the 1H Zone.
+        - Confirmation: 5m candle must show 'Absorption' (wick) and not be a 'Falling Knife'.
+        - Execution: Limit order placed at the 1H zone edge. (???fix it) sl?
+         - Safety: Hard cutoff at session end and automatic mitigation of zones after one trade.
     """
-
-    # Updated Configuration with MCL
-    POINT_VALUE = {
-        "MNQ": 2.0,
-        "MES": 5.0,
-        "MGC": 10.0,
-        "MBT": 0.10,
-        "SIL": 1000.0,
-        "MCL": 100.0  # $100 per 1.00 point ($1 per 0.01 tick)
-    }
-
-    TICK_BUFFER = {
-        "MNQ": 0.5,
-        "MES": 0.5,
-        "MGC": 0.2,
-        "MBT": 5.0,
-        "SIL": 0.010,
-        "MCL": 0.02  # 2 ticks (Tick size is 0.01)
-    }
-
-    ENTRY_BUFFER = {
-        "MNQ": 0.5,
-        "MES": 0.5,
-        "MGC": 0.2,
-        "MBT": 5.0,
-        "SIL": 0.010,
-        "MCL": 0.02  # 2 ticks (Tick size is 0.01)
-    }
-
-    SL_BUFFER = {
-        "MNQ": 0.5,
-        "MES": 0.5,
-        "MGC": 0.5,
-        "MBT": 5.0,
-        "SIL": 0.025,
-        "MCL": 0.05  # 5 ticks (Matches the conservative MGC/SIL profile)
-    }
 
     def __init__(self, symbol: str, timezone: ZoneInfo, main_tf="5m", risk: float = 150.0,
                  tp_multiple: float = 1.5,
                  wick_ratio: float = 0.10,
-                 swing_length: int = 8, internal_length: int = 2, zone_precision_factor: float = 3.0,
-                 fvg_based_only: bool = True, fvg_offset: int = 2, fvg_threshold=0.12, sl_atr_multiplier=3.0, eb_mult=2.0):
-        super().__init__(main_tf)
+                 swing_length: int = 8,
+                 internal_length: int = 2,
+                 zone_precision_factor: float = 2.0,
+                 fvg_based_only: bool = True,
+                 fvg_offset: int = 3,
+                 fvg_threshold=0.15,
+                 sl_atr_multiplier=2.0,
+                 eb_mult=2.0,
+                 atr_length_buffer: int = 14):
+        super().__init__(main_tf, atr_length_buffer=atr_length_buffer)
         self.symbol = symbol
         self.timezone = timezone
         self.risk = risk
@@ -78,8 +46,9 @@ class SupplyDemandZoneTapStrategy(SMCBase):
 
         self.sl_atr_multiplier = sl_atr_multiplier
         self.eb_mult = eb_mult
-
+        self.enter_buffer = self.ENTRY_BUFFER[symbol]
         self.wick_ratio = wick_ratio
+
         # Detectors
         self.sd_detector_1h = SupplyDemandZonesDetector(fvg_based_only=fvg_based_only,
                                                         swing_length=swing_length,
@@ -96,10 +65,11 @@ class SupplyDemandZoneTapStrategy(SMCBase):
         # Caching
         self.cached_zones_1h: List[Dict] = []
         self.last_processed_hour: int = -1
-
         self.point_value = self.POINT_VALUE[symbol]
-        self.tick_buffer = self.TICK_BUFFER[symbol]
-        self.enter_buffer = self.ENTRY_BUFFER[symbol]
+
+        tz_short = "NY" if timezone == ZoneInfo("America/New_York") else "LONDON"
+        self.log_tag = f"1H TAP | {symbol}:{tz_short}"
+        self.log = logger.bind(bot_id=self.log_tag)
 
     def reset_session_state(self):
         """Standard reset for start of trading day."""
@@ -110,49 +80,35 @@ class SupplyDemandZoneTapStrategy(SMCBase):
         self.cached_zones_1h = []
         self.last_processed_hour = -1
 
-    def is_falling_knife(self, candle: pd.Series, direction: BIAS) -> bool:
-        """Exact logic and {wick_ratio}% threshold"""
-        full_range = candle['high'] - candle['low']
-        if full_range <= 0: return False
-        is_bearish = candle['close'] < candle['open']
-        is_bullish = candle['close'] > candle['open']
-
-        if direction == BIAS.LONG:
-            rejection_wick = min(candle['open'], candle['close']) - candle['low']
-        else:
-            rejection_wick = candle['high'] - max(candle['open'], candle['close'])
-
-        wick_ratio = rejection_wick / full_range
-        _is_falling_knife = (direction == BIAS.LONG and is_bearish and wick_ratio < self.wick_ratio) or \
-                            (direction == BIAS.SHORT and is_bullish and wick_ratio < self.wick_ratio)
-        if _is_falling_knife:
-            logger.info(f"Detected Falling Knife pattern at {candle.time}")
-        return _is_falling_knife
-
     def validate_zone_reaction(self, ohlc: pd.DataFrame, direction: BIAS, zone: Dict) -> bool:
         """Trigger Logic: Restored to 'Striking Distance' (+ buffer for Longs)."""
+        atr = self.get_current_atr(ohlc)
+        tick_buffer = atr * 0.05
+        entry_buffer = self.enter_buffer * self.eb_mult
+
         curr = ohlc.iloc[-1]
         if direction == BIAS.LONG:
-            # Calculate Striking Distance for Longs
-            touched = curr['low'] <= zone['top']
-
+            touched = curr['low'] <= (zone['top'] - entry_buffer)
         else:
-            # Calculate Striking Distance for Shorts
-            touched = curr['high'] >= zone['bottom']
+            touched = curr['high'] >= (zone['bottom'] + entry_buffer)
 
         if not touched:
             return False
-        return not self.is_falling_knife(curr, direction)
+        is_falling_knf = self.is_falling_knife(curr, direction, atr)
+
+        if is_falling_knf:
+            self.log.info(f"Detected Falling knife. | {curr.name}")
+            return False
+        else:
+            return True
 
     def calculate_trade_params(self, ohlc, zone: Dict, direction: BIAS) -> Dict:
         """Calculates entry at zone edge and SL beyond HTF zone boundary."""
-        # curr_price = ohlc.iloc[-1]["close"]
+        curr_price = ohlc.iloc[-1]["close"]
         curr_candle = ohlc.iloc[-1]
         adjusted_buffer = self.enter_buffer * self.eb_mult
-
         if direction == BIAS.LONG:
             entry_price = curr_candle["low"] - adjusted_buffer
-            # entry_price = zone["top"] + self.enter_buffer
             sl = self.calculate_atr_stop_loss(ohlc,
                                               entry_price,
                                               direction=direction,
@@ -161,13 +117,13 @@ class SupplyDemandZoneTapStrategy(SMCBase):
             r = entry_price - sl
             tp = entry_price + (r * self.tp_multiple)
         else:
-            entry_price = curr_candle["high"] + adjusted_buffer
-            # entry_price = zone["bottom"] - self.enter_buffer
+            entry_price = entry_price = curr_candle["high"] + adjusted_buffer
             sl = self.calculate_atr_stop_loss(ohlc,
                                               entry_price,
                                               direction=direction,
                                               atr_length=14,
                                               atr_multiplier=self.sl_atr_multiplier)
+
             r = sl - entry_price
             tp = entry_price - (r * self.tp_multiple)
 
@@ -269,7 +225,8 @@ class SupplyDemandZoneTapStrategy(SMCBase):
         if self.trade_status == TradeStatus.NONE and ts_now < cutoff_ts:
             for zone in self.cached_zones_1h:
                 z_id = zone['start_time']
-                if z_id in self.processed_zone_ids: continue
+                if z_id in self.processed_zone_ids:
+                    continue
 
                 if self.validate_zone_reaction(ohlc_5m, zone['bias'], zone):
                     params = self.calculate_trade_params(ohlc_5m, zone, zone['bias'])
@@ -283,7 +240,9 @@ class SupplyDemandZoneTapStrategy(SMCBase):
                     trade = TradeSignal(
                         action=TradeAction.ENTER, symbol=self.symbol, direction=zone['bias'],
                         price=params['entry'], sl=params['sl'], tp=params['tp'],
-                        size=params['size'], timestamp=curr_5m.name, metadata={'zone_id': z_id}
+                        size=params['size'], timestamp=curr_5m.name, metadata={'zone_id': z_id,
+                                                                               "sl_atr": self.sl_atr_multiplier,
+                                                                               "eb_mult": self.eb_mult}
                     )
                     self.active_trade, self.trade_status = trade, TradeStatus.PENDING
                     self.processed_zone_ids.add(z_id)

@@ -72,13 +72,14 @@ class MasterLeaderboardViewer:
 
         # 4. CONSTRUCT CONFIG STRING FOR DISPLAY
         # Re-construct readable config string if needed
-        winners_df['config_display'] = (
-                "SW:" + winners_df['sw'].astype(str) + " | " +
-                "INT:" + winners_df['int'].astype(str) + " | " +
-                "OFF:" + winners_df['off'].astype(str) + " | " +
-                "ATR:" + winners_df['atr'].astype(str) + " | " +
-                "THR:" + winners_df['thr'].astype(str)
-        )
+        winners_df['config_display'] = winners_df["config"]
+        # winners_df['config_display'] = (
+        #         "SW:" + winners_df['sw'].astype(str) + " | " +
+        #         "INT:" + winners_df['int'].astype(str) + " | " +
+        #         "OFF:" + winners_df['off'].astype(str) + " | " +
+        #         "ATR:" + winners_df['atr'].astype(str) + " | " +
+        #         "THR:" + winners_df['thr'].astype(str)
+        # )
 
         # 5. CREATE DASHBOARD
         fig = make_subplots(

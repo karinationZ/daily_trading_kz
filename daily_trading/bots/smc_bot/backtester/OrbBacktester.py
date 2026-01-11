@@ -211,23 +211,6 @@ class ORBBacktester:
 
         return pd.DataFrame(self.trades)
 
-    @staticmethod
-    def _is_win(trade: dict, exit_price: float) -> bool:
-        """
-        SMART LOGIC:
-        If we are at the TP level, it's a win.
-        If we are in a session cutoff, it's a win if price is better than ENTRY.
-        """
-        is_long = trade["direction"] == "LONG"
-        entry = trade["entry"]
-
-        if is_long:
-            # Win if we are above our buy price
-            return exit_price > entry
-        else:
-            # Win if we are below our sell price (Short)
-            return exit_price < entry
-
     def plot_trade(self, trade_idx: int, ohlc: pd.DataFrame) -> Optional[go.Figure]:
         """Generates Plot on-demand with 50 bars of future context."""
         if trade_idx >= len(self.trades):

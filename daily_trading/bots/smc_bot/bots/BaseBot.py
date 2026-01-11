@@ -7,12 +7,14 @@ import pandas as pd
 import pytz
 
 from daily_trading.bots.smc_bot.bots.TelegramBot import TelegramBot
+from daily_trading.bots.smc_bot.detectors.ORBDetector import SESSION_MAP
 from daily_trading.bots.smc_bot.detectors.SMCBase import BIAS, GET_READY_ALERT, Trend
 from daily_trading.bots.smc_bot.strategy.BosFvgFillStrategy import SignalSummary
+from daily_trading.bots.smc_bot.strategy.StrategyBase import TradeAction
 from daily_trading.brokers.BitUnixClient import BitUnixClient
 from daily_trading.brokers.IBKRClient import IBKRClient
 # from daily_trading.brokers.YFinance import YFinanceClient
-from daily_trading.settings import logger, TELEGRAM_DEBUG_CHANNEL_ID, TELEGRAM_MAIN_CHANNEL_CHAT_ID, \
+from daily_trading.settings import IBKR_PORT, logger, TELEGRAM_DEBUG_CHANNEL_ID, TELEGRAM_MAIN_CHANNEL_CHAT_ID, \
     TELEGRAM_MY_DEBUG_BOT_ID, USE_AI
 from daily_trading.technicals.AITradeAssistants.GeminiTradeAssistant import GEMINI_PRO, GeminiTradeAssistant, Ohlc
 from daily_trading.technicals.DivergentAssetsFinder import BitUnixDivergentAssetsFinder
@@ -39,7 +41,8 @@ class SMCBotBase:
                  symbol_volume_threshold: float = 30000000,
                  lookback_days: int = 1,
                  telegram_chat_id=TELEGRAM_MAIN_CHANNEL_CHAT_ID,
-                 market_type: str = "crypto"):
+                 market_type: str = "crypto",
+                 ib_client=None):
         """
         Initialize SMCTradingBot.
 
@@ -49,6 +52,14 @@ class SMCBotBase:
             symbol_volume_threshold (float): Minimum volume for symbol selection.
             lookback_days (int): Lookback period in days for OHLC mgc.
         """
+        # If a client is passed (Shared Mode), use it.
+        # If not (Standalone Mode), create a new one.
+        if ib_client:
+            self.ib_client = ib_client
+            self.is_shared_client = True
+        else:
+            self.ib_client = IBKRClient(port=IBKR_PORT, client_id=1)
+            self.is_shared_client = False
         self.static_symbols = symbols
         self.symbols = symbols
         self.telegram_bot = TelegramBot(chat_id=telegram_chat_id)
@@ -57,7 +68,7 @@ class SMCBotBase:
         self.main_tf = main_tf
         self.volume_threshold = symbol_volume_threshold
         self.lookback_days = lookback_days
-        self.default_symbols = ["BTCUSDT", "XAUTUSDT", "ETHUSDT"]
+        self.default_symbols = []
         self.market_type = market_type
         self.bitunix_client = BitUnixClient()
         self.ibkr_client = IBKRClient(port=4002, client_id=88)
@@ -94,27 +105,109 @@ class SMCBotBase:
                     f"15m={lookback['15m']} candles")
         return lookback
 
+    async def handle_execution(self, strategy, analysis: SignalSummary, strategy_tag="ORB"):
+        """
+        Translates TradeActions into IBKR Orders.
+        Uses a unique 'order_ref' tag per strategy instance to prevent collisions.
+        """
+        if not analysis or not analysis.trade_signal:
+            return
+
+        sig = analysis.trade_signal
+        symbol = strategy.symbol
+        # Unique Tag: MNQ_NY_ORB
+        session_short = "NY" if "New_York" in str(strategy.timezone) else "LON"
+        ext_tag = f"{symbol}_{session_short}_{strategy_tag}"
+
+        try:
+            # --- ENTER ---
+            if sig.action == TradeAction.ENTER:
+                strategy.log(f"SIGNAL: ENTER {sig.direction.name} @ {sig.price}. Placing Bracket.")
+                direction = "LONG" if sig.direction == BIAS.LONG else "SHORT"
+                await self.ib_client.place_bracket_order(
+                    symbol=symbol,
+                    quantity=sig.size,
+                    entry=sig.price,
+                    sl=sig.sl, tp=sig.tp,
+                    direction=direction,
+                    order_ref=ext_tag
+                )
+
+            # --- CANCEL ---
+            elif sig.action == TradeAction.CANCEL:
+                strategy.log(f"SIGNAL: CANCEL. Cleaning book.")
+                await self.ib_client.cancel_all_orders(order_ref=ext_tag)
+
+            # --- EXIT ---
+            elif sig.action == TradeAction.EXIT:
+                # Check for EOD hard exit
+                ts_now = datetime.now(strategy.timezone)
+                s_info = SESSION_MAP[strategy.timezone.key]
+                end_hour = s_info.get("end_hour", 16)
+                end_minute = s_info.get("end_minute", 0)
+
+                # Check if we are in the last 6 minutes of the session
+                session_end = ts_now.replace(hour=end_hour, minute=end_minute, second=0)
+                is_eod = ts_now >= (session_end - timedelta(minutes=6))
+
+                if is_eod:
+                    strategy.log(f"EOD LIQUIDATION: Market Exit.")
+                    await self.ib_client.cancel_all_orders(order_ref=ext_tag)
+                    side = "SELL" if sig.direction == BIAS.LONG else "BUY"
+                    await self.ib_client.place_market_order(symbol, quantity=sig.size, side=side, order_ref=ext_tag)
+                else:
+                    # Normal TP/SL Hit logic
+                    strategy.log(f"STRATEGY EXIT: Cleaning up.")
+                    await self.ib_client.cancel_all_orders(order_ref=ext_tag)
+
+        except Exception as e:
+            strategy.log(f"EXECUTION FAILURE: {e}", level="error")
+
+    async def sleep_until_next_interval(self, interval_minutes: int = 5):
+        """Synced Sleep."""
+        now = datetime.now()
+        minutes_to_sleep = interval_minutes - (now.minute % interval_minutes)
+        seconds_to_sleep = (minutes_to_sleep * 60) - now.second
+        if seconds_to_sleep <= 0: seconds_to_sleep = interval_minutes * 60
+        logger.debug(f"SYNC: Waiting {seconds_to_sleep}s for next candle.")
+        await asyncio.sleep(seconds_to_sleep)
+
     @staticmethod
-    async def sleep_until_next_interval(interval_minutes: int = 15):
+    def is_strategy_in_window(strategy) -> bool:
         """
-        Sleep until the next specified time interval (e.g., 15, 20 minutes).
+        Checks if the strategy is within its operating window (Session +/- Buffers).
+        Prevents running NY logic during Asian session, etc.
         """
-        # Get current time in UTC
-        now = datetime.now(pytz.UTC)
+        # 1. Get Setup Info
+        tz_key = str(strategy.timezone)
+        s_info = SESSION_MAP.get(tz_key)
+        if not s_info:
+            raise ValueError(f"Unknown timezone/session: {tz_key}")
 
-        # Round to next interval mark
-        minute = ((now.minute // interval_minutes) + 1) * interval_minutes
-        next_candle = now.replace(minute=0, second=0, microsecond=0) + timedelta(minutes=minute)
+        now = datetime.now(strategy.timezone)
 
-        # Handle overflow (e.g., minute == 60)
-        if next_candle.minute >= 60:
-            next_candle = next_candle.replace(minute=0) + timedelta(hours=1)
+        # 2. Define Buffers (in minutes)
+        PRE_SESSION_BUFFER = 60  # Start 1 hour before session open
+        POST_SESSION_BUFFER = 30  # End 30 mins after session close
 
-        # Time to sleep (in seconds)
-        sleep_duration = (next_candle - now).total_seconds()
+        # 3. Construct Session Start/End times for Today
+        start_time = now.replace(
+            hour=s_info.get("start_hour", 9),
+            minute=s_info.get("start_minute", 0),
+            second=0, microsecond=0
+        )
+        end_time = now.replace(
+            hour=s_info.get("end_hour", 16),
+            minute=s_info.get("end_minute", 0),
+            second=0, microsecond=0
+        )
 
-        logger.info(f"Sleeping for {int(sleep_duration) / 60:.2f} minutes until {next_candle}")
-        await asyncio.sleep(sleep_duration)
+        # 4. Apply Buffers
+        active_start = start_time - timedelta(minutes=PRE_SESSION_BUFFER)
+        active_end = end_time + timedelta(minutes=POST_SESSION_BUFFER)
+
+        # 5. Check Window (simple comparison, no midnight wrapping needed)
+        return active_start <= now <= active_end
 
     @staticmethod
     async def sleep_until_next_hour():

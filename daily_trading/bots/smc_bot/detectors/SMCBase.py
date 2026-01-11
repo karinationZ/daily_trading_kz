@@ -26,7 +26,44 @@ class Trend(Enum):
 
 
 class SMCBase:
-    def __init__(self, main_tf, left_bars=None, right_bars=None, plot_tail=100):
+    # Updated Configuration with MCL
+    POINT_VALUE = {
+        "MNQ": 2.0,
+        "MES": 5.0,
+        "MGC": 10.0,
+        "MBT": 0.10,
+        "SIL": 1000.0,
+        "MCL": 100.0
+    }
+
+    ENTRY_BUFFER = {
+        "MNQ": 0.5,
+        "MES": 0.5,
+        "MGC": 0.2,
+        "MBT": 5.0,
+        "SIL": 0.010,
+        "MCL": 0.02
+    }
+
+    SL_BUFFER = {
+        "MNQ": 0.5,
+        "MES": 0.5,
+        "MGC": 0.5,
+        "MBT": 5.0,
+        "SIL": 0.025,
+        "MCL": 0.05
+    }
+
+    TICK_SIZES = {
+        "MNQ": 0.25,
+        "MES": 0.25,
+        "MGC": 0.10,
+        "MBT": 5.00,
+        "MCL": 0.01,
+        "SIL": 0.005,
+    }
+
+    def __init__(self, main_tf, left_bars=None, right_bars=None, plot_tail=100, atr_length_buffer=14):
         self.main_tf = main_tf
         self.swing_length_map = {
             "15m": 8,
@@ -48,6 +85,7 @@ class SMCBase:
         logger.debug(f"Initialized SMCBase with lower_tf={main_tf}, length={self.length}, "
                      f"left_bars={left_bars}, right_bars={right_bars}")
         self.plot_tail = plot_tail
+        self.atr_length_buffer = atr_length_buffer
 
     def calculate_pivots(self, ohlc):
         logger.debug(
@@ -372,3 +410,93 @@ class SMCBase:
             sl = entry_price + atr_distance
 
         return round(sl, 2)
+
+    def get_current_atr(self, ohlc: pd.DataFrame) -> float:
+        """
+        Calculate current ATR using the provided logic.
+        """
+        high_low = ohlc['high'] - ohlc['low']
+        high_cp = (ohlc['high'] - ohlc['close'].shift(1)).abs()
+        low_cp = (ohlc['low'] - ohlc['close'].shift(1)).abs()
+
+        tr = pd.concat([high_low, high_cp, low_cp], axis=1).max(axis=1)
+        atr = tr.ewm(alpha=1 / self.atr_length_buffer, min_periods=self.atr_length_buffer, adjust=False).mean().iloc[-1]
+        return atr
+
+    def adaptive_wick_threshold(self, range_to_atr: float) -> float:
+        """
+        Baseline = self.wick_ratio (from config).
+        Only increase wick requirement on impulse candles.
+        """
+        base_thr = self.wick_ratio
+
+        # Normal / quiet candles → EXACT old behavior
+        if range_to_atr <= 1.0:
+            return base_thr
+
+        # Impulse candles → demand more rejection
+        extra = (range_to_atr - 1.0) * 0.15
+        max_limit = min(base_thr + 0.25, 0.60)
+        return min(base_thr + extra, max_limit)
+
+    def is_falling_knife(
+            self,
+            candle: pd.Series,
+            direction: BIAS,
+            current_atr: float
+    ) -> bool:
+        """
+        Determines if the current candle is a "Falling Knife" (high momentum against us).
+        Returns True if we should SKIP the trade.
+        Returns False if the trade is SAFE.
+        """
+
+        # 1Data Validation
+        full_range = candle['high'] - candle['low']
+        if full_range <= 0 or current_atr <= 0:
+            return False
+
+        # Calculate Rejection Wick Ratio
+        if direction == BIAS.LONG:
+            rejection_wick = min(candle['open'], candle['close']) - candle['low']
+        else:  # BIAS.SHORT
+            rejection_wick = candle['high'] - max(candle['open'], candle['close'])
+
+        wick_ratio = rejection_wick / full_range
+
+        # THE "GOLDEN WICK" EXCEPTION
+        # If the wick is >= 50% of the candle, it is a Hammer/Pinbar.
+        # This is valid absorption regardless of candle color or ATR.
+        if wick_ratio >= 0.50:
+            return False
+
+        # Calculate Thresholds
+        range_to_atr = full_range / current_atr
+        min_wick_ratio = self.adaptive_wick_threshold(range_to_atr)
+
+        # Debug logging for Impulse candles
+        if range_to_atr > 1.5:
+            logger.debug(
+                f"Impulse {range_to_atr:.1f}x ATR. Req: {min_wick_ratio:.2f}, Act: {wick_ratio:.2f}"
+            )
+
+        # 5. Directional Logic
+        # We only care about momentum AGAINST our direction.
+
+        if direction == BIAS.LONG:
+            is_bearish = candle['close'] < candle['open']
+            # We only fear RED candles dropping into a Long zone.
+            # If the candle is Red AND the wick is too small -> KNIFE.
+            if is_bearish and wick_ratio < min_wick_ratio:
+                return True
+            return False
+
+        if direction == BIAS.SHORT:
+            is_bullish = candle['close'] > candle['open']
+            # We only fear GREEN candles spiking into a Short zone.
+            # If the candle is Green AND the wick is too small -> KNIFE.
+            if is_bullish and wick_ratio < min_wick_ratio:
+                return True
+            return False
+
+        return False

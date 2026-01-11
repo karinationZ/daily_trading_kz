@@ -58,9 +58,22 @@ class IBKRClient:
         tick = self.TICK_SIZES.get(symbol, 0.01)
         return round(math.floor(price / tick + 0.5) * tick, 4)
 
-    # ======================
-    # CONTRACT RESOLUTION
-    # ======================
+    async def get_active_positions(self) -> List[Any]:
+        """Returns currently open positions."""
+        return await self.ib.reqPositionsAsync()
+
+    async def get_open_orders(self) -> List[Any]:
+        """
+        Returns a list of active 'Trade' objects (wrapping Order + Contract).
+        We return Trades (instead of raw Orders) so the MasterBot
+        can access 'trade.contract.symbol'.
+        """
+        # 1. Force a refresh from TWS to ensure we capture orders
+        # that might have been placed before this bot started.
+        await self.ib.reqOpenOrdersAsync()
+
+        # 2. Return the list of Trade objects tracked by the client
+        return self.ib.openTrades()
 
     async def get_futures_contract(self, symbol: str) -> Contract | None:
         """Resolves the front-month futures contract."""
@@ -98,10 +111,6 @@ class IBKRClient:
         self._conid_cache[symbol] = front_month
         return front_month
 
-    # ======================
-    # MARKET DATA
-    # ======================
-
     async def get_klines(self, symbol: str, interval: str, outside_rth: bool = True) -> pd.DataFrame:
         contract = await self.get_futures_contract(symbol)
         bar_size, duration = self.TIMEFRAME_CONFIG.get(interval, ("5 mins", "2 D"))
@@ -126,10 +135,6 @@ class IBKRClient:
             return df
         return pd.DataFrame()
 
-    # ======================
-    # ORDERS
-    # ======================
-
     async def place_limit_order(self, symbol: str, quantity: int, price: float, side: str,
                                 order_ref: str = "TradingBot"):
         contract = await self.get_futures_contract(symbol)
@@ -144,12 +149,7 @@ class IBKRClient:
         trade = self.ib.placeOrder(contract, order)
         return trade
 
-    async def place_bracket_order(self, symbol: str,
-                                  quantity: int,
-                                  entry: float,
-                                  sl: float,
-                                  tp: float,
-                                  direction: str,
+    async def place_bracket_order(self, symbol: str, quantity: int, entry: float, sl: float, tp: float, direction: str,
                                   order_ref: str = "TradingBot"):
         """Natively handles Entry + SL + TP Bracket."""
         contract = await self.get_futures_contract(symbol)
@@ -177,10 +177,6 @@ class IBKRClient:
 
         return trades
 
-    # ======================
-    # ORDER MANAGEMENT
-    # ======================
-
     async def cancel_all_orders(self, order_ref: Optional[str] = None):
         """Cancels orders. If order_ref is provided, filters for that bot tag."""
         open_trades = self.ib.openTrades()
@@ -188,10 +184,6 @@ class IBKRClient:
             if order_ref is None or trade.order.orderRef == order_ref:
                 self.ib.cancelOrder(trade.order)
                 logger.info(f"Cancelled Order ID: {trade.order.orderId} (Ref: {trade.order.orderRef})")
-
-    async def get_active_positions(self) -> List[Any]:
-        """Returns currently open positions."""
-        return await self.ib.reqPositionsAsync()
 
     async def diagnostic_market_data(self, symbol: str):
         contract = await self.get_futures_contract(symbol)
@@ -211,27 +203,3 @@ class IBKRClient:
             print(f"❌ ERROR: IBKR forced data type to {ticker.marketDataType} (Delayed).")
         else:
             print("✅ SUCCESS: API has Real-Time access. The delay is in the reqHistoricalData cache.")
-
-# async def run_gateway_qa_test():
-#     # 1. Init Client (Gateway Paper Port 4002)
-#     cl = IBKRClient(port=4002, client_id=88)
-#
-#     for symbol in ["SIL", "MGC", "MNQ", "MES", "MCL"]:
-#         await cl.connect()
-#
-#         # STEP 2: Contract Resolution
-#         print(f"\n[2/7] Resolving {symbol} Contract...")
-#         contract = await cl.get_futures_contract(symbol)
-#         print(f"✅ Contract Qualified: {contract.localSymbol} (Expiry: {contract.lastTradeDateOrContractMonth})")
-#
-#         # STEP 3: Market Data
-#         print(f"\n[3/7] Fetching 5m Historical Data...")
-#         df = await cl.get_klines(symbol, "5m")
-#         if df.empty:
-#             raise ValueError("No data returned. Check Market Data Subscriptions in IBKR.")
-#         last_price = df.iloc[-1]['close']
-#         print(f"✅ Received {len(df)} candles. Last Close: {last_price}")
-#
-#
-# if __name__ == "__main__":
-#     asyncio.run(run_gateway_qa_test())

@@ -145,6 +145,9 @@ class SupplyDemandTapBot(SMCBotBase):
         for strategy in self.strategies:
             # 1. Conflict Check
             if strategy.symbol in blocked_symbols:
+                msg = f"Symbol is busy in another bot - a position or orders are already opened. Skip it."
+                strategy.log.warning(msg)
+                self.telegram_bot.send_message(f"{strategy.log_tag} | {msg}")
                 continue
 
             # 2. Extract Data

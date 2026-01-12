@@ -10,8 +10,12 @@ from daily_trading.bots.smc_bot.detectors.SMCBase import BIAS
 # Session map (start, end hours)
 # ==========================
 SESSION_MAP = {
+    # NY: 9:30 AM - 4:00 PM EST
     "America/New_York": {"start_hour": 9, "start_minute": 30, "end_hour": 16, "end_minute": 0},
+    # LONDON: 8:00 AM - 2:30 PM London Time (Captures the Euro open + Pre-NY)
     "Europe/London": {"start_hour": 8, "start_minute": 0, "end_hour": 14, "end_minute": 30},
+    # ASIA (Tokyo): 9:00 AM - 3:00 PM JST
+    "Asia/Tokyo": {"start_hour": 9, "start_minute": 0, "end_hour": 15, "end_minute": 0},
 }
 
 

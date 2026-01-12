@@ -4,7 +4,7 @@ from typing import List
 from zoneinfo import ZoneInfo
 
 from daily_trading.bots.smc_bot.bots.BaseBot import SMCBotBase
-from daily_trading.bots.smc_bot.strategy.StrategyBase import TradeAction
+from daily_trading.bots.smc_bot.strategy.StrategyBase import TradeAction, TradeStatus
 from daily_trading.bots.smc_bot.strategy.SupplyDemandZoneTapStrategy import SupplyDemandZoneTapStrategy
 from daily_trading.settings import logger, TELEGRAM_MAIN_CHANNEL_CHAT_ID
 
@@ -136,18 +136,24 @@ class SupplyDemandTapBot(SMCBotBase):
                 logger.error(f"Failed to init SD Strategy {symbol}: {e}")
         self.active_symbols = list(unique_symbols)
 
-    async def execute_cycle(self, market_data: dict, blocked_symbols: set):
+    async def execute_cycle(self, market_data: dict, blocked_symbols: set, current_positions, open_orders):
         """
         Called by MasterBot.
         Needs both 5m and 1h data.
         """
         tasks = []
         for strategy in self.strategies:
-            # 1. Conflict Check
-            if strategy.symbol in blocked_symbols:
-                msg = f"Symbol is busy in another bot - a position or orders are already opened. Skip it."
-                strategy.log.warning(msg)
-                self.telegram_bot.send_message(f"{strategy.log_tag} | {msg}")
+            # --- 1. STATE RESTORATION ---
+            # Attempt to restore state from IBKR (in case of crash/restart)
+            self.sync_state(strategy, current_positions, open_orders)
+
+            # --- 2. CONFLICT CHECK ---
+            # If the strategy is ACTIVE (Restored), we allow it to run even if 'blocked'
+            # (because it is blocked by itself).
+            # If it is INACTIVE and blocked, we skip it.
+            if strategy.symbol in blocked_symbols and strategy.trade_status == TradeStatus.NONE:
+                # Only log occasionally to avoid spam
+                # logger.debug(f"Skipping {strategy.symbol} (Busy in another strategy)")
                 continue
 
             # 2. Extract Data

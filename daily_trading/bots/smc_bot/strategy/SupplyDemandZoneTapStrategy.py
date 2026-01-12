@@ -71,6 +71,9 @@ class SupplyDemandZoneTapStrategy(SMCBase):
         self.log_tag = f"1H TAP | {symbol}:{tz_short}"
         self.log = logger.bind(bot_id=self.log_tag)
 
+        # Unique IBKR Tag
+        self.ext_tag = f"{symbol}_{tz_short}_1H_TAP"
+
     def reset_session_state(self):
         """Standard reset for start of trading day."""
         logger.info(f"{self.symbol} | New Session: Resetting Strategy State and Cache.")

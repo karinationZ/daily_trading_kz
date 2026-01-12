@@ -24,6 +24,36 @@ class MasterBot:
         # SD needs 1h
         self.symbols_1h = set(self.sd_bot.active_symbols)
 
+    async def get_account_state(self):
+        """
+        Fetches Positions and Orders ONCE.
+        Returns:
+            - positions: List of IBKR Position objects
+            - orders: List of IBKR Trade objects
+            - blocked: Set of symbols that are busy
+        """
+        blocked = set()
+        positions = []
+        orders = []
+
+        try:
+            # 1. Fetch Raw Data
+            positions = await self.ib_client.get_active_positions()
+            orders = await self.ib_client.get_open_orders()
+
+            # 2. Build Blocked Set
+            for pos in positions:
+                if pos.position != 0:
+                    blocked.add(pos.contract.symbol)
+
+            for o in orders:
+                blocked.add(o.contract.symbol)
+
+        except Exception as e:
+            logger.error(f"State Fetch Failed: {e}")
+
+        return positions, orders, blocked
+
     async def get_blocked_symbols(self):
         """
         Returns a set of symbols that are currently active (Open Orders or Positions).
@@ -89,16 +119,27 @@ class MasterBot:
                             market_data[sym]["1h"] = df
                         await asyncio.sleep(0.1)
 
-                    # --- B. Execution Phase ---
-                    # Get locks to prevent conflict
-                    blocked = await self.get_blocked_symbols()
-                    if blocked:
-                        logger.info(f"🔒 Blocked Symbols (Active): {blocked}")
+                        # --- B. Execution Phase (UPDATED) ---
+                        # 1. Fetch State ONCE
+                    positions, orders, blocked = await self.get_account_state()
 
-                    # Run both bots concurrently
+                    if blocked:
+                        msg = f"🔒 There are open positions or orders for Symbols: {blocked}"
+                        logger.info(msg)
+                        await self.orb_bot.telegram_bot_debug(msg)
+                    if positions:
+                        msg = f"💼 Found Opened positions: {positions}"
+                        logger.info(msg)
+                        await self.orb_bot.telegram_bot_debug(msg)
+                    if orders:
+                        msg = f"💼 Found Pending Orders: {orders}"
+                        logger.info(msg)
+                        await self.orb_bot.telegram_bot_debug(msg)
+
+                    # 2. Pass State to Bots
                     await asyncio.gather(
-                        self.orb_bot.execute_cycle(market_data, blocked),
-                        self.sd_bot.execute_cycle(market_data, blocked)
+                        self.orb_bot.execute_cycle(market_data, blocked, positions, orders),
+                        self.sd_bot.execute_cycle(market_data, blocked, positions, orders)
                     )
 
                     # --- C. Wait for Next Candle ---

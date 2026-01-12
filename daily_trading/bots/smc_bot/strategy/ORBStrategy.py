@@ -83,9 +83,14 @@ class ORBStrategy(SMCBase):
         self.orb_results = None
         self.symbol = symbol
         self.timezone = timezone
+
         tz_short = "NY" if timezone == ZoneInfo("America/New_York") else "LONDON"
         self.log_tag = f"ORB | {symbol}:{tz_short}"
         self.log = logger.bind(bot_id=self.log_tag)
+
+        # Unique IBKR Tag
+        self.ext_tag = f"{symbol}_{tz_short}_ORB"
+
         self.risk = risk
         self.tp_multiple = tp_multiple
         if timezone == ZoneInfo("America/New_York"):

@@ -10,7 +10,7 @@ from daily_trading.bots.smc_bot.bots.TelegramBot import TelegramBot
 from daily_trading.bots.smc_bot.detectors.ORBDetector import SESSION_MAP
 from daily_trading.bots.smc_bot.detectors.SMCBase import BIAS, GET_READY_ALERT, Trend
 from daily_trading.bots.smc_bot.strategy.BosFvgFillStrategy import SignalSummary
-from daily_trading.bots.smc_bot.strategy.StrategyBase import TradeAction
+from daily_trading.bots.smc_bot.strategy.StrategyBase import TradeAction, TradeSignal, TradeStatus
 from daily_trading.brokers.BitUnixClient import BitUnixClient
 from daily_trading.brokers.IBKRClient import IBKRClient
 # from daily_trading.brokers.YFinance import YFinanceClient
@@ -105,7 +105,107 @@ class SMCBotBase:
                     f"15m={lookback['15m']} candles")
         return lookback
 
-    async def handle_execution(self, strategy, analysis: SignalSummary, strategy_tag="ORB"):
+    @staticmethod
+    def sync_state(strategy, current_positions: list, open_orders: list):
+        """
+        Restores self.active_trade and self.trade_status from IBKR data.
+        """
+        # If we already have state in memory, do nothing
+        if strategy.trade_status != TradeStatus.NONE:
+            return
+
+        # 2. Check for ACTIVE POSITIONS
+        my_pos = next((p for p in current_positions if p.contract.symbol == strategy.symbol and p.position != 0), None)
+
+        if my_pos:
+            # We have a live trade. Reconstruct it.
+            direction = BIAS.LONG if my_pos.position > 0 else BIAS.SHORT
+            size = abs(int(my_pos.position))
+            avg_price = my_pos.avgCost
+
+            # Try to find associated Bracket Orders (SL/TP)
+            sl_price = 0.0
+            tp_price = 0.0
+
+            # Filter orders that belong to THIS strategy tag
+            my_active_orders = [o for o in open_orders if o.order.orderRef == strategy.ext_tag]
+
+            for trade in my_active_orders:
+                # IBKR 'lmtPrice' is 0 for Stop orders, use 'auxPrice'
+                price = trade.order.lmtPrice if trade.order.lmtPrice > 0 else trade.order.auxPrice
+
+                # Deduce if it's SL or TP based on price location vs Entry
+                if direction == BIAS.LONG:
+                    if price < avg_price:
+                        sl_price = price
+                    elif price > avg_price:
+                        tp_price = price
+                else:
+                    if price > avg_price:
+                        sl_price = price
+                    elif price < avg_price:
+                        tp_price = price
+
+            # Rehydrate the TradeSignal object
+            strategy.active_trade = TradeSignal(
+                action=TradeAction.ENTER,
+                symbol=strategy.symbol,
+                direction=direction,
+                price=avg_price,
+                sl=sl_price,
+                tp=tp_price,
+                size=size,
+                timestamp=pd.Timestamp.now(tz=strategy.timezone),
+                metadata={"zone_id": "RECOVERED"}  # We lose the original Zone ID, but that's acceptable
+            )
+            strategy.trade_status = TradeStatus.FILLED
+            strategy.log.info(f"♻️ RESTORED STATE: FILLED {direction.name} @ {avg_price} (SL:{sl_price} TP:{tp_price})")
+            return
+
+        # 3. Check for PENDING ORDERS (Limit Entry Waiting)
+        my_orders = [o for o in open_orders if o.order.orderRef == strategy.ext_tag]
+
+        # Find the Parent Entry Order (Limit order with no parentId usually)
+        # Note: In a bracket, the parent has parentId=0 (or empty)
+        parent = next((t for t in my_orders if t.order.parentId == 0 and t.order.orderType in ['LMT', 'STP LMT']), None)
+
+        if parent:
+            direction = BIAS.LONG if parent.order.action == 'BUY' else BIAS.SHORT
+            entry_price = parent.order.lmtPrice
+            size = int(parent.order.totalQuantity)
+
+            # Find Children
+            sl_price = 0.0
+            tp_price = 0.0
+            for t in my_orders:
+                if t.order.parentId == parent.order.orderId:
+                    price = t.order.lmtPrice if t.order.lmtPrice > 0 else t.order.auxPrice
+                    if direction == BIAS.LONG:
+                        if price < entry_price:
+                            sl_price = price
+                        else:
+                            tp_price = price
+                    else:
+                        if price > entry_price:
+                            sl_price = price
+                        else:
+                            tp_price = price
+
+            strategy.active_trade = TradeSignal(
+                action=TradeAction.ENTER,
+                symbol=strategy.symbol,
+                direction=direction,
+                price=entry_price,
+                sl=sl_price,
+                tp=tp_price,
+                size=size,
+                timestamp=pd.Timestamp.now(tz=strategy.timezone),
+                metadata={"zone_id": "RECOVERED"}
+            )
+            strategy.trade_status = TradeStatus.PENDING
+            strategy.log.info(f"♻️ RESTORED STATE: PENDING {direction.name} @ {entry_price}")
+
+    async def handle_execution(self, strategy, analysis: SignalSummary):
         """
         Translates TradeActions into IBKR Orders.
         Uses a unique 'order_ref' tag per strategy instance to prevent collisions.
@@ -115,10 +215,6 @@ class SMCBotBase:
 
         sig = analysis.trade_signal
         symbol = strategy.symbol
-        # Unique Tag: MNQ_NY_ORB
-        session_short = "NY" if "New_York" in str(strategy.timezone) else "LON"
-        ext_tag = f"{symbol}_{session_short}_{strategy_tag}"
-
         try:
             # --- ENTER ---
             if sig.action == TradeAction.ENTER:
@@ -130,7 +226,7 @@ class SMCBotBase:
                     entry=sig.price,
                     sl=sig.sl, tp=sig.tp,
                     direction=direction,
-                    order_ref=ext_tag
+                    order_ref=strategy.ext_tag
                 )
 
             # --- CANCEL ---

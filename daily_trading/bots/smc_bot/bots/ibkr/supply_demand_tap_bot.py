@@ -212,7 +212,7 @@ class SupplyDemandTapBot(SMCBotBase):
                     await self.telegram_bot.send_message(msg, getattr(analysis.trade_signal, 'fig', None))
 
             # 3. Execute Orders
-            await self.handle_execution(strategy, analysis, "1H_TAP")
+            await self.handle_execution(strategy, analysis)
 
         except Exception as e:
             strategy.log.info(f"CYCLE ERROR: {e}", level="error")

@@ -84,7 +84,7 @@ class MasterBot:
         except Exception as e:
             msg = f"FATAL: IBKR Connect Failed: {e}"
             logger.critical(msg)
-            self.orb_bot.telegram_bot_debug.send_message(msg)
+            await self.orb_bot.telegram_bot_debug.send_message(msg)
             return
         last_logged_hour = -1
         while True:
@@ -122,19 +122,28 @@ class MasterBot:
                         # --- B. Execution Phase (UPDATED) ---
                         # 1. Fetch State ONCE
                     positions, orders, blocked = await self.get_account_state()
+                    active_holdings = [p for p in positions if p.position != 0]
 
                     if blocked:
                         msg = f"🔒 There are open positions or orders for Symbols: {blocked}"
                         logger.info(msg)
-                        await self.orb_bot.telegram_bot_debug(msg)
-                    if positions:
-                        msg = f"💼 Found Opened positions: {positions}"
+                        await self.orb_bot.telegram_bot_debug.send_message(msg)
+                    # 2. Log Actual Positions (Size != 0)
+                    if active_holdings:
+                        # Formats it nicely: "MNQ: 1.0", etc.
+                        pretty_pos = [f"{p.contract.symbol}: {p.position}" for p in active_holdings]
+                        msg = f"💼 Active Holdings: {pretty_pos}"
                         logger.info(msg)
-                        await self.orb_bot.telegram_bot_debug(msg)
+                        await self.orb_bot.telegram_bot_debug.send_message(msg)
+
+                    # 3. Log Pending Orders
                     if orders:
-                        msg = f"💼 Found Pending Orders: {orders}"
+                        # Formats it nicely: "Buy 1 MNQ @ 18500"
+                        pretty_orders = [f"{o.order.action} {o.order.totalQuantity} {o.contract.symbol}" for o in
+                                         orders]
+                        msg = f"⏳ Pending Orders: {pretty_orders}"
                         logger.info(msg)
-                        await self.orb_bot.telegram_bot_debug(msg)
+                        await self.orb_bot.telegram_bot_debug.send_message(msg)
 
                     # 2. Pass State to Bots
                     await asyncio.gather(

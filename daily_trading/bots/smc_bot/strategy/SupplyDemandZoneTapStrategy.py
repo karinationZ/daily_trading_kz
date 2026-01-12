@@ -120,7 +120,7 @@ class SupplyDemandZoneTapStrategy(SMCBase):
             r = entry_price - sl
             tp = entry_price + (r * self.tp_multiple)
         else:
-            entry_price = entry_price = curr_candle["high"] + adjusted_buffer
+            entry_price = curr_candle["high"] + adjusted_buffer
             sl = self.calculate_atr_stop_loss(ohlc,
                                               entry_price,
                                               direction=direction,
@@ -129,9 +129,26 @@ class SupplyDemandZoneTapStrategy(SMCBase):
 
             r = sl - entry_price
             tp = entry_price - (r * self.tp_multiple)
-
+        # 1. Calculate Stop Distance
+        r = abs(entry_price - sl)
+        # Safety: Prevent division by zero if SL is exactly on Entry
+        if r == 0:
+            r = 0.25
+        # 2. Calculate Risk per 1 Contract
         risk_per_contract = r * self.point_value
-        size = max(1, int(self.risk / risk_per_contract))
+        if risk_per_contract <= 0:
+            risk_per_contract = 5.0  # Arbitrary small fallback to prevent crash
+
+        # 3. Calculate Raw Size (Pure Math)
+        raw_size = int(self.risk / risk_per_contract)
+        # 4. --- SAFETY CAP ---
+        MAX_CONTRACTS = 5
+        size = max(1, min(raw_size, MAX_CONTRACTS))
+
+        if raw_size > MAX_CONTRACTS:
+            self.log.warning(
+                f"⚠️ RISK CAP: Math wanted {raw_size} contracts, capped at {size}. "
+                f"(Risk per contract: ${risk_per_contract:.2f})")
 
         return {"entry": entry_price, "sl": sl, "tp": tp, "size": size}
 

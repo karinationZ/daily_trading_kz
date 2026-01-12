@@ -252,15 +252,51 @@ class ORBStrategy(SMCBase):
         return best_signal
 
     def calculate_trade_position(self, entry_price: float, sl: float, direction: BIAS) -> dict:
+        """
+        Calculates position size with a HARD CAP to prevent over-leveraging on tight stops.
+        """
+        # 1. Calculate Stop Distance
         r = abs(entry_price - sl)
-        tp = entry_price + r * self.tp_multiple if direction == BIAS.LONG else entry_price - r * self.tp_multiple
-        size = max(1, int(self.risk / (r * self.point_value)))
+
+        # Safety: Prevent division by zero if SL is exactly on Entry
+        if r == 0:
+            r = 0.25
+
+        # 2. Calculate Risk per 1 Contract
+        risk_per_contract = r * self.point_value
+        if risk_per_contract <= 0:
+            risk_per_contract = 5.0  # Arbitrary small fallback to prevent crash
+
+        # 3. Calculate Raw Size (Pure Math)
+        raw_size = int(self.risk / risk_per_contract)
+        # 4. --- SAFETY CAP ---
+        MAX_CONTRACTS = 5
+        size = max(1, min(raw_size, MAX_CONTRACTS))
+
+        # 5. Calculate Take Profit
+        if direction == BIAS.LONG:
+            tp = entry_price + (r * self.tp_multiple)
+        else:
+            tp = entry_price - (r * self.tp_multiple)
+
+        # 6. Log Warning if Capped
+        if raw_size > MAX_CONTRACTS:
+            self.log.warning(
+                f"⚠️ RISK CAP: Math wanted {raw_size} contracts, capped at {size}. "
+                f"(Risk per contract: ${risk_per_contract:.2f})")
+
         return {"sl": sl, "tp": tp, "size": size}
 
     def create_signal(self, action: TradeAction, timestamp) -> TradeSignal:
-        sig = TradeSignal(symbol=self.symbol, action=action, direction=self.active_trade.direction,
-                          price=self.active_trade.price, sl=self.active_trade.sl, tp=self.active_trade.tp,
-                          size=self.active_trade.size, timestamp=timestamp)
+        sig = TradeSignal(symbol=self.symbol,
+                          action=action,
+                          direction=self.active_trade.direction,
+                          price=self.active_trade.price,
+                          sl=self.active_trade.sl,
+                          tp=self.active_trade.tp,
+                          size=self.active_trade.size,
+                          timestamp=timestamp)
+
         if action in [TradeAction.CANCEL, TradeAction.EXIT]:
             if self.active_trade: self.processed_zone_ids.add(self.active_trade.metadata['zone_id'])
         self.active_trade, self.trade_status = None, TradeStatus.NONE

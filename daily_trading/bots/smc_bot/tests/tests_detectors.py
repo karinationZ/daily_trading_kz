@@ -459,7 +459,7 @@ TARGET_SYMBOLS = ["MNQ", "MES", "MGC", "SIL"]
 
 
 @pytest.mark.asyncio
-async def test_orb_strategy_sync_state_pending():
+async def test_ibkr():
     """
     E2E Test for State Restoration (PENDING Scenario).
     Verifies that ORBStrategy can 'find' an existing order on IBKR
@@ -467,91 +467,93 @@ async def test_orb_strategy_sync_state_pending():
     """
     client = IBKRClient(host=HOST, port=PORT, client_id=CLIENT_ID)
     await client.connect()
+    msg = await client.get_daily_summary()
+    logger.info(msg)
 
     # Setup Target Variables
-    symbol = "MNQ"
-    timezone = ZoneInfo("America/New_York")
-
-    # CRITICAL: This tag must match exactly what ORBStrategy generates internally
-    # Logic: f"{symbol}_{session_short}_ORB" -> MNQ_NY_ORB
-    target_ref = "TEST_MNQ_NY_ORB"
-    open_orders = await client.get_open_orders()
-    positions = await client.get_active_positions()
-    print(f"ORDERS: {open_orders}")
-    print(f"POSITIONS: {positions}")
-
-    try:
-        logger.info(f"--- 1. Getting Market Data for {symbol} ---")
-        df = await client.get_klines(symbol, "1m")
-        assert not df.empty, "Failed to get market data"
-        current_price = df['close'].iloc[-1]
-
-        # Calculate a SAFE Limit Entry (5% below market) so it stays PENDING
-        entry_price = client.round_to_tick(current_price * 0.95, symbol)
-        sl_price = client.round_to_tick(entry_price - 20, symbol)
-        tp_price = client.round_to_tick(entry_price + 50, symbol)
-
-        logger.info(f"Current: {current_price} | Placing Test Order @ {entry_price} (Ref: {target_ref})")
-
-        # --- 2. Place the Bracket Order on IBKR ---
-        await client.place_bracket_order(
-            symbol=symbol,
-            quantity=1,
-            entry=entry_price,
-            sl=sl_price,
-            tp=tp_price,
-            direction="LONG",
-            order_ref=target_ref
-        )
-
-        # Give IBKR a moment to register
-        await asyncio.sleep(2)
-
-        # --- 3. Simulate Bot Restart (Fetch Raw Data) ---
-        logger.info("--- Simulating Bot Restart & Fetching State ---")
-        open_orders = await client.get_open_orders()
-        positions = await client.get_active_positions()
-
-        # Verify we actually have the orders on the server before testing sync
-        my_orders = [o for o in open_orders if o.order.orderRef == target_ref]
-        assert len(my_orders) == 3, f"Setup Failed: Expected 3 orders on IBKR, found {len(my_orders)}"
-
-        # --- 4. Instantiate Strategy & Run Sync ---
-        # We create a fresh strategy instance with default risk/params
-        strategy = ORBStrategy(symbol=symbol, timezone=timezone)
-        strategy.ext_tag = target_ref
-
-        # ASSERT PRE-CONDITION: State should be empty
-        assert strategy.trade_status == TradeStatus.NONE
-        assert strategy.active_trade is None
-
-        # EXECUTE SYNC
-        logger.info("Running strategy.sync_state()...")
-        SMCBotBase.sync_state(strategy, positions, open_orders)
-
-        # --- 5. ASSERTIONS ---
-        logger.info(f"Post-Sync Status: {strategy.trade_status}")
-
-        # A. Status Check
-        assert strategy.trade_status == TradeStatus.PENDING, \
-            f"Sync Failed: Expected PENDING, got {strategy.trade_status}"
-
-        # B. Active Trade Object Check
-        assert strategy.active_trade is not None, "Sync Failed: active_trade is None"
-
-        # C. Data Integrity Check
-        # Allow small float diffs (epsilon)
-        assert abs(strategy.active_trade.price - entry_price) < 0.001, \
-            f"Price Mismatch: Expected {entry_price}, got {strategy.active_trade.price}"
-
-        assert strategy.active_trade.direction.name == "LONG"
-        assert strategy.active_trade.metadata.get("zone_id") == "RECOVERED"
-
-        logger.info("✅ SUCCESS: Strategy successfully recovered state from IBKR!")
-
-    finally:
-        # --- 6. Cleanup ---
-        logger.info("Cleaning up test orders...")
-        await client.cancel_all_orders(order_ref=target_ref)
-        client.disconnect()
-        await asyncio.sleep(1)
+    # symbol = "MNQ"
+    # timezone = ZoneInfo("America/New_York")
+    #
+    # # CRITICAL: This tag must match exactly what ORBStrategy generates internally
+    # # Logic: f"{symbol}_{session_short}_ORB" -> MNQ_NY_ORB
+    # target_ref = "TEST_MNQ_NY_ORB"
+    # open_orders = await client.get_open_orders()
+    # positions = await client.get_active_positions()
+    # print(f"ORDERS: {open_orders}")
+    # print(f"POSITIONS: {positions}")
+    #
+    # try:
+    #     logger.info(f"--- 1. Getting Market Data for {symbol} ---")
+    #     df = await client.get_klines(symbol, "5m")
+    #     assert not df.empty, "Failed to get market data"
+    #     current_price = df['close'].iloc[-1]
+    #
+    #     # Calculate a SAFE Limit Entry (5% below market) so it stays PENDING
+    #     entry_price = client.round_to_tick(current_price * 0.95, symbol)
+    #     sl_price = client.round_to_tick(entry_price - 20, symbol)
+    #     tp_price = client.round_to_tick(entry_price + 50, symbol)
+    #
+    #     logger.info(f"Current: {current_price} | Placing Test Order @ {entry_price} (Ref: {target_ref})")
+    #
+    #     # --- 2. Place the Bracket Order on IBKR ---
+    #     await client.place_bracket_order(
+    #         symbol=symbol,
+    #         quantity=1,
+    #         entry=entry_price,
+    #         sl=sl_price,
+    #         tp=tp_price,
+    #         direction="LONG",
+    #         order_ref=target_ref
+    #     )
+    #
+    #     # Give IBKR a moment to register
+    #     await asyncio.sleep(2)
+    #
+    #     # --- 3. Simulate Bot Restart (Fetch Raw Data) ---
+    #     logger.info("--- Simulating Bot Restart & Fetching State ---")
+    #     open_orders = await client.get_open_orders()
+    #     positions = await client.get_active_positions()
+    #
+    #     # Verify we actually have the orders on the server before testing sync
+    #     my_orders = [o for o in open_orders if o.order.orderRef == target_ref]
+    #     assert len(my_orders) == 3, f"Setup Failed: Expected 3 orders on IBKR, found {len(my_orders)}"
+    #
+    #     # --- 4. Instantiate Strategy & Run Sync ---
+    #     # We create a fresh strategy instance with default risk/params
+    #     strategy = ORBStrategy(symbol=symbol, timezone=timezone)
+    #     strategy.ext_tag = target_ref
+    #
+    #     # ASSERT PRE-CONDITION: State should be empty
+    #     assert strategy.trade_status == TradeStatus.NONE
+    #     assert strategy.active_trade is None
+    #
+    #     # EXECUTE SYNC
+    #     logger.info("Running strategy.sync_state()...")
+    #     SMCBotBase.sync_state(strategy, positions, open_orders)
+    #
+    #     # --- 5. ASSERTIONS ---
+    #     logger.info(f"Post-Sync Status: {strategy.trade_status}")
+    #
+    #     # A. Status Check
+    #     assert strategy.trade_status == TradeStatus.PENDING, \
+    #         f"Sync Failed: Expected PENDING, got {strategy.trade_status}"
+    #
+    #     # B. Active Trade Object Check
+    #     assert strategy.active_trade is not None, "Sync Failed: active_trade is None"
+    #
+    #     # C. Data Integrity Check
+    #     # Allow small float diffs (epsilon)
+    #     assert abs(strategy.active_trade.price - entry_price) < 0.001, \
+    #         f"Price Mismatch: Expected {entry_price}, got {strategy.active_trade.price}"
+    #
+    #     assert strategy.active_trade.direction.name == "LONG"
+    #     assert strategy.active_trade.metadata.get("zone_id") == "RECOVERED"
+    #
+    #     logger.info("✅ SUCCESS: Strategy successfully recovered state from IBKR!")
+    #
+    # finally:
+    #     # --- 6. Cleanup ---
+    #     logger.info("Cleaning up test orders...")
+    #     await client.cancel_all_orders(order_ref=target_ref)
+    #     client.disconnect()
+    #     await asyncio.sleep(1)

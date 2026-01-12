@@ -87,6 +87,12 @@ class MasterBot:
             await self.orb_bot.telegram_bot_debug.send_message(msg)
             return
         last_logged_hour = -1
+
+        # --- START OF DAY REPORT ---
+        report = await self.ib_client.get_daily_summary()
+        logger.info(report)
+        await self.orb_bot.telegram_bot.send_message(report)
+
         while True:
             try:
                 # 1. Time Check (New York Time)

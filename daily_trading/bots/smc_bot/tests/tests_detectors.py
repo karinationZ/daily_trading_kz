@@ -22,7 +22,6 @@ from daily_trading.bots.smc_bot.detectors.SupplyDemandZonesDetector import Suppl
 from daily_trading.bots.smc_bot.detectors.VolumeProfiler import VolumeProfiler
 from daily_trading.bots.smc_bot.strategy.ORBStrategy import ORBStrategy
 from daily_trading.bots.smc_bot.strategy.StrategyBase import SignalSummary
-from daily_trading.brokers.IBKRClient import IBKRClient
 from daily_trading.settings import logger, PROJECT_DIR, TELEGRAM_MY_DEBUG_BOT_ID
 from daily_trading.technicals.AITradeAssistants.GeminiTradeAssistant import GEMINI_PRO, GeminiTradeAssistant, Ohlc
 from daily_trading.utils.common import load_data, merge_csv_no_dups
@@ -441,3 +440,32 @@ async def test_ibkr_contract_resolution(ib_client, input_symbol, expected_root, 
     contract = await ib_client.get_futures_contract(input_symbol)
     expiry_str = contract.lastTradeDateOrContractMonth
     print(f"✅ PASS: {input_symbol} -> {contract.localSymbol} ({contract.exchange}) Exp: {expiry_str}")
+
+
+import pytest
+import pandas as pd
+from daily_trading.brokers.IBKRClient import IBKRClient  # Adjust import path as needed
+
+# CONFIGURATION
+# Ensure this matches your running TWS/Gateway (Paper Trading recommended)
+HOST = '127.0.0.1'
+PORT = 4002
+CLIENT_ID = 999  # Use a unique ID for testing to avoid conflict with running bots
+
+# The symbols we must verify
+TARGET_SYMBOLS = ["MNQ", "MES", "MGC", "SIL"]
+
+
+@pytest.mark.asyncio
+async def test_ibkr():
+    """
+    Integration Test: Check that get_open_orders and get_active_positions
+    run without error and return lists (even if empty).
+    """
+    client = IBKRClient(host=HOST, port=PORT, client_id=CLIENT_ID)
+    await client.connect()
+    for symbol in TARGET_SYMBOLS:
+        data = client.get_klines(symbol, "5m")
+        assert not data.empty
+
+    client.disconnect()

@@ -273,7 +273,7 @@ class ORBBot(SMCBotBase):
                         f"Direction: {analysis.trade_signal.direction.name}\n"
                         f"Price: {analysis.trade_signal.price:.2f}\n"
                         f"SL: {analysis.trade_signal.sl:.2f} | TP: {analysis.trade_signal.tp:.2f}\n"
-                        f"Time: {analysis.trade_signal.timestamp.strftime('%H:%M')}"
+                        f"Time: {analysis.trade_signal.timestamp.strftime('%H:%M')} UTC"
                     )
 
                     # Send Message with Chart (analysis.fig)

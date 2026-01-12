@@ -54,7 +54,7 @@ class MasterBot:
         except Exception as e:
             msg = f"FATAL: IBKR Connect Failed: {e}"
             logger.critical(msg)
-            self.orb_bot.telegram_my_debug_bot.send_message(msg)
+            self.orb_bot.telegram_bot_debug.send_message(msg)
             return
         last_logged_hour = -1
         while True:

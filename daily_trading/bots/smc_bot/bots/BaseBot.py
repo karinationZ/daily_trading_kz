@@ -122,7 +122,7 @@ class SMCBotBase:
         try:
             # --- ENTER ---
             if sig.action == TradeAction.ENTER:
-                strategy.log(f"SIGNAL: ENTER {sig.direction.name} @ {sig.price}. Placing Bracket.")
+                strategy.log.info(f"SIGNAL: ENTER {sig.direction.name} @ {sig.price}. Placing Bracket.")
                 direction = "LONG" if sig.direction == BIAS.LONG else "SHORT"
                 await self.ib_client.place_bracket_order(
                     symbol=symbol,
@@ -135,7 +135,7 @@ class SMCBotBase:
 
             # --- CANCEL ---
             elif sig.action == TradeAction.CANCEL:
-                strategy.log(f"SIGNAL: CANCEL. Cleaning book.")
+                strategy.log.info(f"SIGNAL: CANCEL. Cleaning book.")
                 await self.ib_client.cancel_all_orders(order_ref=ext_tag)
 
             # --- EXIT ---
@@ -151,19 +151,20 @@ class SMCBotBase:
                 is_eod = ts_now >= (session_end - timedelta(minutes=6))
 
                 if is_eod:
-                    strategy.log(f"EOD LIQUIDATION: Market Exit.")
+                    strategy.log.info(f"EOD LIQUIDATION: Market Exit.")
                     await self.ib_client.cancel_all_orders(order_ref=ext_tag)
                     side = "SELL" if sig.direction == BIAS.LONG else "BUY"
                     await self.ib_client.place_market_order(symbol, quantity=sig.size, side=side, order_ref=ext_tag)
                 else:
                     # Normal TP/SL Hit logic
-                    strategy.log(f"STRATEGY EXIT: Cleaning up.")
+                    strategy.log.info(f"STRATEGY EXIT: Cleaning up.")
                     await self.ib_client.cancel_all_orders(order_ref=ext_tag)
 
         except Exception as e:
-            strategy.log(f"EXECUTION FAILURE: {e}", level="error")
+            strategy.log.error(f"EXECUTION FAILURE: {e}", level="error")
 
-    async def sleep_until_next_interval(self, interval_minutes: int = 5):
+    @staticmethod
+    async def sleep_until_next_interval(interval_minutes: int = 5):
         """Synced Sleep."""
         now = datetime.now()
         minutes_to_sleep = interval_minutes - (now.minute % interval_minutes)

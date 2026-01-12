@@ -209,5 +209,5 @@ class SupplyDemandTapBot(SMCBotBase):
             await self.handle_execution(strategy, analysis, "1H_TAP")
 
         except Exception as e:
-            strategy.log(f"CYCLE ERROR: {e}", level="error")
+            strategy.log.info(f"CYCLE ERROR: {e}", level="error")
             logger.error(traceback.format_exc())

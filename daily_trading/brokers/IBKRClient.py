@@ -203,3 +203,28 @@ class IBKRClient:
             print(f"❌ ERROR: IBKR forced data type to {ticker.marketDataType} (Delayed).")
         else:
             print("✅ SUCCESS: API has Real-Time access. The delay is in the reqHistoricalData cache.")
+
+    async def close_positions_smartly(self, symbol):
+        positions = await self.get_active_positions()
+        found = False
+
+        for p in positions:
+            if p.contract.symbol == symbol and p.position != 0:
+                found = True
+                size = p.position
+                action = "SELL" if size > 0 else "BUY"
+                qty = abs(int(size))
+
+                print(f"FOUND: {symbol} | Size: {size}")
+                print(f"ACTION: {action} {qty} to Close.")
+
+                await self.place_market_order(
+                    symbol=symbol,
+                    quantity=qty,
+                    side=action,
+                    order_ref="EMERGENCY_CLOSE"
+                )
+                print("Order Placed.")
+
+        if not found:
+            print(f"No open position found for {symbol}. You are flat.")

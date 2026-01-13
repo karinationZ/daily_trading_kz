@@ -232,7 +232,7 @@ class SMCBotBase:
             # --- CANCEL ---
             elif sig.action == TradeAction.CANCEL:
                 strategy.log.info(f"SIGNAL: CANCEL. Cleaning book.")
-                await self.ib_client.cancel_all_orders(order_ref=ext_tag)
+                await self.ib_client.cancel_all_orders(order_ref=strategy.ext_tag)
 
             # --- EXIT ---
             elif sig.action == TradeAction.EXIT:
@@ -248,13 +248,14 @@ class SMCBotBase:
 
                 if is_eod:
                     strategy.log.info(f"EOD LIQUIDATION: Market Exit.")
-                    await self.ib_client.cancel_all_orders(order_ref=ext_tag)
+                    await self.ib_client.cancel_all_orders(order_ref=strategy.ext_tag)
                     side = "SELL" if sig.direction == BIAS.LONG else "BUY"
-                    await self.ib_client.place_market_order(symbol, quantity=sig.size, side=side, order_ref=ext_tag)
+                    await self.ib_client.place_market_order(symbol, quantity=sig.size, side=side,
+                                                            order_ref=strategy.ext_tag)
                 else:
                     # Normal TP/SL Hit logic
                     strategy.log.info(f"STRATEGY EXIT: Cleaning up.")
-                    await self.ib_client.cancel_all_orders(order_ref=ext_tag)
+                    await self.ib_client.cancel_all_orders(order_ref=strategy.ext_tag)
 
         except Exception as e:
             strategy.log.error(f"EXECUTION FAILURE: {e}", level="error")

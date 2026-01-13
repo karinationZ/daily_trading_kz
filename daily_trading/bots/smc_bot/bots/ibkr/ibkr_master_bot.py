@@ -87,10 +87,8 @@ class MasterBot:
             await self.orb_bot.telegram_bot_debug.send_message(msg)
             return
         last_logged_hour = -1
-
-        # --- START OF DAY REPORT ---
+        last_logged_hour_summary = -1
         report = await self.ib_client.get_daily_summary()
-        logger.info(report)
         await self.orb_bot.telegram_bot.send_message(report)
 
         while True:
@@ -99,10 +97,18 @@ class MasterBot:
                 ny_now = datetime.now(ZoneInfo("America/New_York"))
                 is_weekday = ny_now.weekday() < 5
                 current_hour = ny_now.hour + (ny_now.minute / 60)
+                current_hour_int = ny_now.hour
 
                 # Active Hours: 01:45 AM to 05:15 PM NY
                 if is_weekday and (1.75 <= current_hour <= 17.25):
                     last_logged_hour = -1
+
+                    if current_hour_int % 4 == 0 and current_hour_int != last_logged_hour_summary:
+                        report = await self.ib_client.get_daily_summary()
+                        logger.info(f"4H Summary:\n{report}")
+                        await self.orb_bot.telegram_bot.send_message(report)
+                        # Mark this hour as 'Done'
+                        last_logged_hour_summary = current_hour_int
 
                     # --- A. Data Fetching Phase (Centralized) ---
                     # Structure: { "MNQ": { "5m": df, "1h": df } }
@@ -162,6 +168,7 @@ class MasterBot:
 
                 else:
                     # 💤 SLEEP MODE
+                    last_logged_hour_summary = -1
                     if ny_now.hour != last_logged_hour:
                         msg = "💤 Market Closed. Sleeping..."
                         last_logged_hour = ny_now.hour

@@ -2,7 +2,7 @@ import asyncio
 import traceback
 
 from daily_trading.bots.smc_bot.bots.BaseBot import SMCBotBase
-from daily_trading.bots.smc_bot.strategy.BosFvgFillStrategy import BosFvgFillStrategy
+from daily_trading.bots.smc_bot.strategy.BosFvgFillStrategy_old import BosFvgFillStrategy
 from daily_trading.settings import logger, TELEGRAM_MAIN_CHANNEL_CHAT_ID
 
 
@@ -42,7 +42,7 @@ class SMCBosFvgFillBot(SMCBotBase):
                 logger.error(f"No mgc for {symbol}, skipping...")
                 return
 
-            analysis = await self.bos_strategy.analyze_smc(symbol, ohlc_1h=ohlc_1h, ohlc_15m=ohlc_15m)
+            analysis = await self.bos_strategy.analyze_smc(symbol, ohlc_1h=ohlc_1h, ohlc_lower_tf=ohlc_15m)
             analysis.title = self.strategy_name
             await self.generate_signal(symbol, analysis,
                                        ohlc_1d=ohlc_1d,

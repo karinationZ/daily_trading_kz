@@ -8,7 +8,7 @@ from daily_trading.bots.smc_bot.detectors.CandlePatternDetector import CandlePat
 from daily_trading.bots.smc_bot.detectors.FvgDetector import FvgDetector
 from daily_trading.bots.smc_bot.detectors.HighLowDetector import HighLowDetector
 from daily_trading.bots.smc_bot.detectors.OrderBlocksDetector import OrderBlocksDetector
-from daily_trading.bots.smc_bot.detectors.SMCBase import BIAS, Trend
+from daily_trading.bots.smc_bot.detectors.StrategyBase import BIAS, Trend
 from daily_trading.bots.smc_bot.strategy.StrategyBase import SignalSummary, StrategyBase
 from daily_trading.settings import logger
 

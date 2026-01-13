@@ -2,11 +2,11 @@ import pandas as pd
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 
-from daily_trading.bots.smc_bot.detectors.SMCBase import SMCBase
+from daily_trading.bots.smc_bot.detectors.StrategyBase import StrategyBase
 from daily_trading.settings import logger
 
 
-class FakeBreakoutDetector(SMCBase):
+class FakeBreakoutDetector(StrategyBase):
     """
     Class to detect false breakouts based on Smart Money Concepts (SMC),
     inheriting from SMCBase. It identifies instances where price moves beyond

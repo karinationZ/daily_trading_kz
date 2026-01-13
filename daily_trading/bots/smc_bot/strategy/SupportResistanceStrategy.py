@@ -2,7 +2,7 @@ import pandas as pd
 
 from daily_trading.bots.smc_bot.detectors.HighLowDetector import HighLowDetector
 from daily_trading.bots.smc_bot.detectors.LevelsDetector import LevelsDetector
-from daily_trading.bots.smc_bot.detectors.SMCBase import GET_READY_ALERT, Trend
+from daily_trading.bots.smc_bot.detectors.StrategyBase import GET_READY_ALERT, Trend
 from daily_trading.bots.smc_bot.strategy.StrategyBase import SignalSummary, StrategyBase
 
 

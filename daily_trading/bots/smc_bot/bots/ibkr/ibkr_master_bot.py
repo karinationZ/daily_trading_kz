@@ -75,6 +75,35 @@ class MasterBot:
             logger.error(f"Conflict Check Failed: {e}")
         return blocked
 
+    @staticmethod
+    def is_market_open() -> bool:
+        """
+        Determines if the Futures Market is generally open (23 hours / 5 days).
+        Base Timezone: America/New_York
+        """
+        ny_now = datetime.now(ZoneInfo("America/New_York"))
+        weekday = ny_now.weekday()  # 0=Mon, ... 4=Fri, 5=Sat, 6=Sun
+        hour = ny_now.hour
+
+        # 1. Daily Maintenance (17:00 - 18:00 ET) - Market is always closed
+        if 17 <= hour < 18:
+            return False
+
+        # 2. Weekend Logic
+        # Friday: Closes at 17:00 ET
+        if weekday == 4 and hour >= 17:
+            return False
+
+        # Saturday: Closed all day
+        if weekday == 5:
+            return False
+
+        # Sunday: Opens at 18:00 ET
+        if weekday == 6 and hour < 18:
+            return False
+
+        return True
+
     async def run(self):
         logger.info("🚀 IBKR MASTER BOT STARTING...")
 
@@ -95,12 +124,10 @@ class MasterBot:
             try:
                 # 1. Time Check (New York Time)
                 ny_now = datetime.now(ZoneInfo("America/New_York"))
-                is_weekday = ny_now.weekday() < 5
-                current_hour = ny_now.hour + (ny_now.minute / 60)
                 current_hour_int = ny_now.hour
 
                 # Active Hours: 01:45 AM to 05:15 PM NY
-                if is_weekday and (1.75 <= current_hour <= 17.25):
+                if self.is_market_open():
                     last_logged_hour = -1
 
                     if current_hour_int % 4 == 0 and current_hour_int != last_logged_hour_summary:

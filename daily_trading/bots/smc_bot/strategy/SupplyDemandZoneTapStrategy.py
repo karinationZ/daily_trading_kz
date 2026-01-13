@@ -5,13 +5,13 @@ from zoneinfo import ZoneInfo
 import pandas as pd
 
 from daily_trading.bots.smc_bot.detectors.ORBDetector import SESSION_MAP
-from daily_trading.bots.smc_bot.detectors.SMCBase import BIAS, SMCBase
+from daily_trading.bots.smc_bot.detectors.StrategyBase import BIAS, StrategyBase
 from daily_trading.bots.smc_bot.detectors.SupplyDemandZonesDetector import SupplyDemandZonesDetector
 from daily_trading.bots.smc_bot.strategy.StrategyBase import SignalSummary, TradeAction, TradeSignal, TradeStatus
 from daily_trading.settings import logger
 
 
-class SupplyDemandZoneTapStrategy(SMCBase):
+class SupplyDemandZoneTapStrategy(StrategyBase):
     """
     Institutional HTF Zone Tap Strategy.
 
@@ -180,6 +180,7 @@ class SupplyDemandZoneTapStrategy(SMCBase):
             swing_zones, internal_zones = self.sd_detector_1h.calculate(ohlc_1h)
             self.cached_zones_1h = swing_zones + internal_zones
             self.last_processed_hour = ts_now.hour
+            self.log.info(f"1H Zones: {self.cached_zones_1h}")
 
         # 2. Define Cutoffs
         session_end = ts_now.replace(hour=s_info.get("end_hour", 16), minute=s_info.get("end_minute", 0))

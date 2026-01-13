@@ -46,6 +46,21 @@ ORB_CONFIG = {
         "sl_buffer_mult": 0.1,
         "tick_buffer_mult": 0.05
     },
+    # MNQ ASIA: The Night Owl (Added from Screenshot)
+    # Stats: Score 72.9 | PnL $2,169 | WR 60.3%
+    ("MNQ", "ASIA"): {
+        # Strategy Logic
+        "swing_length": 10,  # SW:10
+        "internal_length": 5,  # INT:5
+        "fvg_offset": 5,  # OFF:5 (Deep Retracement)
+        "fvg_threshold": 0.2,  # THR:0.2
+        "zone_precision_factor": 2.0,  # ATR:2.0
+        "tp_multiple": 1.1,
+        # Dynamic Buffers
+        "entry_buffer_mult": 0.05,
+        "sl_buffer_mult": 0.1,
+        "tick_buffer_mult": 0.05
+    },
 
     # ==========================================================================
     # GROUP 2: MES (The Stability Anchor)
@@ -118,6 +133,21 @@ ORB_CONFIG = {
         "zone_precision_factor": 2.5,
         "tp_multiple": 1.5,
         # Dynamic Buffers (standard)
+        "entry_buffer_mult": 0.05,
+        "sl_buffer_mult": 0.1,
+        "tick_buffer_mult": 0.05
+    },
+    # MGC ASIA: Overnight Gold (Added from Screenshot)
+    # Stats: Score 73.2 | PnL $3,849 | WR 53.1%
+    ("MGC", "ASIA"): {
+        # Strategy Logic
+        "swing_length": 55,  # SW:55 (Wide Structure)
+        "internal_length": 5,  # INT:5
+        "fvg_offset": 4,  # OFF:4
+        "fvg_threshold": 0.1,  # THR:0.1 (Strict FVG)
+        "zone_precision_factor": 2.0,  # ATR:2.0
+        "tp_multiple": 1.5,
+        # Dynamic Buffers
         "entry_buffer_mult": 0.05,
         "sl_buffer_mult": 0.1,
         "tick_buffer_mult": 0.05

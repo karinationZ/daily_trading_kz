@@ -25,7 +25,7 @@ class Trend(Enum):
     NEUTRAL = -1
 
 
-class SMCBase:
+class StrategyBase:
     # Updated Configuration with MCL
     POINT_VALUE = {
         "MNQ": 2.0,

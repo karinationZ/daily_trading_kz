@@ -7,7 +7,7 @@ import pandas as pd
 import plotly.graph_objects as go
 
 from daily_trading.bots.smc_bot.detectors.ORBDetector import SESSION_MAP
-from daily_trading.bots.smc_bot.detectors.SMCBase import BIAS
+from daily_trading.bots.smc_bot.detectors.StrategyBase import BIAS
 from daily_trading.bots.smc_bot.strategy.StrategyBase import TradeAction, TradeStatus
 from daily_trading.settings import logger
 

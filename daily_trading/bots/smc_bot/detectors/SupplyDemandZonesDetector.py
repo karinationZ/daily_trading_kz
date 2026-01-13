@@ -4,11 +4,11 @@ import numpy as np
 import pandas as pd
 import plotly.graph_objects as go
 
-from daily_trading.bots.smc_bot.detectors.SMCBase import BIAS
-from daily_trading.bots.smc_bot.detectors.SMCBase import SMCBase
+from daily_trading.bots.smc_bot.detectors.StrategyBase import BIAS
+from daily_trading.bots.smc_bot.detectors.StrategyBase import StrategyBase
 
 
-class SupplyDemandZonesDetector(SMCBase):
+class SupplyDemandZonesDetector(StrategyBase):
     BULLISH = BIAS.LONG
     BEARISH = BIAS.SHORT
 

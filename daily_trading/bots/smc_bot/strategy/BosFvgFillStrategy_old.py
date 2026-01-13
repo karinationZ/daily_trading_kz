@@ -3,7 +3,7 @@ import pandas as pd
 from daily_trading.bots.smc_bot.detectors.BosChochDetector import BosChochDetector
 from daily_trading.bots.smc_bot.detectors.FvgDetector import FvgDetector
 from daily_trading.bots.smc_bot.detectors.HighLowDetector import HighLowDetector
-from daily_trading.bots.smc_bot.detectors.SMCBase import GET_READY_ALERT, BIAS, Trend
+from daily_trading.bots.smc_bot.detectors.StrategyBase import GET_READY_ALERT, BIAS, Trend
 from daily_trading.bots.smc_bot.strategy.StrategyBase import SignalSummary, StrategyBase
 
 
@@ -36,7 +36,7 @@ class BosFvgFillStrategy(StrategyBase):
         self.last_mitigated_fvg_level_map = {}  # Initialize as empty dict
         self._current_fvg_id_map = {}  # Initialize as empty dict
 
-    async def get_nearest_fvg(self, ohlc_15m: pd.DataFrame, trend: str):
+    async def get_nearest_fvg(self, ohlc_lower_tf: pd.DataFrame, trend: str):
         """Step 4: Confirm price touches the nearest unmitigated FVG on 15m."""
         recent_smc_events = []
 
@@ -44,8 +44,8 @@ class BosFvgFillStrategy(StrategyBase):
             recent_smc_events.append(f"Trend is {trend}. Exiting FVG search step.")
             return None, recent_smc_events
 
-        fvg_result = self.detectors["fvg_15m"].calculate_fvg(ohlc_15m, plot=True)
-        self.fvg_fig = self.detectors["fvg_15m"].merge_bos_fvg_plots(ohlc_15m, self.bos_signals, fvg_result["signals"])
+        fvg_result = self.detectors["fvg_15m"].calculate_fvg(ohlc_lower_tf, plot=True)
+        self.fvg_fig = self.detectors["fvg_15m"].merge_bos_fvg_plots(ohlc_lower_tf, self.bos_signals, fvg_result["signals"])
 
         if not fvg_result["signals"]:
             event = "No FVG signals!"
@@ -91,7 +91,7 @@ class BosFvgFillStrategy(StrategyBase):
         recent_smc_events.append(event)
         return nearest_fvg, recent_smc_events
 
-    async def confirm_fvg_mitigation(self, symbol, ohlc_15m: pd.DataFrame, trend: str, fvg_signal: dict):
+    async def confirm_fvg_mitigation(self, symbol, ohlc_lower_tf: pd.DataFrame, trend: str, fvg_signal: dict):
         """Confirm if the current candle mitigates an FVG by 60% or more."""
         recent_smc_events = []
 
@@ -100,7 +100,7 @@ class BosFvgFillStrategy(StrategyBase):
         fvg_range = fvg_top - fvg_bottom
 
         # Check current candle
-        current_candle = ohlc_15m.iloc[-1]
+        current_candle = ohlc_lower_tf.iloc[-1]
         candle_high = current_candle['high']
         candle_low = current_candle['low']
         fvg_mitigated = False
@@ -140,12 +140,12 @@ class BosFvgFillStrategy(StrategyBase):
 
         return fvg_mitigated, recent_smc_events
 
-    async def analyze_smc(self, symbol: str, ohlc_1h: pd.DataFrame, ohlc_15m: pd.DataFrame) -> SignalSummary:
+    async def analyze_smc(self, symbol: str, ohlc_1h: pd.DataFrame, ohlc_lower_tf: pd.DataFrame) -> SignalSummary:
         """
         Analyze OHLC mgc for continuation signals based on Liquidity Pool sweep
         """
         cache_key = (symbol, self.main_tf)
-        current_time = max(ohlc_15m.index.max(), ohlc_1h.index.max())
+        current_time = max(ohlc_lower_tf.index.max(), ohlc_1h.index.max())
         recent_smc_events = []
 
         # Step 1: Identify market trend
@@ -170,7 +170,7 @@ class BosFvgFillStrategy(StrategyBase):
         self.last_bos_time = self.recent_bos_signal.get('time')
 
         # Step 3: Find nearest FVG
-        nearest_fvg, step_3_events = await self.get_nearest_fvg(ohlc_15m, trend)
+        nearest_fvg, step_3_events = await self.get_nearest_fvg(ohlc_lower_tf, trend)
         recent_smc_events.extend(step_3_events)
         signal_summary.fig = self.fvg_fig
         if not nearest_fvg:
@@ -178,7 +178,7 @@ class BosFvgFillStrategy(StrategyBase):
             return signal_summary
 
         # Step 4: Confirm Pull Back - FVG mitigation
-        fvg_mitigated, step_4_events = await self.confirm_fvg_mitigation(symbol, ohlc_15m, trend, nearest_fvg)
+        fvg_mitigated, step_4_events = await self.confirm_fvg_mitigation(symbol, ohlc_lower_tf, trend, nearest_fvg)
         recent_smc_events.extend(step_4_events)
         if GET_READY_ALERT in step_4_events[-1]:
             signal_summary.direction = GET_READY_ALERT

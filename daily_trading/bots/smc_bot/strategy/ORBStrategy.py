@@ -5,13 +5,13 @@ from zoneinfo import ZoneInfo
 import pandas as pd
 
 from daily_trading.bots.smc_bot.detectors.ORBDetector import ORBDetector, SESSION_MAP
-from daily_trading.bots.smc_bot.detectors.SMCBase import BIAS, SMCBase
+from daily_trading.bots.smc_bot.detectors.StrategyBase import BIAS, StrategyBase
 from daily_trading.bots.smc_bot.detectors.SupplyDemandZonesDetector import SupplyDemandZonesDetector
 from daily_trading.bots.smc_bot.strategy.StrategyBase import SignalSummary, TradeAction, TradeSignal, TradeStatus
 from daily_trading.settings import logger
 
 
-class ORBStrategy(SMCBase):
+class ORBStrategy(StrategyBase):
     """
     STRATEGY NAME: Institutional ORB Pro
     VERSION: 3.0 (Alpha Extraction)

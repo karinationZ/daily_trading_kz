@@ -1,11 +1,11 @@
 import pandas as pd
 import plotly.graph_objects as go
 
-from daily_trading.bots.smc_bot.detectors.SMCBase import BEARISH, BULLISH, SMCBase
+from daily_trading.bots.smc_bot.detectors.StrategyBase import BEARISH, BULLISH, StrategyBase
 from daily_trading.settings import logger
 
 
-class BosChochDetector(SMCBase):
+class BosChochDetector(StrategyBase):
     def __init__(self, main_tf, pivot_period=None, left_bars=5, right_bars=1, show_bull=True, show_bear=True,
                  volume_thresh=5, min_price_move=0.001, min_signal_gap=1):
         super().__init__(main_tf=main_tf, left_bars=left_bars, right_bars=right_bars)

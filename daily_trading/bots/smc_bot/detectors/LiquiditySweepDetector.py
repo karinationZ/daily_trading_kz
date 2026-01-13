@@ -1,11 +1,11 @@
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 
-from daily_trading.bots.smc_bot.detectors.SMCBase import BEARISH, BULLISH, SMCBase
+from daily_trading.bots.smc_bot.detectors.StrategyBase import BEARISH, BULLISH, StrategyBase
 from daily_trading.settings import logger
 
 
-class LiquiditySweepDetector(SMCBase):
+class LiquiditySweepDetector(StrategyBase):
     def __init__(self, main_tf, sweep_window=1, volume_threshold=10, left_bars=5, right_bars=1):
         """
         Liquidity Sweep

@@ -11,7 +11,7 @@ import plotly.graph_objects as go
 from daily_trading.bots.smc_bot.bots.TelegramBot import TelegramBot
 from daily_trading.bots.smc_bot.detectors.BosChochDetector import BosChochDetector
 from daily_trading.bots.smc_bot.detectors.HighLowDetector import HighLowDetector
-from daily_trading.bots.smc_bot.detectors.SMCBase import BIAS, SMCBase, Trend
+from daily_trading.bots.smc_bot.detectors.StrategyBase import BIAS, StrategyBase, Trend
 from daily_trading.settings import logger
 
 
@@ -70,7 +70,7 @@ class StrategyBase(ABC):
         """
         self.main_tf = main_tf
         self.telegram_bot = TelegramBot(chat_id=telegram_chat_id)
-        self.smc_base = SMCBase(self.main_tf)
+        self.smc_base = StrategyBase(self.main_tf)
         self.event_cache = {}  # Cache: {(symbol, timeframe): {'events': list, 'last_updated': datetime}}
         self.debug = debug
         logger.info(f"StrategyBase initialized with {main_tf}")

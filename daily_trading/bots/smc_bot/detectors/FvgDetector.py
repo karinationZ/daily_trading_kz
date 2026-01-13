@@ -3,11 +3,11 @@ import pandas as pd
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 
-from daily_trading.bots.smc_bot.detectors.SMCBase import BEARISH, BULLISH, SMCBase
+from daily_trading.bots.smc_bot.detectors.StrategyBase import BEARISH, BULLISH, StrategyBase
 from daily_trading.settings import logger
 
 
-class FvgDetector(SMCBase):
+class FvgDetector(StrategyBase):
     def __init__(self, main_tf, pivot_period=5, left_bars=5, right_bars=1, show_bull=True, show_bear=True,
                  volume_thresh=10, fvg_threshold=0.5, mode='Present', back=180,
                  show_labels=False, show_fulfilled=True):

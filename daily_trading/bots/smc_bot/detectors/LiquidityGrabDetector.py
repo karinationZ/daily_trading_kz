@@ -3,11 +3,11 @@ from plotly.subplots import make_subplots
 import pandas as pd
 import numpy as np
 
-from daily_trading.bots.smc_bot.detectors.SMCBase import BEARISH, BULLISH, SMCBase
+from daily_trading.bots.smc_bot.detectors.StrategyBase import BEARISH, BULLISH, StrategyBase
 from daily_trading.settings import logger
 
 
-class LiquidityGrabDetector(SMCBase):
+class LiquidityGrabDetector(StrategyBase):
     def __init__(self, main_tf, pivot_length=25, wick_body_ratio=0.5, liq_zone_count=5, cooldown=3, volume_threshold=10,
                  left_bars=25, right_bars=25):
         """

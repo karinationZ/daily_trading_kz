@@ -4,7 +4,7 @@ from zoneinfo import ZoneInfo
 import pandas as pd
 import plotly.graph_objects as go
 
-from daily_trading.bots.smc_bot.detectors.SMCBase import BIAS
+from daily_trading.bots.smc_bot.detectors.StrategyBase import BIAS
 
 # ==========================
 # Session map (start, end hours)

@@ -1,13 +1,13 @@
 from datetime import datetime, time, timedelta
-from typing import List, Optional, Tuple, Union
+from typing import List, Optional
 from zoneinfo import ZoneInfo
 
 import numpy as np
 import pandas as pd
 import plotly.graph_objects as go
 
+from daily_trading.bots.smc_bot.detectors.DetectorsBase import BIAS
 from daily_trading.bots.smc_bot.detectors.ORBDetector import SESSION_MAP
-from daily_trading.bots.smc_bot.detectors.SMCBase import BIAS
 from daily_trading.bots.smc_bot.strategy.StrategyBase import TradeAction, TradeSignal, TradeStatus
 from daily_trading.settings import logger
 
@@ -322,7 +322,6 @@ class Backtester:
 
         # 2. Base Figure
         # Attempt to use Strategy's specific plotter first (for ORB lines etc)
-        fig = None
         if hasattr(self.strategy, "orb_detector") and hasattr(self.strategy.orb_detector, "plot"):
             # For ORB, we can just pass the window to its plotter
             fig = self.strategy.orb_detector.plot(view_5m)

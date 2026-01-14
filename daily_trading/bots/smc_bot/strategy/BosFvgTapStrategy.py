@@ -34,6 +34,7 @@ class BosFvgStrategy(StrategyBase):
 
         super().__init__(main_tf)
 
+        self.active_bos_timestamp = None
         self.symbol = symbol
         self.timezone = timezone
         self.htf = htf
@@ -78,43 +79,48 @@ class BosFvgStrategy(StrategyBase):
     # 1. MARKET STRUCTURE ANALYSIS
     # ==================================================================
 
-    def get_htf_trend(self, df_htf: pd.DataFrame) -> Trend:
+    def get_htf_trend(self, df_htf: pd.DataFrame) -> tuple[Trend, Optional[any]]:
         """
-        Analyzes 1H Structure. Returns Trend.BULLISH, BEARISH, or NEUTRAL.
+        Analyzes 1H Structure. Returns (Trend, last_bos_signal).
+        FIX: Now returns the actual BOS signal for tracking
         """
         if df_htf.empty:
-            return Trend.NEUTRAL
+            return Trend.NEUTRAL, None
+
         current_htf_ts = df_htf.index[-1]
 
-        # If the timestamp is the same as the last time we checked, return cached result
+        # If timestamp same as last check, return cached result
         if self.last_htf_timestamp == current_htf_ts:
-            return self.cached_trend
+            # Need to get the signal even from cache
+            result = self.htf_bos_detector.calculate_bos_choch(df_htf, plot=False)
+            signals = result.get('signals', [])
+            last_sig = signals[-1] if signals else None
+            return self.cached_trend, last_sig
+
         # Run Detector
         result = self.htf_bos_detector.calculate_bos_choch(df_htf, plot=False)
         signals = result.get('signals', [])
 
         if not signals:
-            return Trend.NEUTRAL
+            return Trend.NEUTRAL, None
 
-        # Get the most recent structural event
-        # Signals are usually appended chronologically, so take the last one
         last_sig = signals[-1]
-
         bias = last_sig.get('bias')
         trend = Trend.NEUTRAL
-        # TODO: Option B (Conservative): Accept ONLY BOS (Current code)
-        # signal_type = last_sig.get("type", None)
-        # if signal_type == "BOS":
-        if bias == BIAS.LONG.num_value:
-            trend = Trend.BULLISH
-        elif bias == BIAS.SHORT.num_value:
-            trend = Trend.BEARISH
 
-        # 3. CACHE THE RESULT
+        # Accept only BOS
+        signal_type = last_sig.get("type", None)
+        if signal_type == "BOS":
+            if bias == BIAS.LONG.num_value:
+                trend = Trend.BULLISH
+            elif bias == BIAS.SHORT.num_value:
+                trend = Trend.BEARISH
+
+        # Cache
         self.last_htf_timestamp = current_htf_ts
         self.cached_trend = trend
 
-        return trend
+        return trend, last_sig
 
     def find_valid_fvg(self, df_ltf: pd.DataFrame, trend: Trend, current_price: float):
         """
@@ -261,14 +267,10 @@ class BosFvgStrategy(StrategyBase):
     # ==================================================================
 
     def analyze(self, df_ltf: pd.DataFrame, df_htf: pd.DataFrame) -> SignalSummary:
-        """
-        Called every 5 min
-        """
+        """Called every 5 min"""
         curr = df_ltf.iloc[-1]
 
-        # ----------------------------------------------------------------------
-        # 1. FILL CHECK (Highest Priority)
-        # ----------------------------------------------------------------------
+        # 1. FILL CHECK
         if self.trade_status == TradeStatus.PENDING:
             if self.check_order_fill(curr):
                 self.trade_status = TradeStatus.FILLED
@@ -276,9 +278,7 @@ class BosFvgStrategy(StrategyBase):
                 self.active_trade.entry_timestamp = curr.name
                 return SignalSummary(direction="FILLED", trend_signal=self.active_trade)
 
-        # ----------------------------------------------------------------------
-        # 2. EXIT CHECK (Only if Filled)
-        # ----------------------------------------------------------------------
+        # 2. EXIT CHECK
         if self.trade_status == TradeStatus.FILLED:
             if self.check_exit(curr):
                 self.log.info(f"🎯 TRADE EXIT (SL/TP) {self.symbol}")
@@ -286,83 +286,85 @@ class BosFvgStrategy(StrategyBase):
             self.log.info(f"IN_TRADE - {self.symbol}")
             return SignalSummary(direction="IN_TRADE")
 
-        # ----------------------------------------------------------------------
         # 3. SIGNAL SEARCH & PENDING UPDATE
-        #    Run this if NONE *or* PENDING (to catch better setups)
-        # ----------------------------------------------------------------------
         if self.trade_status in [TradeStatus.NONE, TradeStatus.PENDING]:
 
-            # A. Get Trend
-            trend = self.get_htf_trend(df_htf)
+            # FIX: Get trend AND the actual BOS signal
+            trend, bos_signal = self.get_htf_trend(df_htf)
 
-            if trend != Trend.NEUTRAL:
-                # B. Find FVG
-                # Note: find_valid_fvg filters out 'processed_zone_ids'.
-                # Since the CURRENT pending FVG is already in processed_zone_ids,
-                # this function will only return a result if a NEW, FRESH FVG exists.
-                fvg = self.find_valid_fvg(df_ltf, trend, curr['close'])
+            if trend != Trend.NEUTRAL and bos_signal:
+                bos_timestamp = bos_signal.get('time')
 
-                if fvg:
-                    # C. Calculate Params
-                    params = self.calculate_setup_params(fvg, trend, df_ltf)
-                    fvg_id = f"{fvg['time']}_{self.symbol}"
+                # Check if this is a NEW BOS signal
+                is_new_bos = (self.active_bos_timestamp is None or
+                              bos_timestamp != self.active_bos_timestamp)
 
-                    # D. Logic Separation: New Trade vs Update Trade
+                # Only search for FVG if: (1) No trade, OR (2) New BOS detected
+                should_search_fvg = (self.trade_status == TradeStatus.NONE or
+                                     (self.trade_status == TradeStatus.PENDING and is_new_bos))
 
-                    # CASE 1: Completely New Trade
-                    if self.trade_status == TradeStatus.NONE:
-                        new_trade = TradeSignal(
-                            action=TradeAction.ENTER,
-                            symbol=self.symbol,
-                            direction=params['direction'],
-                            price=params['entry'],
-                            sl=params['sl'],
-                            tp=params['tp'],
-                            size=params['size'],
-                            timestamp=curr.name,
-                            metadata={"fvg_id": fvg_id, "structure": trend.name, "fvg_time": fvg["time"]}
-                        )
-                        self.active_trade = new_trade
-                        self.trade_status = TradeStatus.PENDING
-                        self.processed_zone_ids.add(fvg_id)
+                if should_search_fvg:
+                    fvg = self.find_valid_fvg(df_ltf, trend, curr['close'])
 
-                        self.log.info(f"🚀 SIGNAL: {params['direction'].name} Limit @ {params['entry']:.2f}")
-                        return SignalSummary(direction=params['direction'].name, trade_signal=new_trade)
+                    if fvg:
+                        params = self.calculate_setup_params(fvg, trend, df_ltf)
+                        fvg_id = f"{fvg['time']}_{self.symbol}"
 
-                    # CASE 2: Better Opportunity Found (Update/Reset)
-                    elif self.trade_status == TradeStatus.PENDING:
+                        # CASE 1: New Trade
+                        if self.trade_status == TradeStatus.NONE:
+                            new_trade = TradeSignal(
+                                action=TradeAction.ENTER,
+                                symbol=self.symbol,
+                                direction=params['direction'],
+                                price=params['entry'],
+                                sl=params['sl'],
+                                tp=params['tp'],
+                                size=params['size'],
+                                timestamp=curr.name,
+                                metadata={
+                                    "fvg_id": fvg_id,
+                                    "structure": trend.name,
+                                    "fvg_time": fvg["time"],
+                                    "bos_time": bos_timestamp  # Track which BOS
+                                }
+                            )
+                            self.active_trade = new_trade
+                            self.trade_status = TradeStatus.PENDING
+                            self.processed_zone_ids.add(fvg_id)
+                            self.active_bos_timestamp = bos_timestamp  # FIX: Store BOS
 
-                        current_fvg_time = self.active_trade.metadata.get("fvg_time")
-                        if current_fvg_time is None:
-                            return SignalSummary(direction="PENDING")
+                            self.log.info(
+                                f"🚀 SIGNAL: {params['direction'].name} Limit @ {params['entry']:.2f} (BOS: {bos_timestamp})")
+                            return SignalSummary(direction=params['direction'].name, trade_signal=new_trade)
 
-                        if fvg["time"] <= current_fvg_time:
-                            return SignalSummary(direction="PENDING")
+                        # CASE 2: Update ONLY if NEW BOS
+                        elif self.trade_status == TradeStatus.PENDING and is_new_bos:
+                            self.log.info(f"♻️ NEW BOS DETECTED: Updating order with fresh FVG ({fvg_id})")
 
-                        self.log.info(f"♻️ ORDER UPDATE: Found newer FVG ({fvg_id}). Updating Order.")
-                        # Use TradeAction.UPDATE
-                        # This tells the MasterBot: "Cancel the existing PENDING order, and place THIS one."
-                        new_trade = TradeSignal(
-                            action=TradeAction.UPDATE,
-                            symbol=self.symbol,
-                            direction=params['direction'],
-                            price=params['entry'],
-                            sl=params['sl'],
-                            tp=params['tp'],
-                            size=params['size'],
-                            timestamp=curr.name,
-                            metadata={
-                                "fvg_id": fvg_id,
-                                "structure": trend.name,
-                                "old_zone_id": self.active_trade.metadata.get('fvg_id'),  # Reference to old
-                                "note": "Order Update",
-                                "fvg_time": fvg["time"]
-                            }
-                        )
+                            new_trade = TradeSignal(
+                                action=TradeAction.UPDATE,
+                                symbol=self.symbol,
+                                direction=params['direction'],
+                                price=params['entry'],
+                                sl=params['sl'],
+                                tp=params['tp'],
+                                size=params['size'],
+                                timestamp=curr.name,
+                                metadata={
+                                    "fvg_id": fvg_id,
+                                    "structure": trend.name,
+                                    "old_zone_id": self.active_trade.metadata.get('fvg_id'),
+                                    "old_bos_time": self.active_bos_timestamp,
+                                    "new_bos_time": bos_timestamp,
+                                    "note": "Order Update - New BOS",
+                                    "fvg_time": fvg["time"]
+                                }
+                            )
 
-                        self.active_trade = new_trade
-                        self.processed_zone_ids.add(fvg_id)
+                            self.active_trade = new_trade
+                            self.processed_zone_ids.add(fvg_id)
+                            self.active_bos_timestamp = bos_timestamp  # FIX: Update BOS tracking
 
-                        return SignalSummary(direction=params['direction'].name, trade_signal=new_trade)
+                            return SignalSummary(direction=params['direction'].name, trade_signal=new_trade)
 
         return SignalSummary(direction="NEUTRAL")

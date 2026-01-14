@@ -1,162 +1,3 @@
-# import pandas as pd
-# import plotly.graph_objects as go
-#
-# from daily_trading.bots.smc_bot.detectors.DetectorsBase import BEARISH, BULLISH, DetectorsBase
-# from daily_trading.settings import logger
-#
-#
-# class BosChochDetector(DetectorsBase):
-#     def __init__(self, main_tf, pivot_period=None, left_bars=5, right_bars=1, show_bull=True, show_bear=True,
-#                  volume_thresh=5, min_price_move=0.001, min_signal_gap=1, wick_ratio: float = 0.10):
-#         super().__init__(main_tf=main_tf, left_bars=left_bars, right_bars=right_bars, wick_ratio=wick_ratio)
-#         self.pivot_period = pivot_period if pivot_period is not None else self.length
-#         self.show_bull = show_bull
-#         self.show_bear = show_bear
-#         self.volume_thresh = volume_thresh
-#         self.min_price_move = min_price_move
-#         self.min_signal_gap = min_signal_gap
-#         self.ExternalTrend = 'No Trend'
-#         self.LockBreak_M = None
-#         self.LastSignalIndex = None
-#         self.bull_ms_count = 0
-#         self.bear_ms_count = 0
-#         self.Major_HighLevel = None
-#         self.Major_LowLevel = None
-#         self.Major_HighIndex = None
-#         self.Major_LowIndex = None
-#         self.Major_HighType = None
-#         self.Major_LowType = None
-#         logger.debug(f"Initialized BosChochDetector with lower_tf={main_tf}, pivot_period={self.pivot_period}, "
-#                      f"left_bars={left_bars}, right_bars={right_bars}, show_bull={show_bull}, "
-#                      f"show_bear={show_bear}, volume_thresh={volume_thresh}, "
-#                      f"min_price_move={min_price_move}, min_signal_gap={min_signal_gap}")
-#
-#     def detect_signals(self, ohlc, i, signals, pivot_high_points, pivot_low_points):
-#         close = ohlc['close'].iloc[i]
-#         high = ohlc['high'].iloc[i]
-#         low = ohlc['low'].iloc[i]
-#         time = ohlc.index[i]
-#         volume = ohlc['volume'].iloc[i]
-#
-#         if self.LastSignalIndex is not None and i - self.LastSignalIndex < self.min_signal_gap:
-#             logger.debug(f"Skipping BOS/CHoCH at index {i}, time {time}: Within min_signal_gap={self.min_signal_gap}")
-#             return signals
-#
-#         logger.debug(f"Checking signals at index {i}, time {time}, close={close:.6f}, "
-#                      f"ExternalTrend={self.ExternalTrend}, Major_HighLevel={self.Major_HighLevel}, "
-#                      f"Major_LowLevel={self.Major_LowLevel}, LockBreak_M={self.LockBreak_M}, volume={volume:.2f}")
-#
-#         # Update trend based on pivot sequence
-#         if len(self.ArrayType) >= 3:
-#             last_pivot = self.ArrayType[-1]
-#             prev_pivot = self.ArrayType[-2]
-#             prev_prev_pivot = self.ArrayType[-3]
-#             if last_pivot == 'LH' and prev_pivot in ['HH', 'H'] and prev_prev_pivot in ['L', 'LL', 'HL']:
-#                 self.ExternalTrend = 'Down Trend'
-#             elif last_pivot == 'LL' and prev_pivot == 'LH' and prev_prev_pivot in ['H', 'HH', 'LH']:
-#                 self.ExternalTrend = 'Down Trend'
-#             elif last_pivot == 'HH' and prev_pivot in ['L', 'LL', 'HL'] and prev_prev_pivot in ['H', 'HH', 'LH']:
-#                 self.ExternalTrend = 'Up Trend'
-#             elif last_pivot == 'HL' and prev_pivot == 'HH' and prev_prev_pivot in ['L', 'LL', 'HL']:
-#                 self.ExternalTrend = 'Up Trend'
-#
-#         # Bullish Major BOS/CHoCH
-#         if (self.Major_HighLevel is not None and high > self.Major_HighLevel and
-#                 self.show_bull and volume >= self.volume_thresh):
-#             logger.debug(f"Bullish BOS check: high={high:.6f}, Major_HighLevel={self.Major_HighLevel:.6f}, "
-#                          f"LockBreak_M={self.LockBreak_M}, Major_HighIndex={self.Major_HighIndex}, volume={volume:.2f}")
-#             next_close = ohlc['close'].iloc[i + 1] if i < len(ohlc) - 1 else close
-#             if next_close > self.Major_HighLevel or close > self.Major_HighLevel:
-#                 signal_type = "BOS" if self.ExternalTrend in ['No Trend', 'Up Trend'] else "CHoCH"
-#                 signals.append({
-#                     "type": f"{signal_type}",
-#                     "bias": BULLISH,
-#                     "time": time,
-#                     "level": self.Major_HighLevel,
-#                     "fractal_time": ohlc.index[self.Major_HighIndex] if self.Major_HighIndex is not None else time,
-#                     "index": i,
-#                     "volume": volume
-#                 })
-#                 self.bull_ms_count += 1
-#                 self.ExternalTrend = 'Up Trend'
-#                 self.LockBreak_M = self.Major_HighIndex
-#                 self.LastSignalIndex = i
-#                 logger.debug(f"Bullish {signal_type} detected: level={self.Major_HighLevel:.6f}, time={time}")
-#                 # Update Major_HighLevel after BOS
-#                 self.Major_HighLevel = high
-#                 self.Major_HighIndex = i
-#                 self.Major_HighType = 'H'
-#                 recent_lows = [p for p in pivot_low_points if p['index'] <= i]
-#                 if recent_lows:
-#                     latest_low = max(recent_lows, key=lambda x: x['index'])
-#                     self.Major_LowLevel = latest_low['level']
-#                     self.Major_LowIndex = latest_low['index']
-#                     self.Major_LowType = latest_low['type']
-#                     logger.debug(f"Updated Major_LowLevel={self.Major_LowLevel:.6f} at index {self.Major_LowIndex}")
-#             else:
-#                 logger.debug(f"Bullish BOS skipped: next_close={next_close:.6f}, close={close:.6f}, "
-#                              f"Major_HighLevel={self.Major_HighLevel:.6f}")
-#
-#         # Bearish Major BOS/CHoCH
-#         if (self.Major_LowLevel is not None and low < self.Major_LowLevel and
-#                 self.show_bear and volume >= self.volume_thresh):
-#             logger.debug(f"Bearish BOS check: low={low:.6f}, Major_LowLevel={self.Major_LowLevel:.6f}, "
-#                          f"LockBreak_M={self.LockBreak_M}, Major_LowIndex={self.Major_LowIndex}, volume={volume:.2f}")
-#             next_close = ohlc['close'].iloc[i + 1] if i < len(ohlc) - 1 else close
-#             if next_close < self.Major_LowLevel or close < self.Major_LowLevel:
-#                 signal_type = "BOS" if self.ExternalTrend in ['No Trend', 'Down Trend'] else "CHoCH"
-#                 signals.append({
-#                     "type": f"{signal_type}",
-#                     "bias": BEARISH,
-#                     "time": time,
-#                     "level": self.Major_LowLevel,
-#                     "fractal_time": ohlc.index[self.Major_LowIndex] if self.Major_LowIndex is not None else time,
-#                     "index": i,
-#                     "volume": volume
-#                 })
-#                 self.bear_ms_count += 1
-#                 self.ExternalTrend = 'Down Trend'
-#                 self.LockBreak_M = self.Major_LowIndex
-#                 self.LastSignalIndex = i
-#                 logger.debug(f"Bearish {signal_type} detected: level={self.Major_LowLevel:.6f}, time={time}")
-#                 # Update Major_LowLevel after BOS
-#                 self.Major_LowLevel = low
-#                 self.Major_LowIndex = i
-#                 self.Major_LowType = 'L'
-#                 recent_highs = [p for p in pivot_high_points if p['index'] <= i]
-#                 if recent_highs:
-#                     latest_high = max(recent_highs, key=lambda x: x['index'])
-#                     self.Major_HighLevel = latest_high['level']
-#                     self.Major_HighIndex = latest_high['index']
-#                     self.Major_HighType = latest_high['type']
-#                     logger.debug(f"Updated Major_HighLevel={self.Major_HighLevel:.6f} at index {self.Major_HighIndex}")
-#             else:
-#                 logger.debug(f"Bearish BOS skipped: next_close={next_close:.6f}, close={close:.6f}, "
-#                              f"Major_LowLevel={self.Major_LowLevel:.6f}")
-#
-#         # Update major levels when new pivots are confirmed (after BOS check)
-#         if i in self.ArrayIndex:
-#             pivot_idx = self.ArrayIndex.index(i)
-#             pivot_type = self.ArrayType[pivot_idx]
-#             pivot_value = self.ArrayValue[pivot_idx]
-#             if pivot_type in ['H', 'HH', 'LH']:
-#                 if (self.Major_HighLevel is None or
-#                         abs(pivot_value - self.Major_HighLevel) / self.Major_HighLevel >= self.min_price_move):
-#                     self.Major_HighLevel = pivot_value
-#                     self.Major_HighIndex = i
-#                     self.Major_HighType = pivot_type
-#                     self.LockBreak_M = None
-#                     logger.debug(f"Updated Major_HighLevel={self.Major_HighLevel:.6f} at index {i}, reset LockBreak_M")
-#             elif pivot_type in ['L', 'LL', 'HL']:
-#                 if (self.Major_LowLevel is None or
-#                         abs(pivot_value - self.Major_LowLevel) / self.Major_LowLevel >= self.min_price_move):
-#                     self.Major_LowLevel = pivot_value
-#                     self.Major_LowIndex = i
-#                     self.Major_LowType = pivot_type
-#                     self.LockBreak_M = None
-#                     logger.debug(f"Updated Major_LowLevel={self.Major_LowLevel:.6f} at index {i}, reset LockBreak_M")
-#
-#         return signals
 import pandas as pd
 import plotly.graph_objects as go
 
@@ -166,29 +7,14 @@ from daily_trading.settings import logger
 
 class BosChochDetector(DetectorsBase):
     def __init__(self, main_tf, pivot_period=None, left_bars=5, right_bars=1, show_bull=True, show_bear=True,
-                 min_price_move=0.001, min_signal_gap=1, wick_ratio: float = 0.10,
-                 # NEW PARAMETERS FOR QUALITY
-                 use_rvol=True,  # Switch to use Relative Volume
-                 rvol_thresh=1.5,  # Volume must be 1.5x the average
-                 vol_ma_period=20,  # Period for average volume
-                 require_close=True,  # Candle must CLOSE past the level
-                 min_body_ratio=0.5):  # Body must be at least 50% of total candle size
-
+                 volume_thresh=5, min_price_move=0.001, min_signal_gap=1, wick_ratio: float = 0.10):
         super().__init__(main_tf=main_tf, left_bars=left_bars, right_bars=right_bars, wick_ratio=wick_ratio)
         self.pivot_period = pivot_period if pivot_period is not None else self.length
         self.show_bull = show_bull
         self.show_bear = show_bear
+        self.volume_thresh = volume_thresh
         self.min_price_move = min_price_move
         self.min_signal_gap = min_signal_gap
-
-        # High Quality Settings
-        self.use_rvol = use_rvol
-        self.rvol_thresh = rvol_thresh
-        self.vol_ma_period = vol_ma_period
-        self.require_close = require_close
-        self.min_body_ratio = min_body_ratio
-
-        # State variables
         self.ExternalTrend = 'No Trend'
         self.LockBreak_M = None
         self.LastSignalIndex = None
@@ -200,44 +26,10 @@ class BosChochDetector(DetectorsBase):
         self.Major_LowIndex = None
         self.Major_HighType = None
         self.Major_LowType = None
-
-    def _is_high_quality_candle(self, ohlc, i, direction):
-        """
-        Checks if the break is 'High Quality' based on Volume and Candle Shape.
-        """
-        curr = ohlc.iloc[i]
-
-        # 1. Volume Check (Relative Volume)
-        if self.use_rvol and i > self.vol_ma_period:
-            # Calculate average volume of previous X candles (excluding current)
-            avg_vol = ohlc['volume'].iloc[i - self.vol_ma_period: i].mean()
-            # Avoid division by zero
-            if avg_vol > 0:
-                rvol = curr['volume'] / avg_vol
-                if rvol < self.rvol_thresh:
-                    logger.debug(f"Signal rejected: Low RVOL ({rvol:.2f} < {self.rvol_thresh})")
-                    return False
-
-        # 2. Displacement Check (Big Body)
-        candle_range = curr['high'] - curr['low']
-        body_size = abs(curr['close'] - curr['open'])
-
-        if candle_range == 0:
-            return False
-
-        body_ratio = body_size / candle_range
-        if body_ratio < self.min_body_ratio:
-            logger.debug(f"Signal rejected: Weak Body ({body_ratio:.2f} < {self.min_body_ratio})")
-            return False
-
-        # 3. Directional Close Check
-        # Ensure the candle actually closed in the direction of the break (Green for Bull, Red for Bear)
-        if direction == BULLISH and curr['close'] < curr['open']:
-            return False
-        if direction == BEARISH and curr['close'] > curr['open']:
-            return False
-
-        return True
+        logger.debug(f"Initialized BosChochDetector with lower_tf={main_tf}, pivot_period={self.pivot_period}, "
+                     f"left_bars={left_bars}, right_bars={right_bars}, show_bull={show_bull}, "
+                     f"show_bear={show_bear}, volume_thresh={volume_thresh}, "
+                     f"min_price_move={min_price_move}, min_signal_gap={min_signal_gap}")
 
     def detect_signals(self, ohlc, i, signals, pivot_high_points, pivot_low_points):
         close = ohlc['close'].iloc[i]
@@ -247,9 +39,14 @@ class BosChochDetector(DetectorsBase):
         volume = ohlc['volume'].iloc[i]
 
         if self.LastSignalIndex is not None and i - self.LastSignalIndex < self.min_signal_gap:
+            logger.debug(f"Skipping BOS/CHoCH at index {i}, time {time}: Within min_signal_gap={self.min_signal_gap}")
             return signals
 
-        # --- Trend Logic (Same as before) ---
+        logger.debug(f"Checking signals at index {i}, time {time}, close={close:.6f}, "
+                     f"ExternalTrend={self.ExternalTrend}, Major_HighLevel={self.Major_HighLevel}, "
+                     f"Major_LowLevel={self.Major_LowLevel}, LockBreak_M={self.LockBreak_M}, volume={volume:.2f}")
+
+        # Update trend based on pivot sequence
         if len(self.ArrayType) >= 3:
             last_pivot = self.ArrayType[-1]
             prev_pivot = self.ArrayType[-2]
@@ -263,16 +60,13 @@ class BosChochDetector(DetectorsBase):
             elif last_pivot == 'HL' and prev_pivot == 'HH' and prev_prev_pivot in ['L', 'LL', 'HL']:
                 self.ExternalTrend = 'Up Trend'
 
-        # --- BULLISH BREAK CHECK ---
-        # Logic: Current High > Level AND (Optional: Close > Level)
-        break_condition = high > self.Major_HighLevel if self.Major_HighLevel else False
-        if self.require_close and self.Major_HighLevel:
-            break_condition = close > self.Major_HighLevel
-
-        if (self.Major_HighLevel is not None and break_condition and self.show_bull):
-
-            # Check for Quality (RVOL and Body)
-            if self._is_high_quality_candle(ohlc, i, BULLISH):
+        # Bullish Major BOS/CHoCH
+        if (self.Major_HighLevel is not None and high > self.Major_HighLevel and
+                self.show_bull and volume >= self.volume_thresh):
+            logger.debug(f"Bullish BOS check: high={high:.6f}, Major_HighLevel={self.Major_HighLevel:.6f}, "
+                         f"LockBreak_M={self.LockBreak_M}, Major_HighIndex={self.Major_HighIndex}, volume={volume:.2f}")
+            next_close = ohlc['close'].iloc[i + 1] if i < len(ohlc) - 1 else close
+            if next_close > self.Major_HighLevel or close > self.Major_HighLevel:
                 signal_type = "BOS" if self.ExternalTrend in ['No Trend', 'Up Trend'] else "CHoCH"
                 signals.append({
                     "type": f"{signal_type}",
@@ -287,29 +81,29 @@ class BosChochDetector(DetectorsBase):
                 self.ExternalTrend = 'Up Trend'
                 self.LockBreak_M = self.Major_HighIndex
                 self.LastSignalIndex = i
-
-                # Update Level Immediately
+                logger.debug(f"Bullish {signal_type} detected: level={self.Major_HighLevel:.6f}, time={time}")
+                # Update Major_HighLevel after BOS
                 self.Major_HighLevel = high
                 self.Major_HighIndex = i
                 self.Major_HighType = 'H'
-
-                # Find most recent low
                 recent_lows = [p for p in pivot_low_points if p['index'] <= i]
                 if recent_lows:
                     latest_low = max(recent_lows, key=lambda x: x['index'])
                     self.Major_LowLevel = latest_low['level']
                     self.Major_LowIndex = latest_low['index']
                     self.Major_LowType = latest_low['type']
+                    logger.debug(f"Updated Major_LowLevel={self.Major_LowLevel:.6f} at index {self.Major_LowIndex}")
+            else:
+                logger.debug(f"Bullish BOS skipped: next_close={next_close:.6f}, close={close:.6f}, "
+                             f"Major_HighLevel={self.Major_HighLevel:.6f}")
 
-        # --- BEARISH BREAK CHECK ---
-        break_condition = low < self.Major_LowLevel if self.Major_LowLevel else False
-        if self.require_close and self.Major_LowLevel:
-            break_condition = close < self.Major_LowLevel
-
-        if (self.Major_LowLevel is not None and break_condition and self.show_bear):
-
-            # Check for Quality (RVOL and Body)
-            if self._is_high_quality_candle(ohlc, i, BEARISH):
+        # Bearish Major BOS/CHoCH
+        if (self.Major_LowLevel is not None and low < self.Major_LowLevel and
+                self.show_bear and volume >= self.volume_thresh):
+            logger.debug(f"Bearish BOS check: low={low:.6f}, Major_LowLevel={self.Major_LowLevel:.6f}, "
+                         f"LockBreak_M={self.LockBreak_M}, Major_LowIndex={self.Major_LowIndex}, volume={volume:.2f}")
+            next_close = ohlc['close'].iloc[i + 1] if i < len(ohlc) - 1 else close
+            if next_close < self.Major_LowLevel or close < self.Major_LowLevel:
                 signal_type = "BOS" if self.ExternalTrend in ['No Trend', 'Down Trend'] else "CHoCH"
                 signals.append({
                     "type": f"{signal_type}",
@@ -324,21 +118,23 @@ class BosChochDetector(DetectorsBase):
                 self.ExternalTrend = 'Down Trend'
                 self.LockBreak_M = self.Major_LowIndex
                 self.LastSignalIndex = i
-
-                # Update Level Immediately
+                logger.debug(f"Bearish {signal_type} detected: level={self.Major_LowLevel:.6f}, time={time}")
+                # Update Major_LowLevel after BOS
                 self.Major_LowLevel = low
                 self.Major_LowIndex = i
                 self.Major_LowType = 'L'
-
-                # Find most recent high
                 recent_highs = [p for p in pivot_high_points if p['index'] <= i]
                 if recent_highs:
                     latest_high = max(recent_highs, key=lambda x: x['index'])
                     self.Major_HighLevel = latest_high['level']
                     self.Major_HighIndex = latest_high['index']
                     self.Major_HighType = latest_high['type']
+                    logger.debug(f"Updated Major_HighLevel={self.Major_HighLevel:.6f} at index {self.Major_HighIndex}")
+            else:
+                logger.debug(f"Bearish BOS skipped: next_close={next_close:.6f}, close={close:.6f}, "
+                             f"Major_LowLevel={self.Major_LowLevel:.6f}")
 
-        # --- UPDATE LEVELS ON NEW PIVOTS (Reset logic) ---
+        # Update major levels when new pivots are confirmed (after BOS check)
         if i in self.ArrayIndex:
             pivot_idx = self.ArrayIndex.index(i)
             pivot_type = self.ArrayType[pivot_idx]
@@ -350,6 +146,7 @@ class BosChochDetector(DetectorsBase):
                     self.Major_HighIndex = i
                     self.Major_HighType = pivot_type
                     self.LockBreak_M = None
+                    logger.debug(f"Updated Major_HighLevel={self.Major_HighLevel:.6f} at index {i}, reset LockBreak_M")
             elif pivot_type in ['L', 'LL', 'HL']:
                 if (self.Major_LowLevel is None or
                         abs(pivot_value - self.Major_LowLevel) / self.Major_LowLevel >= self.min_price_move):
@@ -357,6 +154,7 @@ class BosChochDetector(DetectorsBase):
                     self.Major_LowIndex = i
                     self.Major_LowType = pivot_type
                     self.LockBreak_M = None
+                    logger.debug(f"Updated Major_LowLevel={self.Major_LowLevel:.6f} at index {i}, reset LockBreak_M")
 
         return signals
 
@@ -421,8 +219,7 @@ class BosChochDetector(DetectorsBase):
                 self.LockBreak_M = self.Major_HighIndex
                 self.LastSignalIndex = last_index
                 logger.debug(
-                    f"Bullish Major {signal_type} detected (last candle): level={self.Major_HighLevel:.6f}, "
-                    f"time={ohlc.index[last_index]}")
+                    f"Bullish Major {signal_type} detected (last candle): level={self.Major_HighLevel:.6f}, time={ohlc.index[last_index]}")
                 self.Major_HighLevel = last_high
                 self.Major_HighIndex = last_index
                 self.Major_HighType = 'H'
@@ -449,8 +246,7 @@ class BosChochDetector(DetectorsBase):
                 self.LockBreak_M = self.Major_LowIndex
                 self.LastSignalIndex = last_index
                 logger.debug(
-                    f"Bearish Major {signal_type} detected (last candle): level={self.Major_LowLevel:.6f}, "
-                    f"time={ohlc.index[last_index]}")
+                    f"Bearish Major {signal_type} detected (last candle): level={self.Major_LowLevel:.6f}, time={ohlc.index[last_index]}")
                 self.Major_LowLevel = last_low
                 self.Major_LowIndex = last_index
                 self.Major_LowType = 'L'

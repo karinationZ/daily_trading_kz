@@ -470,6 +470,9 @@ async def test_ibkr():
     msg = await client.get_daily_summary()
     logger.info(msg)
 
+    ohlc = await client.get_klines("MES", "5m")
+    print()
+
     # Setup Target Variables
     # symbol = "MNQ"
     # timezone = ZoneInfo("America/New_York")

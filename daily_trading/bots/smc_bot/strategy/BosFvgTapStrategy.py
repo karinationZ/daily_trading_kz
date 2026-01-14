@@ -51,7 +51,7 @@ class BosFvgStrategy(StrategyBase):
         self.ltf_fvg_detector = FvgDetector(main_tf=main_tf, pivot_period=5, fvg_threshold=0.5)
 
         # Logging Setup
-        tz_short = "NY" if "New_York" in str(timezone) else "LON"
+        tz_short = self.get_tz_short(self.timezone)
         self.log_tag = f"BOS-FVG | {symbol}:{tz_short}"
         self.log = logger.bind(bot_id=self.log_tag)
         # Unique IBKR Tag
@@ -119,17 +119,21 @@ class BosFvgStrategy(StrategyBase):
     def find_valid_fvg(self, df_ltf: pd.DataFrame, trend: Trend, current_price: float):
         """
         Scans LTF for the best FVG that matches the HTF Trend.
+        Optimized: Scans backwards to find the most recent valid FVG immediately.
         """
         # Run Detector
         result = self.ltf_fvg_detector.calculate_fvg(df_ltf, plot=False)
         fvg_signals = result.get('signals', [])
 
-        valid_fvgs = []
+        if not fvg_signals:
+            return None
 
-        # Map Trend to FVG Bias (Detector uses strings "BULLISH", "BEARISH")
+        # Map Trend to FVG Bias
         target_bias = BIAS.LONG.num_value if trend == Trend.BULLISH else BIAS.SHORT.num_value
 
+        # OPTIMIZATION: Use reversed() to scan from Newest -> Oldest
         for fvg in fvg_signals:
+
             # 1. Must match direction
             if fvg['bias'] != target_bias:
                 continue
@@ -139,25 +143,22 @@ class BosFvgStrategy(StrategyBase):
                 continue
 
             # 3. Must be Fresh (Not in processed list)
-            # Create unique ID based on time
             fvg_id = f"{fvg['time']}_{self.symbol}"
             if fvg_id in self.processed_zone_ids:
                 continue
 
             # 4. Price Logic (Discount/Premium)
-            # Bullish: We want to buy LOWER than current price (Waiting for dip)
-            if trend == Trend.BULLISH and fvg['top'] < current_price:
-                valid_fvgs.append(fvg)
-            # Bearish: We want to sell HIGHER than current price (Waiting for rally)
-            elif trend == Trend.BEARISH and fvg['bottom'] > current_price:
-                valid_fvgs.append(fvg)
+            # If criteria met, return IMMEDIATELY. No need to check older ones.
+            if trend == Trend.BULLISH:
+                # Buy: FVG must be below current price
+                if fvg['top'] < current_price:
+                    return fvg
+            elif trend == Trend.BEARISH:
+                # Sell: FVG must be above current price
+                if fvg['bottom'] > current_price:
+                    return fvg
 
-        if not valid_fvgs:
-            return None
-
-        # Sort by Recency (Time descending) - We want the closest active FVG
-        valid_fvgs.sort(key=lambda x: x['time'], reverse=True)
-        return valid_fvgs[0]
+        return None
 
     # ==================================================================
     # 2. TRADE CALCULATION

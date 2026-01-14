@@ -4,6 +4,7 @@ from datetime import datetime
 from enum import auto, Enum
 from typing import Dict, List, Optional
 from typing import Tuple
+from zoneinfo import ZoneInfo
 
 import pandas as pd
 import plotly.graph_objects as go
@@ -112,6 +113,15 @@ class StrategyBase(ABC):
         self.bos_signals = None
         self.recent_bos_signal = None
         self.bos_choch_fig = None
+
+    @staticmethod
+    def get_tz_short(timezone: ZoneInfo):
+        if timezone == ZoneInfo("America/New_York"):
+            tz_short = "NY"
+        elif timezone == ZoneInfo("Europe/London"):
+            tz_short = "LONDON"
+        else:
+            tz_short = "ASIA"
 
     async def manage_cache_event(self, cache_key: Tuple[str, str], event: str, current_time: datetime) -> bool:
         """Manage cache for a new event, return True if event is new."""

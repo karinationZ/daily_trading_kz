@@ -84,7 +84,7 @@ class ORBStrategy(StrategyBase):
         self.symbol = symbol
         self.timezone = timezone
 
-        tz_short = "NY" if timezone == ZoneInfo("America/New_York") else "LONDON"
+        tz_short = self.get_tz_short(self.timezone)
         self.log_tag = f"ORB | {symbol}:{tz_short}"
         self.log = logger.bind(bot_id=self.log_tag)
 

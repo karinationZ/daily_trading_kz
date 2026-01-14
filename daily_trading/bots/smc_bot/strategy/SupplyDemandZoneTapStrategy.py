@@ -67,7 +67,7 @@ class SupplyDemandZoneTapStrategy(StrategyBase):
         self.last_processed_hour: int = -1
         self.point_value = self.POINT_VALUE[symbol]
 
-        tz_short = "NY" if timezone == ZoneInfo("America/New_York") else "LONDON"
+        tz_short = self.get_tz_short(self.timezone)
         self.log_tag = f"1H TAP | {symbol}:{tz_short}"
         self.log = logger.bind(bot_id=self.log_tag)
 

@@ -114,7 +114,12 @@ class SupplyDemandTapBot(SMCBotBase):
     def _initialize_strategies(self):
         unique_symbols = set()
         for (symbol, session_name), cfg in SD_CONFIG.items():
-            tz = ZoneInfo("America/New_York") if session_name == "NY" else ZoneInfo("Europe/London")
+            if session_name == "NY":
+                tz = ZoneInfo("America/New_York")
+            elif session_name == "LONDON":
+                tz = ZoneInfo("Europe/London")
+            else:
+                tz = ZoneInfo("Asia/Tokyo")
             try:
                 strategy = SupplyDemandZoneTapStrategy(
                     symbol=symbol,

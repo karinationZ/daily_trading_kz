@@ -7,8 +7,8 @@ import pandas as pd
 import plotly.graph_objects as go
 
 from daily_trading.bots.smc_bot.detectors.ORBDetector import SESSION_MAP
-from daily_trading.bots.smc_bot.detectors.DetectorsBase import BIAS
-from daily_trading.bots.smc_bot.strategy.StrategyBase import TradeAction, TradeStatus
+from daily_trading.bots.smc_bot.detectors.SMCBase import BIAS
+from daily_trading.bots.smc_bot.strategy.StrategyBase import TradeAction, TradeSignal, TradeStatus
 from daily_trading.settings import logger
 
 
@@ -51,7 +51,7 @@ class Backtester:
     def run(self,
             ohlc_5m: pd.DataFrame,
             ohlc_1h: Optional[pd.DataFrame] = None,
-            lookback_5m: int = 1000,
+            lookback_5m: int = 200,
             lookback_1h: int = 200):
         """
         Universal Run Loop.
@@ -176,7 +176,7 @@ class Backtester:
             # PHASE 3: SIGNAL PROCESSING (Enter/Cancel/Exit)
             # ====================================================================
             if not result.trade_signal: continue
-            sig = result.trade_signal
+            sig: TradeSignal = result.trade_signal
 
             # 1. ENTER
             if sig.action == TradeAction.ENTER:
@@ -233,16 +233,13 @@ class Backtester:
                     })
                 else:
                     price = curr_bar["close"]
+                    t_rec.update({"entry_time": sig.entry_timestamp})
                     res = "WIN" if self.is_win(t_rec, price) else "LOSS"
                     self._calculate_and_close(t_rec, price, ts_utc, res, "Session Cutoff / Manual Exit")
 
                 self.trades.append(t_rec)
                 self.pending_trade = None
                 self.strategy.trade_status = TradeStatus.NONE
-
-                # ... existing logic ...
-
-                # 4. UPDATE (Cancel Old + Place New)
 
             # 4. UPDATE (Cancel Old + Place New)
             elif sig.action == TradeAction.UPDATE:

@@ -273,7 +273,8 @@ class BosFvgStrategy(StrategyBase):
             if self.check_order_fill(curr):
                 self.trade_status = TradeStatus.FILLED
                 self.log.info(f"⚡ ORDER FILLED {self.symbol} @ {self.active_trade.price}")
-                return SignalSummary(direction="FILLED")
+                self.active_trade.entry_timestamp = curr.name
+                return SignalSummary(direction="FILLED", trend_signal=self.active_trade)
 
         # ----------------------------------------------------------------------
         # 2. EXIT CHECK (Only if Filled)

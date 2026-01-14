@@ -211,7 +211,12 @@ class ORBBot(SMCBotBase):
 
         for (symbol, session_name), config in ORB_CONFIG.items():
             try:
-                tz = ZoneInfo("America/New_York") if session_name == "NY" else ZoneInfo("Europe/London")
+                if session_name == "NY":
+                    tz = ZoneInfo("America/New_York")
+                elif session_name == "LONDON":
+                    tz = ZoneInfo("Europe/London")
+                else:
+                    tz = ZoneInfo("Asia/Tokyo")
 
                 strategy = ORBStrategy(
                     symbol=symbol,

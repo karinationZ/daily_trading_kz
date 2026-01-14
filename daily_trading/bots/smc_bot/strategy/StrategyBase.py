@@ -38,6 +38,7 @@ class TradeSignal:
     sl: Optional[float] = None
     tp: Optional[float] = None
     size: Optional[int] = None
+    entry_timestamp: Optional[datetime] = None
     reason: Optional[str] = None
     timestamp: Optional[datetime] = None
     metadata: Dict = field(default_factory=dict)

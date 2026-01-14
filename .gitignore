@@ -1,8 +1,30 @@
 /daily_trading/bots/smc_bot/tests/
 *.csv
 # Python
+# Python cache
 __pycache__/
-*/__pycache__/
+*.py[cod]
+
+# Virtual environments
+.venv/
+venv/
+env/
+
+# Build / dist
+build/
+dist/
+*.egg-info/
+
+# Test / coverage
+.pytest_cache/
+.coverage
+htmlcov/
+
+# IDE / OS
+.vscode/
+.idea/
+.DS_Store
+
 *.py[cod]
 *$py.class
 *.so

@@ -8,12 +8,12 @@ from daily_trading.bots.smc_bot.detectors.CandlePatternDetector import CandlePat
 from daily_trading.bots.smc_bot.detectors.FvgDetector import FvgDetector
 from daily_trading.bots.smc_bot.detectors.HighLowDetector import HighLowDetector
 from daily_trading.bots.smc_bot.detectors.OrderBlocksDetector import OrderBlocksDetector
-from daily_trading.bots.smc_bot.detectors.StrategyBase import BIAS, Trend
-from daily_trading.bots.smc_bot.strategy.StrategyBase import SignalSummary, StrategyBase
+from daily_trading.bots.smc_bot.detectors.DetectorsBase import BIAS, Trend
+from daily_trading.bots.smc_bot.strategy.StrategyBase import SignalSummary, DetectorsBase
 from daily_trading.settings import logger
 
 
-class OrderBlockSweepStrategy(StrategyBase):
+class OrderBlockSweepStrategy(DetectorsBase):
     """
     Analyzes OHLC mgc for continuation trade signals based on block order sweeps.
     Designed for scalping in volatile crypto markets with a 4-step process:

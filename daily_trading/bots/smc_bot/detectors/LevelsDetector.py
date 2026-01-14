@@ -3,10 +3,10 @@ import pandas as pd
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 
-from daily_trading.bots.smc_bot.detectors.StrategyBase import StrategyBase
+from daily_trading.bots.smc_bot.detectors.DetectorsBase import DetectorsBase
 
 
-class LevelsDetector(StrategyBase):
+class LevelsDetector(DetectorsBase):
     def __init__(self, main_tf="1d", pivot_length=5, strength=1):
         super().__init__(main_tf, pivot_length, pivot_length)
         self.pivot_length = pivot_length

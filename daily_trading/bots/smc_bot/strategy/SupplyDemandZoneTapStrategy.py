@@ -4,10 +4,11 @@ from zoneinfo import ZoneInfo
 
 import pandas as pd
 
+from daily_trading.bots.smc_bot.detectors.DetectorsBase import BIAS
 from daily_trading.bots.smc_bot.detectors.ORBDetector import SESSION_MAP
-from daily_trading.bots.smc_bot.detectors.StrategyBase import BIAS, StrategyBase
 from daily_trading.bots.smc_bot.detectors.SupplyDemandZonesDetector import SupplyDemandZonesDetector
-from daily_trading.bots.smc_bot.strategy.StrategyBase import SignalSummary, TradeAction, TradeSignal, TradeStatus
+from daily_trading.bots.smc_bot.strategy.StrategyBase import SignalSummary, StrategyBase, TradeAction, TradeSignal, \
+    TradeStatus
 from daily_trading.settings import logger
 
 
@@ -32,9 +33,8 @@ class SupplyDemandZoneTapStrategy(StrategyBase):
                  fvg_offset: int = 3,
                  fvg_threshold=0.15,
                  sl_atr_multiplier=2.0,
-                 eb_mult=2.0,
-                 atr_length_buffer: int = 14):
-        super().__init__(main_tf, atr_length_buffer=atr_length_buffer)
+                 eb_mult=2.0):
+        super().__init__(main_tf)
         self.symbol = symbol
         self.timezone = timezone
         self.risk = risk
@@ -85,8 +85,7 @@ class SupplyDemandZoneTapStrategy(StrategyBase):
 
     def validate_zone_reaction(self, ohlc: pd.DataFrame, direction: BIAS, zone: Dict) -> bool:
         """Trigger Logic: Restored to 'Striking Distance' (+ buffer for Longs)."""
-        atr = self.get_current_atr(ohlc)
-        tick_buffer = atr * 0.05
+        atr = self.sd_detector_1h.get_current_atr(ohlc)
         entry_buffer = self.enter_buffer * self.eb_mult
 
         curr = ohlc.iloc[-1]
@@ -97,7 +96,7 @@ class SupplyDemandZoneTapStrategy(StrategyBase):
 
         if not touched:
             return False
-        is_falling_knf = self.is_falling_knife(curr, direction, atr)
+        is_falling_knf = self.sd_detector_1h.is_falling_knife(curr, direction, atr)
 
         if is_falling_knf:
             self.log.info(f"Detected Falling knife. | {curr.name}")
@@ -107,25 +106,24 @@ class SupplyDemandZoneTapStrategy(StrategyBase):
 
     def calculate_trade_params(self, ohlc, zone: Dict, direction: BIAS) -> Dict:
         """Calculates entry at zone edge and SL beyond HTF zone boundary."""
-        curr_price = ohlc.iloc[-1]["close"]
         curr_candle = ohlc.iloc[-1]
         adjusted_buffer = self.enter_buffer * self.eb_mult
         if direction == BIAS.LONG:
             entry_price = curr_candle["low"] - adjusted_buffer
-            sl = self.calculate_atr_stop_loss(ohlc,
-                                              entry_price,
-                                              direction=direction,
-                                              atr_length=14,
-                                              atr_multiplier=self.sl_atr_multiplier)
+            sl = self.sd_detector_1h.calculate_atr_stop_loss(ohlc,
+                                                             entry_price,
+                                                             direction=direction,
+                                                             atr_length=14,
+                                                             atr_multiplier=self.sl_atr_multiplier)
             r = entry_price - sl
             tp = entry_price + (r * self.tp_multiple)
         else:
             entry_price = curr_candle["high"] + adjusted_buffer
-            sl = self.calculate_atr_stop_loss(ohlc,
-                                              entry_price,
-                                              direction=direction,
-                                              atr_length=14,
-                                              atr_multiplier=self.sl_atr_multiplier)
+            sl = self.sd_detector_1h.calculate_atr_stop_loss(ohlc,
+                                                             entry_price,
+                                                             direction=direction,
+                                                             atr_length=14,
+                                                             atr_multiplier=self.sl_atr_multiplier)
 
             r = sl - entry_price
             tp = entry_price - (r * self.tp_multiple)
@@ -142,10 +140,10 @@ class SupplyDemandZoneTapStrategy(StrategyBase):
         # 3. Calculate Raw Size (Pure Math)
         raw_size = int(self.risk / risk_per_contract)
         # 4. --- SAFETY CAP ---
-        MAX_CONTRACTS = 5
-        size = max(1, min(raw_size, MAX_CONTRACTS))
+        max_contracts = 5
+        size = max(1, min(raw_size, max_contracts))
 
-        if raw_size > MAX_CONTRACTS:
+        if raw_size > max_contracts:
             self.log.warning(
                 f"⚠️ RISK CAP: Math wanted {raw_size} contracts, capped at {size}. "
                 f"(Risk per contract: ${risk_per_contract:.2f})")

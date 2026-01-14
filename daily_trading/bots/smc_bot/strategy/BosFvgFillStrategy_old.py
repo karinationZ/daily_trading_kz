@@ -3,11 +3,11 @@ import pandas as pd
 from daily_trading.bots.smc_bot.detectors.BosChochDetector import BosChochDetector
 from daily_trading.bots.smc_bot.detectors.FvgDetector import FvgDetector
 from daily_trading.bots.smc_bot.detectors.HighLowDetector import HighLowDetector
-from daily_trading.bots.smc_bot.detectors.StrategyBase import GET_READY_ALERT, BIAS, Trend
-from daily_trading.bots.smc_bot.strategy.StrategyBase import SignalSummary, StrategyBase
+from daily_trading.bots.smc_bot.detectors.DetectorsBase import GET_READY_ALERT, BIAS, Trend
+from daily_trading.bots.smc_bot.strategy.StrategyBase import SignalSummary, DetectorsBase
 
 
-class BosFvgFillStrategy(StrategyBase):
+class BosFvgFillStrategy(DetectorsBase):
     """
     Analyzes OHLC mgc using Smart Money Concept (SMC) for continuation trade signals.
     Designed for scalping in volatile crypto markets with a 6-step process:

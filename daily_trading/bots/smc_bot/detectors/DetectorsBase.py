@@ -12,10 +12,24 @@ NEUTRAL = -1
 
 
 class BIAS(Enum):
-    """Trend enumeration with integer values"""
-    SHORT = "SHORT"
-    LONG = "LONG"
-    NEUTRAL = "NEUTRAL"
+    """
+    Trend enumeration.
+    - .value: Returns the String (Backward Compatible)
+    - .index: Returns the Integer (New Functionality)
+    """
+    # Definition: (String Value, Integer Index)
+    SHORT = ("SHORT", 0)
+    LONG = ("LONG", 1)
+    NEUTRAL = ("NEUTRAL", -1)
+
+    def __new__(cls, value_str, num_value):
+        # Create the Enum member
+        obj = object.__new__(cls)
+        # Set the official value to the string (preserves legacy string behavior)
+        obj._value_ = value_str
+        # Set the custom attribute
+        obj.num_value = num_value
+        return obj
 
 
 class Trend(Enum):
@@ -25,45 +39,10 @@ class Trend(Enum):
     NEUTRAL = -1
 
 
-class StrategyBase:
-    # Updated Configuration with MCL
-    POINT_VALUE = {
-        "MNQ": 2.0,
-        "MES": 5.0,
-        "MGC": 10.0,
-        "MBT": 0.10,
-        "SIL": 1000.0,
-        "MCL": 100.0
-    }
+class DetectorsBase:
 
-    ENTRY_BUFFER = {
-        "MNQ": 0.5,
-        "MES": 0.5,
-        "MGC": 0.2,
-        "MBT": 5.0,
-        "SIL": 0.010,
-        "MCL": 0.02
-    }
-
-    SL_BUFFER = {
-        "MNQ": 0.5,
-        "MES": 0.5,
-        "MGC": 0.5,
-        "MBT": 5.0,
-        "SIL": 0.025,
-        "MCL": 0.05
-    }
-
-    TICK_SIZES = {
-        "MNQ": 0.25,
-        "MES": 0.25,
-        "MGC": 0.10,
-        "MBT": 5.00,
-        "MCL": 0.01,
-        "SIL": 0.005,
-    }
-
-    def __init__(self, main_tf, left_bars=None, right_bars=None, plot_tail=100, atr_length_buffer=14):
+    def __init__(self, main_tf, left_bars=None, right_bars=None, plot_tail=100, atr_length_buffer=14, wick_ratio: float = 0.10):
+        self.wick_ratio = wick_ratio
         self.main_tf = main_tf
         self.swing_length_map = {
             "15m": 8,
@@ -304,51 +283,6 @@ class StrategyBase:
             return Trend.BEARISH.name
 
         return Trend.NEUTRAL.name
-
-    # @staticmethod
-    # def detect_trend(
-    #         ohlc_data: pd.DataFrame,
-    #         short_ma: int = 5,
-    #         long_ma: int = 20,
-    #         slope_lookback: int = 20,
-    #         slope_threshold_pct: float = 0.001,
-    #         min_confirmation: int = 2
-    # ) -> str:
-    #     """
-    #     Fixed version of original function with better validation and parameters.
-    #     """
-    #     # Input validation
-    #     if len(ohlc_data) < max(long_ma, slope_lookback) + min_confirmation:
-    #         return Trend.NEUTRAL.name
-    #
-    #     # Calculate moving averages
-    #     short_sma = ohlc_data['close'].rolling(window=short_ma).mean()
-    #     long_sma = ohlc_data['close'].rolling(window=long_ma).mean()
-    #
-    #     # Calculate slope
-    #     recent_data = ohlc_data['close'].tail(slope_lookback)
-    #     x = np.arange(len(recent_data))
-    #     slope, _ = np.polyfit(x, recent_data, 1)
-    #
-    #     # Dynamic slope threshold
-    #     mean_close = recent_data.mean()
-    #     slope_threshold = mean_close * slope_threshold_pct
-    #
-    #     # Trend conditions with confirmation
-    #     ma_bullish = all(
-    #         short_sma.iloc[-i] > long_sma.iloc[-i]
-    #         for i in range(1, min_confirmation + 1)
-    #     )
-    #     ma_bearish = all(
-    #         short_sma.iloc[-i] < long_sma.iloc[-i]
-    #         for i in range(1, min_confirmation + 1)
-    #     )
-    #
-    #     if ma_bullish and slope > slope_threshold:
-    #         return Trend.BULLISH.name
-    #     elif ma_bearish and slope < -slope_threshold:
-    #         return Trend.BEARISH.name
-    #     return Trend.NEUTRAL.name
 
     @staticmethod
     def get_time_frame_name(ohlc: pd.DataFrame) -> str:

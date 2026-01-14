@@ -1,8 +1,8 @@
-from daily_trading.bots.smc_bot.detectors.StrategyBase import StrategyBase, Trend
+from daily_trading.bots.smc_bot.detectors.DetectorsBase import DetectorsBase, Trend
 from daily_trading.settings import logger
 
 
-class CandlePatternDetector(StrategyBase):
+class CandlePatternDetector(DetectorsBase):
     def __init__(self, main_tf):
         super().__init__(main_tf=main_tf)
 

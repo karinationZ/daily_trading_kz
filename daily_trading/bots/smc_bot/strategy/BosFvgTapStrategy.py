@@ -1,14 +1,14 @@
-from datetime import timedelta
-from typing import Dict, List, Optional
+from typing import Optional
 from zoneinfo import ZoneInfo
 
 import pandas as pd
 
 # Detectors
 from daily_trading.bots.smc_bot.detectors.BosChochDetector import BosChochDetector
+from daily_trading.bots.smc_bot.detectors.DetectorsBase import BIAS, Trend
 from daily_trading.bots.smc_bot.detectors.FvgDetector import FvgDetector
-from daily_trading.bots.smc_bot.detectors.StrategyBase import BIAS, StrategyBase, Trend
-from daily_trading.bots.smc_bot.strategy.StrategyBase import SignalSummary, TradeAction, TradeSignal, TradeStatus
+from daily_trading.bots.smc_bot.strategy.StrategyBase import SignalSummary, StrategyBase, TradeAction, TradeSignal, \
+    TradeStatus
 from daily_trading.settings import logger
 
 
@@ -29,19 +29,21 @@ class BosFvgStrategy(StrategyBase):
                  htf="1h",  # HTF for Trend
                  risk: float = 150.0,
                  tp_multiple: float = 2.0,
-                 entry_depth: float = 0.5,  # 0.5 = Entry at 50% of FVG height
-                 sl_buffer_mult: float = 0.1,
-                 atr_length_buffer: int = 14):
+                 fvg_mitigation_ratio: float = 0.5,  # 0.5 = Entry at 50% of FVG height
+                 sl_buffer_mult: float = 0.1):
 
-        super().__init__(main_tf, atr_length_buffer=atr_length_buffer)
+        super().__init__(main_tf)
 
         self.symbol = symbol
         self.timezone = timezone
         self.htf = htf
         self.risk = risk
         self.tp_multiple = tp_multiple
-        self.entry_depth = entry_depth
+        self.entry_depth = fvg_mitigation_ratio
         self.sl_buffer_mult = sl_buffer_mult
+
+        self.last_htf_timestamp = None
+        self.cached_trend = Trend.NEUTRAL
 
         # --- DETECTORS ---
         # Note: We use the classes provided without modification
@@ -51,7 +53,9 @@ class BosFvgStrategy(StrategyBase):
         # Logging Setup
         tz_short = "NY" if "New_York" in str(timezone) else "LON"
         self.log_tag = f"BOS-FVG | {symbol}:{tz_short}"
-        self._logger = logger.bind(bot_id=self.log_tag)
+        self.log = logger.bind(bot_id=self.log_tag)
+        # Unique IBKR Tag
+        self.ext_tag = f"{symbol}_{tz_short}_BOS_FVG_TAP"
 
         # State
         self.active_trade: Optional[TradeSignal] = None
@@ -59,15 +63,16 @@ class BosFvgStrategy(StrategyBase):
 
         # Cache processed zones to prevent re-entry on same FVG
         self.processed_zone_ids = set()
-
+        self.last_processed_hour: int = -1
         self.point_value = self.POINT_VALUE.get(symbol, 5.0)
 
-    # Logger Wrapper for compatibility
-    def log(self, msg: str, level: str = "info"):
-        if hasattr(self._logger, level):
-            getattr(self._logger, level)(msg)
-        else:
-            self._logger.info(msg)
+    def reset_session_state(self):
+        """Standard reset for start of trading day."""
+        logger.info(f"{self.symbol} | New Session: Resetting Strategy State and Cache.")
+        self.active_trade = None
+        self.trade_status = TradeStatus.NONE
+        self.processed_zone_ids.clear()
+        self.last_processed_hour = -1
 
     # ==================================================================
     # 1. MARKET STRUCTURE ANALYSIS
@@ -77,6 +82,13 @@ class BosFvgStrategy(StrategyBase):
         """
         Analyzes 1H Structure. Returns Trend.BULLISH, BEARISH, or NEUTRAL.
         """
+        if df_htf.empty:
+            return Trend.NEUTRAL
+        current_htf_ts = df_htf.index[-1]
+
+        # If the timestamp is the same as the last time we checked, return cached result
+        if self.last_htf_timestamp == current_htf_ts:
+            return self.cached_trend
         # Run Detector
         result = self.htf_bos_detector.calculate_bos_choch(df_htf, plot=False)
         signals = result.get('signals', [])
@@ -88,19 +100,21 @@ class BosFvgStrategy(StrategyBase):
         # Signals are usually appended chronologically, so take the last one
         last_sig = signals[-1]
 
-        sig_type = last_sig.get('type', '')
-        bias = last_sig.get('bias')  # BULLISH/BEARISH enum from SMCBase
+        bias = last_sig.get('bias')
+        trend = Trend.NEUTRAL
+        # TODO: Option B (Conservative): Accept ONLY BOS (Current code)
+        # signal_type = last_sig.get("type", None)
+        # if signal_type == "BOS":
+        if bias == BIAS.LONG.num_value:
+            trend = Trend.BULLISH
+        elif bias == BIAS.SHORT.num_value:
+            trend = Trend.BEARISH
 
-        if bias == BIAS.LONG:  # Assuming SMCBase BULLISH maps to this
-            return Trend.BULLISH
-        elif bias == BIAS.SHORT:
-            return Trend.BEARISH
+        # 3. CACHE THE RESULT
+        self.last_htf_timestamp = current_htf_ts
+        self.cached_trend = trend
 
-        # Fallback if bias isn't explicitly set in signal dict
-        if 'UP' in sig_type or 'BULL' in sig_type: return Trend.BULLISH
-        if 'DOWN' in sig_type or 'BEAR' in sig_type: return Trend.BEARISH
-
-        return Trend.NEUTRAL
+        return trend
 
     def find_valid_fvg(self, df_ltf: pd.DataFrame, trend: Trend, current_price: float):
         """
@@ -113,7 +127,7 @@ class BosFvgStrategy(StrategyBase):
         valid_fvgs = []
 
         # Map Trend to FVG Bias (Detector uses strings "BULLISH", "BEARISH")
-        target_bias = BIAS.LONG if trend == Trend.BULLISH else BIAS.SHORT
+        target_bias = BIAS.LONG.num_value if trend == Trend.BULLISH else BIAS.SHORT.num_value
 
         for fvg in fvg_signals:
             # 1. Must match direction
@@ -150,7 +164,7 @@ class BosFvgStrategy(StrategyBase):
     # ==================================================================
 
     def calculate_setup_params(self, fvg, trend: Trend, df_ltf: pd.DataFrame):
-        atr = self.get_current_atr(df_ltf)
+        atr = self.ltf_fvg_detector.get_current_atr(df_ltf)
 
         top = fvg['top']
         bottom = fvg['bottom']
@@ -178,71 +192,7 @@ class BosFvgStrategy(StrategyBase):
         }
 
     # ==================================================================
-    # 3. MAIN EXECUTION LOOP
-    # ==================================================================
-
-    def analyze(self, df_ltf: pd.DataFrame, df_htf: pd.DataFrame) -> SignalSummary:
-        """
-        Called every 5 mins by MasterBot.
-        """
-        curr = df_ltf.iloc[-1]
-
-        # 1. FILL CHECK
-        if self.trade_status == TradeStatus.PENDING:
-            if self.check_fill(curr):
-                self.trade_status = TradeStatus.FILLED
-                self.log(f"⚡ ORDER FILLED {self.symbol} @ {self.active_trade.price}")
-                return SignalSummary(direction="FILLED")
-
-            # Check Validity (Cancel if price ran away to TP?)
-            # Simplified for now: Keep pending until session end or fill.
-
-        # 2. EXIT CHECK
-        if self.trade_status == TradeStatus.FILLED:
-            if self.check_exit(curr):
-                self.log(f"🎯 TRADE EXIT (SL/TP) {self.symbol}")
-                return SignalSummary(direction="EXIT", trade_signal=self.create_signal(TradeAction.EXIT, curr.name))
-            return SignalSummary(direction="IN_TRADE")
-
-        # 3. NEW SIGNAL SEARCH
-        if self.trade_status == TradeStatus.NONE:
-            # A. Get Trend
-            trend = self.get_htf_trend(df_htf)
-
-            if trend != Trend.NEUTRAL:
-                # B. Find FVG
-                fvg = self.find_valid_fvg(df_ltf, trend, curr['close'])
-
-                if fvg:
-                    # C. Calculate Params
-                    params = self.calculate_setup_params(fvg, trend, df_ltf)
-                    fvg_id = f"{fvg['time']}_{self.symbol}"
-
-                    # D. Generate Signal
-                    new_trade = TradeSignal(
-                        action=TradeAction.ENTER,
-                        symbol=self.symbol,
-                        direction=params['direction'],
-                        price=params['entry'],
-                        sl=params['sl'],
-                        tp=params['tp'],
-                        size=params['size'],
-                        timestamp=curr.name,
-                        metadata={"fvg_id": fvg_id, "structure": trend.name}
-                    )
-
-                    self.active_trade = new_trade
-                    self.trade_status = TradeStatus.PENDING
-                    self.processed_zone_ids.add(fvg_id)
-
-                    self.log(
-                        f"🚀 SIGNAL: {params['direction'].name} Limit @ {params['entry']:.2f} (Trend: {trend.name})")
-                    return SignalSummary(direction=params['direction'].name, trade_signal=new_trade)
-
-        return SignalSummary(direction="NEUTRAL")
-
-    # ==================================================================
-    # 4. HELPERS (Risk & State)
+    # 3. HELPERS (Risk & State)
     # ==================================================================
 
     def calculate_trade_position(self, entry_price: float, sl: float, direction: BIAS) -> dict:
@@ -250,17 +200,19 @@ class BosFvgStrategy(StrategyBase):
         Calculates position size with a HARD CAP (5 Contracts).
         """
         r = abs(entry_price - sl)
-        if r == 0: r = 0.25
+        if r == 0:
+            r = 0.25
 
         # Calculate Raw Size
         risk_per_contract = r * self.point_value
-        if risk_per_contract <= 0: risk_per_contract = 5.0
+        if risk_per_contract <= 0:
+            risk_per_contract = 5.0
 
         raw_size = int(self.risk / risk_per_contract)
 
         # SAFETY CAP
-        MAX_CONTRACTS = 5
-        size = max(1, min(raw_size, MAX_CONTRACTS))
+        max_contracts = 5
+        size = max(1, min(raw_size, max_contracts))
 
         # TP
         if direction == BIAS.LONG:
@@ -268,8 +220,8 @@ class BosFvgStrategy(StrategyBase):
         else:
             tp = entry_price - (r * self.tp_multiple)
 
-        if raw_size > MAX_CONTRACTS:
-            self.log(f"⚠️ RISK CAP: {raw_size} -> {size} (Risk/Cont: ${risk_per_contract:.2f})", level="warning")
+        if raw_size > max_contracts:
+            self.log.info(f"⚠️ RISK CAP: {raw_size} -> {size} (Risk/Cont: ${risk_per_contract:.2f})", level="warning")
 
         return {"sl": sl, "tp": tp, "size": size}
 
@@ -277,15 +229,16 @@ class BosFvgStrategy(StrategyBase):
         sig = TradeSignal(
             symbol=self.symbol, action=action,
             direction=self.active_trade.direction,
-            price=self.active_trade.price, sl=self.active_trade.sl, tp=self.active_trade.tp,
+            price=self.active_trade.price,
+            sl=self.active_trade.sl, tp=self.active_trade.tp,
             size=self.active_trade.size, timestamp=timestamp
         )
         self.active_trade, self.trade_status = None, TradeStatus.NONE
         return sig
 
-    def check_fill(self, candle) -> bool:
-        if not self.active_trade: return False
-        # Limit Logic:
+    def check_order_fill(self, candle) -> bool:
+        if not self.active_trade:
+            return False
         # Buy Limit: Low must touch or go below Price
         # Sell Limit: High must touch or go above Price
         if self.active_trade.direction == BIAS.LONG:
@@ -294,46 +247,120 @@ class BosFvgStrategy(StrategyBase):
             return candle['high'] >= self.active_trade.price
 
     def check_exit(self, candle) -> bool:
-        if not self.active_trade: return False
+        if not self.active_trade:
+            return False
         sl, tp = self.active_trade.sl, self.active_trade.tp
         if self.active_trade.direction == BIAS.LONG:
             return candle['low'] <= sl or candle['high'] >= tp
         else:
             return candle['high'] >= sl or candle['low'] <= tp
 
-    def sync_state(self, current_positions: list, open_orders: list):
+    # ==================================================================
+    # 4. MAIN EXECUTION LOOP
+    # ==================================================================
+
+    def analyze(self, df_ltf: pd.DataFrame, df_htf: pd.DataFrame) -> SignalSummary:
         """
-        Recovers state from IBKR.
+        Called every 5 min
         """
-        if self.trade_status != TradeStatus.NONE: return
+        curr = df_ltf.iloc[-1]
 
-        # Unique Tag: MNQ_NY_BOS_FVG
-        session_short = "NY" if "New_York" in str(self.timezone) else "LON"
-        my_tag = f"{self.symbol}_{session_short}_BOS_FVG"
+        # ----------------------------------------------------------------------
+        # 1. FILL CHECK (Highest Priority)
+        # ----------------------------------------------------------------------
+        if self.trade_status == TradeStatus.PENDING:
+            if self.check_order_fill(curr):
+                self.trade_status = TradeStatus.FILLED
+                self.log.info(f"⚡ ORDER FILLED {self.symbol} @ {self.active_trade.price}")
+                return SignalSummary(direction="FILLED")
 
-        # 1. Position Check
-        my_pos = next((p for p in current_positions if p.contract.symbol == self.symbol and p.position != 0), None)
-        if my_pos:
-            direction = BIAS.LONG if my_pos.position > 0 else BIAS.SHORT
-            self.active_trade = TradeSignal(
-                action=TradeAction.ENTER, symbol=self.symbol, direction=direction,
-                price=my_pos.avgCost, sl=0, tp=0, size=abs(int(my_pos.position)),
-                timestamp=pd.Timestamp.now(), metadata={"fvg_id": "RECOVERED"}
-            )
-            self.trade_status = TradeStatus.FILLED
-            self.log(f"♻️ STATE RESTORED: ACTIVE POSITION {direction.name}")
-            return
+        # ----------------------------------------------------------------------
+        # 2. EXIT CHECK (Only if Filled)
+        # ----------------------------------------------------------------------
+        if self.trade_status == TradeStatus.FILLED:
+            if self.check_exit(curr):
+                self.log.info(f"🎯 TRADE EXIT (SL/TP) {self.symbol}")
+                return SignalSummary(direction="EXIT", trade_signal=self.create_signal(TradeAction.EXIT, curr.name))
+            self.log.info(f"IN_TRADE - {self.symbol}")
+            return SignalSummary(direction="IN_TRADE")
 
-        # 2. Pending Check
-        my_orders = [o for o in open_orders if o.order.orderRef == my_tag]
-        parent = next((t for t in my_orders if t.order.parentId == 0), None)
+        # ----------------------------------------------------------------------
+        # 3. SIGNAL SEARCH & PENDING UPDATE
+        #    Run this if NONE *or* PENDING (to catch better setups)
+        # ----------------------------------------------------------------------
+        if self.trade_status in [TradeStatus.NONE, TradeStatus.PENDING]:
 
-        if parent:
-            direction = BIAS.LONG if parent.order.action == 'BUY' else BIAS.SHORT
-            self.active_trade = TradeSignal(
-                action=TradeAction.ENTER, symbol=self.symbol, direction=direction,
-                price=parent.order.lmtPrice, sl=0, tp=0, size=int(parent.order.totalQuantity),
-                timestamp=pd.Timestamp.now(), metadata={"fvg_id": "RECOVERED"}
-            )
-            self.trade_status = TradeStatus.PENDING
-            self.log(f"♻️ STATE RESTORED: PENDING ORDER {direction.name}")
+            # A. Get Trend
+            trend = self.get_htf_trend(df_htf)
+
+            if trend != Trend.NEUTRAL:
+                # B. Find FVG
+                # Note: find_valid_fvg filters out 'processed_zone_ids'.
+                # Since the CURRENT pending FVG is already in processed_zone_ids,
+                # this function will only return a result if a NEW, FRESH FVG exists.
+                fvg = self.find_valid_fvg(df_ltf, trend, curr['close'])
+
+                if fvg:
+                    # C. Calculate Params
+                    params = self.calculate_setup_params(fvg, trend, df_ltf)
+                    fvg_id = f"{fvg['time']}_{self.symbol}"
+
+                    # D. Logic Separation: New Trade vs Update Trade
+
+                    # CASE 1: Completely New Trade
+                    if self.trade_status == TradeStatus.NONE:
+                        new_trade = TradeSignal(
+                            action=TradeAction.ENTER,
+                            symbol=self.symbol,
+                            direction=params['direction'],
+                            price=params['entry'],
+                            sl=params['sl'],
+                            tp=params['tp'],
+                            size=params['size'],
+                            timestamp=curr.name,
+                            metadata={"fvg_id": fvg_id, "structure": trend.name, "fvg_time": fvg["time"]}
+                        )
+                        self.active_trade = new_trade
+                        self.trade_status = TradeStatus.PENDING
+                        self.processed_zone_ids.add(fvg_id)
+
+                        self.log.info(f"🚀 SIGNAL: {params['direction'].name} Limit @ {params['entry']:.2f}")
+                        return SignalSummary(direction=params['direction'].name, trade_signal=new_trade)
+
+                    # CASE 2: Better Opportunity Found (Update/Reset)
+                    elif self.trade_status == TradeStatus.PENDING:
+
+                        current_fvg_time = self.active_trade.metadata.get("fvg_time")
+                        if current_fvg_time is None:
+                            return SignalSummary(direction="PENDING")
+
+                        if fvg["time"] <= current_fvg_time:
+                            return SignalSummary(direction="PENDING")
+
+                        self.log.info(f"♻️ ORDER UPDATE: Found newer FVG ({fvg_id}). Updating Order.")
+                        # Use TradeAction.UPDATE
+                        # This tells the MasterBot: "Cancel the existing PENDING order, and place THIS one."
+                        new_trade = TradeSignal(
+                            action=TradeAction.UPDATE,
+                            symbol=self.symbol,
+                            direction=params['direction'],
+                            price=params['entry'],
+                            sl=params['sl'],
+                            tp=params['tp'],
+                            size=params['size'],
+                            timestamp=curr.name,
+                            metadata={
+                                "fvg_id": fvg_id,
+                                "structure": trend.name,
+                                "old_zone_id": self.active_trade.metadata.get('fvg_id'),  # Reference to old
+                                "note": "Order Update",
+                                "fvg_time": fvg["time"]
+                            }
+                        )
+
+                        self.active_trade = new_trade
+                        self.processed_zone_ids.add(fvg_id)
+
+                        return SignalSummary(direction=params['direction'].name, trade_signal=new_trade)
+
+        return SignalSummary(direction="NEUTRAL")

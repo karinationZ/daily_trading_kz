@@ -7,7 +7,7 @@ import pandas as pd
 import plotly.graph_objects as go
 
 from daily_trading.bots.smc_bot.detectors.ORBDetector import SESSION_MAP
-from daily_trading.bots.smc_bot.detectors.StrategyBase import BIAS
+from daily_trading.bots.smc_bot.detectors.DetectorsBase import BIAS
 from daily_trading.bots.smc_bot.strategy.StrategyBase import TradeAction, TradeStatus
 from daily_trading.settings import logger
 
@@ -51,7 +51,7 @@ class Backtester:
     def run(self,
             ohlc_5m: pd.DataFrame,
             ohlc_1h: Optional[pd.DataFrame] = None,
-            lookback_5m: int = 200,
+            lookback_5m: int = 1000,
             lookback_1h: int = 200):
         """
         Universal Run Loop.
@@ -239,6 +239,44 @@ class Backtester:
                 self.trades.append(t_rec)
                 self.pending_trade = None
                 self.strategy.trade_status = TradeStatus.NONE
+
+                # ... existing logic ...
+
+                # 4. UPDATE (Cancel Old + Place New)
+
+            # 4. UPDATE (Cancel Old + Place New)
+            elif sig.action == TradeAction.UPDATE:
+                if self.pending_trade:
+                    # A. "Cancel" the old trade stats
+                    t_rec = self.pending_trade
+                    t_rec.update({
+                        "exit_time": ts_utc,
+                        "exit_price": 0.0,
+                        "result": "CANCELLED",
+                        "pnl": 0.0,
+                        "status": "CLOSED",
+                        "comments": "Replaced by Better Setup"
+                    })
+                    self.trades.append(t_rec)
+
+                # B. Place the New Pending Order
+                self.pending_trade = {
+                    "timestamp": sig.timestamp,
+                    "utc_signal": ts_utc,
+                    "window_indices_5m": (i - lookback_5m, i),
+                    "direction": sig.direction.name,
+                    "entry": sig.price,
+                    "sl": sig.sl,
+                    "tp": sig.tp,
+                    "size": sig.size,
+                    "status": "PENDING",
+                    "metadata": sig.metadata,
+                    "sl_atr": sig.metadata.get("sl_atr", 0) if sig.metadata else 0,
+                    "fill_time": None,
+                    "comments": ""
+                }
+                # Strategy status remains PENDING
+                self.strategy.trade_status = TradeStatus.PENDING
 
         return pd.DataFrame(self.trades)
 

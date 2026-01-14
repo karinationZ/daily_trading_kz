@@ -8,7 +8,7 @@ import pytz
 
 from daily_trading.bots.smc_bot.bots.TelegramBot import TelegramBot
 from daily_trading.bots.smc_bot.detectors.ORBDetector import SESSION_MAP
-from daily_trading.bots.smc_bot.detectors.StrategyBase import BIAS, GET_READY_ALERT, Trend
+from daily_trading.bots.smc_bot.detectors.DetectorsBase import BIAS, GET_READY_ALERT, Trend
 from daily_trading.bots.smc_bot.strategy.BosFvgFillStrategy_old import SignalSummary
 from daily_trading.bots.smc_bot.strategy.StrategyBase import TradeAction, TradeSignal, TradeStatus
 from daily_trading.brokers.BitUnixClient import BitUnixClient
@@ -229,6 +229,23 @@ class SMCBotBase:
                     order_ref=strategy.ext_tag
                 )
 
+            # --- UPDATE (New Logic) ---
+            elif sig.action == TradeAction.UPDATE:
+                strategy.log.info(f"SIGNAL: UPDATE. Replacing Pending Order -> {sig.direction.name} @ {sig.price}.")
+
+                # 1. Cancel existing pending order (Limit + attached Stop/TP)
+                await self.ib_client.cancel_all_orders(order_ref=strategy.ext_tag)
+
+                # 2. Place the new updated bracket
+                direction = "LONG" if sig.direction == BIAS.LONG else "SHORT"
+                await self.ib_client.place_bracket_order(
+                    symbol=symbol,
+                    quantity=sig.size,
+                    entry=sig.price,
+                    sl=sig.sl, tp=sig.tp,
+                    direction=direction,
+                    order_ref=strategy.ext_tag)
+
             # --- CANCEL ---
             elif sig.action == TradeAction.CANCEL:
                 strategy.log.info(f"SIGNAL: CANCEL. Cleaning book.")
@@ -266,7 +283,8 @@ class SMCBotBase:
         now = datetime.now()
         minutes_to_sleep = interval_minutes - (now.minute % interval_minutes)
         seconds_to_sleep = (minutes_to_sleep * 60) - now.second
-        if seconds_to_sleep <= 0: seconds_to_sleep = interval_minutes * 60
+        if seconds_to_sleep <= 0:
+            seconds_to_sleep = interval_minutes * 60
         logger.debug(f"SYNC: Waiting {seconds_to_sleep}s for next candle.")
         await asyncio.sleep(seconds_to_sleep)
 
@@ -285,8 +303,8 @@ class SMCBotBase:
         now = datetime.now(strategy.timezone)
 
         # 2. Define Buffers (in minutes)
-        PRE_SESSION_BUFFER = 60  # Start 1 hour before session open
-        POST_SESSION_BUFFER = 30  # End 30 mins after session close
+        pre_session_buffer = 60  # Start 1 hour before session open
+        post_session_buffer = 30  # End 30 mins after session close
 
         # 3. Construct Session Start/End times for Today
         start_time = now.replace(
@@ -301,8 +319,8 @@ class SMCBotBase:
         )
 
         # 4. Apply Buffers
-        active_start = start_time - timedelta(minutes=PRE_SESSION_BUFFER)
-        active_end = end_time + timedelta(minutes=POST_SESSION_BUFFER)
+        active_start = start_time - timedelta(minutes=pre_session_buffer)
+        active_end = end_time + timedelta(minutes=post_session_buffer)
 
         # 5. Check Window (simple comparison, no midnight wrapping needed)
         return active_start <= now <= active_end
@@ -414,7 +432,7 @@ class SMCBotBase:
 
         except Exception as e:
             logger.error(f"Error fetching OHLC for {symbol} ({timeframe}): {e}")
-        raise e
+            raise e
 
     async def fetch_ibkr_ohlc_data(self, symbol: str, timeframe: str, num_candles: int = None) -> pd.DataFrame:
         await self.ibkr_client.connect()

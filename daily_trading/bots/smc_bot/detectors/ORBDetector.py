@@ -4,7 +4,7 @@ from zoneinfo import ZoneInfo
 import pandas as pd
 import plotly.graph_objects as go
 
-from daily_trading.bots.smc_bot.detectors.StrategyBase import BIAS
+from daily_trading.bots.smc_bot.detectors.DetectorsBase import BIAS, DetectorsBase
 
 # ==========================
 # Session map (start, end hours)
@@ -22,8 +22,10 @@ SESSION_MAP = {
 # ==========================
 # ORB Detector
 # ==========================
-class ORBDetector:
-    def __init__(self, timezone: ZoneInfo, orb_minutes: int = 15, target_percent: float = 0.5, plot_tail: int = 500):
+class ORBDetector(DetectorsBase):
+    def __init__(self, timezone: ZoneInfo, main_tf, orb_minutes: int = 15, target_percent: float = 0.5,
+                 plot_tail: int = 500, wick_ratio: float = 0.10):
+        super().__init__(main_tf, plot_tail, wick_ratio=wick_ratio)
         self.tz = timezone
         self.orb_minutes = orb_minutes
         self.t_per = target_percent
@@ -135,14 +137,9 @@ class ORBDetector:
 
         return {"boxes": orb_boxes, "signals": signals, "upper": or_high, "lower": or_low}
 
-    # --------------------------------------------------------
-    # Plotting
-    # --------------------------------------------------------
     def plot(self, ohlc: pd.DataFrame, result: dict) -> go.Figure:
         ohlc = ohlc.tail(self.plot_tail)
         fig = go.Figure()
-
-        x_start = ohlc.index[0]
         x_end = ohlc.index[-1]
 
         # --- Candles

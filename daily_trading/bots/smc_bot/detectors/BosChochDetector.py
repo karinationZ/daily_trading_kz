@@ -1,14 +1,14 @@
 import pandas as pd
 import plotly.graph_objects as go
 
-from daily_trading.bots.smc_bot.detectors.StrategyBase import BEARISH, BULLISH, StrategyBase
+from daily_trading.bots.smc_bot.detectors.DetectorsBase import BEARISH, BULLISH, DetectorsBase
 from daily_trading.settings import logger
 
 
-class BosChochDetector(StrategyBase):
+class BosChochDetector(DetectorsBase):
     def __init__(self, main_tf, pivot_period=None, left_bars=5, right_bars=1, show_bull=True, show_bear=True,
-                 volume_thresh=5, min_price_move=0.001, min_signal_gap=1):
-        super().__init__(main_tf=main_tf, left_bars=left_bars, right_bars=right_bars)
+                 volume_thresh=5, min_price_move=0.001, min_signal_gap=1, wick_ratio: float = 0.10):
+        super().__init__(main_tf=main_tf, left_bars=left_bars, right_bars=right_bars, wick_ratio=wick_ratio)
         self.pivot_period = pivot_period if pivot_period is not None else self.length
         self.show_bull = show_bull
         self.show_bear = show_bear
@@ -219,7 +219,8 @@ class BosChochDetector(StrategyBase):
                 self.LockBreak_M = self.Major_HighIndex
                 self.LastSignalIndex = last_index
                 logger.debug(
-                    f"Bullish Major {signal_type} detected (last candle): level={self.Major_HighLevel:.6f}, time={ohlc.index[last_index]}")
+                    f"Bullish Major {signal_type} detected (last candle): level={self.Major_HighLevel:.6f}, "
+                    f"time={ohlc.index[last_index]}")
                 self.Major_HighLevel = last_high
                 self.Major_HighIndex = last_index
                 self.Major_HighType = 'H'
@@ -246,7 +247,8 @@ class BosChochDetector(StrategyBase):
                 self.LockBreak_M = self.Major_LowIndex
                 self.LastSignalIndex = last_index
                 logger.debug(
-                    f"Bearish Major {signal_type} detected (last candle): level={self.Major_LowLevel:.6f}, time={ohlc.index[last_index]}")
+                    f"Bearish Major {signal_type} detected (last candle): level={self.Major_LowLevel:.6f}, "
+                    f"time={ohlc.index[last_index]}")
                 self.Major_LowLevel = last_low
                 self.Major_LowIndex = last_index
                 self.Major_LowType = 'L'

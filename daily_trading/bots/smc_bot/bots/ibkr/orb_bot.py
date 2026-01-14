@@ -227,9 +227,7 @@ class ORBBot(SMCBotBase):
                     # Dynamic Buffers
                     entry_buffer_mult=config["entry_buffer_mult"],
                     sl_buffer_mult=config["sl_buffer_mult"],
-                    tick_buffer_mult=config["tick_buffer_mult"],
-                    atr_length_buffer=14
-                )
+                    tick_buffer_mult=config["tick_buffer_mult"])
                 self.strategies.append(strategy)
                 unique_symbols.add(symbol)
 

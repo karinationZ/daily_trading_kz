@@ -178,7 +178,7 @@ class IBKRClient:
 
         return trades
 
-    async def cancel_all_orders(self, order_ref: Optional[str] = None):
+    async def cancel_all_orders(self, order_ref: str):
         """Cancels orders. If order_ref is provided, filters for that bot tag."""
         open_trades = self.ib.openTrades()
         for trade in open_trades:

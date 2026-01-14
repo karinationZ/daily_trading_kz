@@ -104,41 +104,75 @@ class MasterBot:
 
         return True
 
-    async def run(self):
-        logger.info("🚀 IBKR MASTER BOT STARTING...")
+    async def ibkr_check_connection(self):
+        """
+        Checks connection. Returns True if connected.
+        Only logs if a Reconnect was actually required.
+        """
+        # 1. Silent Success: If already connected, just return True.
+        # This prevents spamming your logs every 5 minutes.
+        if self.ib_client.ib.isConnected():
+            return True
 
+        # 2. Attempt Connect (Only if disconnected)
         try:
+            logger.warning("⚠️ IBKR Disconnected. Attempting Reconnect...")
             await self.ib_client.connect()
-            logger.info("✅ IBKR Connection Verified.")
+
+            # Connection successful
+            msg = "✅ IBKR Connection Verified / Restored."
+            logger.info(msg)
+            # Optional: Notify Telegram on restoration
+            # await self.orb_bot.telegram_bot_debug.send_message(msg)
+            return True
+
         except Exception as e:
             msg = f"FATAL: IBKR Connect Failed: {e}"
             logger.critical(msg)
-            await self.orb_bot.telegram_bot_debug.send_message(msg)
-            return
+            return False
+
+    async def run(self):
+        logger.info("🚀 IBKR MASTER BOT STARTING...")
+        await self.orb_bot.telegram_bot_debug.send_message("🚀 IBKR MASTER BOT STARTING...")
+
+        # Initial Check
+        is_connected = await self.ibkr_check_connection()
+
         last_logged_hour = -1
         last_logged_hour_summary = -1
-        report = await self.ib_client.get_daily_summary()
-        await self.orb_bot.telegram_bot.send_message(report)
+
+        # Only fetch summary if connected
+        if is_connected:
+            try:
+                report = await self.ib_client.get_daily_summary()
+                await self.orb_bot.telegram_bot.send_message(report)
+            except Exception:
+                logger.error("Failed to fetch startup summary.")
 
         while True:
             try:
-                # 1. Time Check (New York Time)
+                # 1. Time Check
                 ny_now = datetime.now(ZoneInfo("America/New_York"))
                 current_hour_int = ny_now.hour
 
-                # Active Hours: 01:45 AM to 05:15 PM NY
                 if self.is_market_open():
                     last_logged_hour = -1
 
+                    # --- CONNECTION GUARD ---
+                    # If this returns False, SKIP the rest of the loop
+                    if not await self.ibkr_check_connection():
+                        logger.warning("No Connection. Retrying in 10s...")
+                        await asyncio.sleep(10)
+                        continue
+
+                        # 4H Summary Logic
                     if current_hour_int % 4 == 0 and current_hour_int != last_logged_hour_summary:
                         report = await self.ib_client.get_daily_summary()
                         logger.info(f"4H Summary:\n{report}")
                         await self.orb_bot.telegram_bot.send_message(report)
-                        # Mark this hour as 'Done'
                         last_logged_hour_summary = current_hour_int
 
-                    # --- A. Data Fetching Phase (Centralized) ---
-                    # Structure: { "MNQ": { "5m": df, "1h": df } }
+                    # --- A. Data Fetching Phase ---
                     market_data = {}
 
                     # Fetch 5m Data
@@ -147,10 +181,9 @@ class MasterBot:
                         if not df.empty:
                             if sym not in market_data: market_data[sym] = {}
                             market_data[sym]["5m"] = df
-                        # Tiny sleep prevents IBKR Pacing Violation
                         await asyncio.sleep(0.1)
 
-                        # Fetch 1h Data (Every 5 mins is fine)
+                    # Fetch 1h Data
                     for sym in self.symbols_1h:
                         df = await self.ib_client.get_klines(sym, "1h")
                         if not df.empty:
@@ -158,33 +191,29 @@ class MasterBot:
                             market_data[sym]["1h"] = df
                         await asyncio.sleep(0.1)
 
-                        # --- B. Execution Phase (UPDATED) ---
-                        # 1. Fetch State ONCE
+                    # --- B. Execution Phase ---
                     positions, orders, blocked = await self.get_account_state()
                     active_holdings = [p for p in positions if p.position != 0]
 
                     if blocked:
-                        msg = f"🔒 There are open positions or orders for Symbols: {blocked}"
+                        msg = f"🔒 Blocked Symbols: {blocked}"
                         logger.info(msg)
-                        await self.orb_bot.telegram_bot_debug.send_message(msg)
-                    # 2. Log Actual Positions (Size != 0)
+                        # await self.orb_bot.telegram_bot_debug.send_message(msg)
+
                     if active_holdings:
-                        # Formats it nicely: "MNQ: 1.0", etc.
                         pretty_pos = [f"{p.contract.symbol}: {p.position}" for p in active_holdings]
                         msg = f"💼 Active Holdings: {pretty_pos}"
                         logger.info(msg)
                         await self.orb_bot.telegram_bot_debug.send_message(msg)
 
-                    # 3. Log Pending Orders
                     if orders:
-                        # Formats it nicely: "Buy 1 MNQ @ 18500"
                         pretty_orders = [f"{o.order.action} {o.order.totalQuantity} {o.contract.symbol}" for o in
                                          orders]
                         msg = f"⏳ Pending Orders: {pretty_orders}"
                         logger.info(msg)
                         await self.orb_bot.telegram_bot_debug.send_message(msg)
 
-                    # 2. Pass State to Bots
+                    # Pass State to Bots
                     await asyncio.gather(
                         self.orb_bot.execute_cycle(market_data, blocked, positions, orders),
                         self.sd_bot.execute_cycle(market_data, blocked, positions, orders)
@@ -203,14 +232,8 @@ class MasterBot:
                         logger.info(msg)
                         await asyncio.sleep(60)
 
-                    # Maintenance: Keep connection alive
-                    if not self.ib_client.ib.isConnected():
-                        try:
-                            logger.info("Reconnecting IBKR...")
-                            await self.ib_client.connect()
-                        except Exception as e:
-                            logger.error(f"Reconnect failed: {e}")
-
+                    # Maintenance: Check connection quietly
+                    await self.ibkr_check_connection()
                     await asyncio.sleep(60)
 
             except Exception as e:
@@ -224,7 +247,8 @@ class MasterBot:
         # Calculate seconds remaining until next 5m mark
         minutes = 5 - (now.minute % 5)
         seconds = (minutes * 60) - now.second
-        if seconds <= 0: seconds = 300
+        if seconds <= 0:
+            seconds = 300
 
         logger.debug(f"⏳ Waiting {seconds}s for next candle...")
         await asyncio.sleep(seconds)

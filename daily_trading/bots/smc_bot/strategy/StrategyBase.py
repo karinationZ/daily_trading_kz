@@ -10,8 +10,8 @@ import plotly.graph_objects as go
 
 from daily_trading.bots.smc_bot.bots.TelegramBot import TelegramBot
 from daily_trading.bots.smc_bot.detectors.BosChochDetector import BosChochDetector
+from daily_trading.bots.smc_bot.detectors.DetectorsBase import BIAS, DetectorsBase, Trend
 from daily_trading.bots.smc_bot.detectors.HighLowDetector import HighLowDetector
-from daily_trading.bots.smc_bot.detectors.StrategyBase import BIAS, StrategyBase, Trend
 from daily_trading.settings import logger
 
 
@@ -25,6 +25,7 @@ class TradeAction(Enum):
     ENTER = auto()
     CANCEL = auto()
     EXIT = auto()
+    UPDATE = auto()
 
 
 @dataclass
@@ -58,19 +59,50 @@ class SignalSummary:
 
 class StrategyBase(ABC):
     """Base class for trading strategies, providing reusable methods for caching, plotting, and messaging."""
+    # Updated Configuration with MCL
+    POINT_VALUE = {
+        "MNQ": 2.0,
+        "MES": 5.0,
+        "MGC": 10.0,
+        "MBT": 0.10,
+        "SIL": 1000.0,
+        "MCL": 100.0
+    }
+
+    ENTRY_BUFFER = {
+        "MNQ": 0.5,
+        "MES": 0.5,
+        "MGC": 0.2,
+        "MBT": 5.0,
+        "SIL": 0.010,
+        "MCL": 0.02
+    }
+
+    SL_BUFFER = {
+        "MNQ": 0.5,
+        "MES": 0.5,
+        "MGC": 0.5,
+        "MBT": 5.0,
+        "SIL": 0.025,
+        "MCL": 0.05
+    }
+
+    TICK_SIZES = {
+        "MNQ": 0.25,
+        "MES": 0.25,
+        "MGC": 0.10,
+        "MBT": 5.00,
+        "MCL": 0.01,
+        "SIL": 0.005,
+    }
 
     def __init__(self, main_tf: str, debug=False, telegram_chat_id=None):
         """
         Initialize base strategy with Telegram bot and cache.
-
-        Args:
-            main_tf (str): Lower timeframe (e.g., '1h') for analysis.
-            telegram_token (str): Telegram bot token for sending signals.
-            channel_id (str): Telegram channel ID for message delivery.
         """
         self.main_tf = main_tf
         self.telegram_bot = TelegramBot(chat_id=telegram_chat_id)
-        self.smc_base = StrategyBase(self.main_tf)
+        self.smc_base = DetectorsBase(self.main_tf)
         self.event_cache = {}  # Cache: {(symbol, timeframe): {'events': list, 'last_updated': datetime}}
         self.debug = debug
         logger.info(f"StrategyBase initialized with {main_tf}")
@@ -100,6 +132,7 @@ class StrategyBase(ABC):
         else:
             logger.info("Skipped sending telegram message. Debug Mode is Off.")
 
+    # TODO: remove it
     async def get_trend(self, ohlc_1h, symbol: str, cache_key: Tuple[str, str], current_time: datetime, fig=None):
         """Step 1: Identify Trend on 1H TF."""
         recent_smc_events = []
@@ -119,6 +152,7 @@ class StrategyBase(ABC):
 
         return trend, recent_smc_events
 
+    # TODO: remove it
     async def confirm_trend(self, detector: HighLowDetector, ohlc: pd.DataFrame, symbol: str,
                             cache_key: Tuple[str, str],
                             current_time: datetime):
@@ -128,6 +162,7 @@ class StrategyBase(ABC):
         trend, recent_smc_events = await self.get_trend(ohlc, symbol, cache_key, current_time, fig)
         return trend, recent_smc_events, fig
 
+    # TODO: remove it
     async def detect_bos_choch(self, detector: BosChochDetector, ohlc_1h: pd.DataFrame, trend: str, symbol: str) -> \
             List[str]:
         """Step 2: Identify the most recent and valid BOS level in the trend direction."""

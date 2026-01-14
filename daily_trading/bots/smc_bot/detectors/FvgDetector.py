@@ -3,11 +3,11 @@ import pandas as pd
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 
-from daily_trading.bots.smc_bot.detectors.StrategyBase import BEARISH, BULLISH, StrategyBase
+from daily_trading.bots.smc_bot.detectors.DetectorsBase import BEARISH, BULLISH, DetectorsBase
 from daily_trading.settings import logger
 
 
-class FvgDetector(StrategyBase):
+class FvgDetector(DetectorsBase):
     def __init__(self, main_tf, pivot_period=5, left_bars=5, right_bars=1, show_bull=True, show_bear=True,
                  volume_thresh=10, fvg_threshold=0.5, mode='Present', back=180,
                  show_labels=False, show_fulfilled=True):
@@ -194,7 +194,8 @@ class FvgDetector(StrategyBase):
                      f"{len(alert_conditions['BEARISH_FVG'])} bearish FVGs, "
                      f"{len(alert_conditions['BULLISH_FVG_FULFILLED'])} bullish fulfilled, "
                      f"{len(alert_conditions['BEARISH_FVG_FULFILLED'])} bearish fulfilled")
-        return {"fig": fig, "signals": signals, "alert_conditions": alert_conditions}
+        signals_sorted = sorted(signals, key=lambda s: s["time"], reverse=True)
+        return {"fig": fig, "signals": signals_sorted, "alert_conditions": alert_conditions}
 
     def _plot_fvg(self, ohlc, signals, pivot_high_points, pivot_low_points):
         """

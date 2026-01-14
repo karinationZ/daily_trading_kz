@@ -4,12 +4,12 @@ from plotly.subplots import make_subplots
 
 from daily_trading.bots.smc_bot.detectors.HighLowDetector import HighLowDetector
 from daily_trading.bots.smc_bot.detectors.LevelsDetector import LevelsDetector
-from daily_trading.bots.smc_bot.detectors.StrategyBase import StrategyBase, Trend
+from daily_trading.bots.smc_bot.detectors.DetectorsBase import DetectorsBase, Trend
 from daily_trading.bots.smc_bot.detectors.VolumeProfiler import VolumeProfiler
 from daily_trading.settings import logger
 
 # TODO: FIX / REFACTOR
-class VCPBreakoutDetector(StrategyBase):
+class VCPBreakoutDetector(DetectorsBase):
     """
     Detector for Volatility Contraction Pattern (VCP) and breakouts with plotting for debugging.
 

@@ -1,11 +1,11 @@
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 
-from daily_trading.bots.smc_bot.detectors.StrategyBase import StrategyBase
+from daily_trading.bots.smc_bot.detectors.DetectorsBase import DetectorsBase
 from daily_trading.settings import logger
 
 
-class HighLowDetector(StrategyBase):
+class HighLowDetector(DetectorsBase):
     """
     Class to detect Higher Highs (HH), Higher Lows (HL), Lower Highs (LH), and Lower Lows (LL)
     pivot points, inheriting from SMCBase. Implements logic to identify swing highs and lows

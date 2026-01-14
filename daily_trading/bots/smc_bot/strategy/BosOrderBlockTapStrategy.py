@@ -6,12 +6,12 @@ import pandas as pd
 from daily_trading.bots.smc_bot.detectors.BosChochDetector import BosChochDetector
 from daily_trading.bots.smc_bot.detectors.HighLowDetector import HighLowDetector
 from daily_trading.bots.smc_bot.detectors.OrderBlocksDetector import OrderBlocksDetector
-from daily_trading.bots.smc_bot.detectors.StrategyBase import BIAS, Trend
-from daily_trading.bots.smc_bot.strategy.StrategyBase import SignalSummary, StrategyBase
+from daily_trading.bots.smc_bot.detectors.DetectorsBase import BIAS, Trend
+from daily_trading.bots.smc_bot.strategy.StrategyBase import SignalSummary, DetectorsBase
 from daily_trading.settings import logger
 
 
-class BosOrderBlockTapStrategy(StrategyBase):
+class BosOrderBlockTapStrategy(DetectorsBase):
     """
     Analyzes OHLC mgc for continuation trade signals based on BOS and 15m OB.
     Designed for scalping in volatile crypto markets with a 4-step process:

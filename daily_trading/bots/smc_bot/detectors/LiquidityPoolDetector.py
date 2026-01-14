@@ -1,11 +1,11 @@
 import pandas as pd
 import plotly.graph_objects as go
 
-from daily_trading.bots.smc_bot.detectors.StrategyBase import BEARISH, BULLISH, StrategyBase
+from daily_trading.bots.smc_bot.detectors.DetectorsBase import BEARISH, BULLISH, DetectorsBase
 from daily_trading.settings import logger
 
 
-class LiquidityPoolDetector(StrategyBase):
+class LiquidityPoolDetector(DetectorsBase):
     def __init__(self, main_tf, left_bars=4, right_bars=4, show_swing=True, show_liquidity=True,
                  threshold=1.0001, threshold_lower=0.9999):
         """

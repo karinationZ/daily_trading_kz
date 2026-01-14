@@ -4,10 +4,11 @@ from zoneinfo import ZoneInfo
 
 import pandas as pd
 
+from daily_trading.bots.smc_bot.detectors.DetectorsBase import BIAS
 from daily_trading.bots.smc_bot.detectors.ORBDetector import ORBDetector, SESSION_MAP
-from daily_trading.bots.smc_bot.detectors.StrategyBase import BIAS, StrategyBase
 from daily_trading.bots.smc_bot.detectors.SupplyDemandZonesDetector import SupplyDemandZonesDetector
-from daily_trading.bots.smc_bot.strategy.StrategyBase import SignalSummary, TradeAction, TradeSignal, TradeStatus
+from daily_trading.bots.smc_bot.strategy.StrategyBase import SignalSummary, StrategyBase, TradeAction, TradeSignal, \
+    TradeStatus
 from daily_trading.settings import logger
 
 
@@ -77,9 +78,8 @@ class ORBStrategy(StrategyBase):
                  fvg_threshold=0.15,
                  entry_buffer_mult: float = 0.05,
                  sl_buffer_mult: float = 0.1,
-                 tick_buffer_mult: float = 0.05,
-                 atr_length_buffer: int = 14):
-        super().__init__(main_tf, atr_length_buffer=atr_length_buffer)
+                 tick_buffer_mult: float = 0.05):
+        super().__init__(main_tf)
         self.orb_results = None
         self.symbol = symbol
         self.timezone = timezone
@@ -97,14 +97,14 @@ class ORBStrategy(StrategyBase):
             self.end_buffer_minutes = 5
         else:
             self.end_buffer_minutes = 0
-        self.orb_detector = ORBDetector(orb_minutes=15, timezone=timezone)
+        self.orb_detector = ORBDetector(main_tf="5m", orb_minutes=15, timezone=timezone, wick_ratio=wick_ratio)
         self.sd_detector = SupplyDemandZonesDetector(atr_length=atr_length,
                                                      fvg_based_only=fvg_based_only,
                                                      swing_length=swing_length,
                                                      internal_length=internal_length,
                                                      zone_precision_factor=zone_precision_factor,
                                                      fvg_offset=fvg_offset,
-                                                     fvg_threshold=fvg_threshold)
+                                                     fvg_threshold=fvg_threshold, wick_ratio=wick_ratio)
 
         self.active_trade: Optional[TradeSignal] = None
         self.trade_status: TradeStatus = TradeStatus.NONE
@@ -123,8 +123,6 @@ class ORBStrategy(StrategyBase):
         self.wick_ratio = wick_ratio
         self.zones = None
 
-        # New method for current ATR (extracted from your calculate_atr_stop_loss)
-
     def reset_session_state(self):
         self.orb_results = None
         self.active_trade = None
@@ -133,7 +131,7 @@ class ORBStrategy(StrategyBase):
 
     def validate_zone_reaction(self, ohlc: pd.DataFrame, direction: BIAS, zone: Dict) -> bool:
         """Trigger Logic: Restored to 'Striking Distance' (+ buffer for Longs)."""
-        atr = self.get_current_atr(ohlc)
+        atr = self.sd_detector.get_current_atr(ohlc)
         tick_buffer = atr * self.tick_buffer_mult
 
         curr = ohlc.iloc[-1]
@@ -147,7 +145,7 @@ class ORBStrategy(StrategyBase):
 
         if not touched:
             return False
-        is_falling_knf = self.is_falling_knife(curr, direction, atr)
+        is_falling_knf = self.sd_detector.is_falling_knife(curr, direction, atr)
 
         if is_falling_knf:
             self.log.info(f"Detected Falling knife. | {curr.name}")
@@ -158,7 +156,7 @@ class ORBStrategy(StrategyBase):
 
     def get_execution_levels(self, ohlc, zone: Dict, zone_type: str, direction: BIAS, current_close: float):
         # Compute dynamic buffers
-        atr = self.get_current_atr(ohlc)
+        atr = self.sd_detector.get_current_atr(ohlc)
         entry_buffer = atr * self.entry_buffer_mult
         sl_buffer = atr * self.sl_buffer_mult
         tick_buffer = atr * self.tick_buffer_mult  # For London swing SL
@@ -215,7 +213,8 @@ class ORBStrategy(StrategyBase):
         return None, min_dist
 
     def check_zone_retrace(self, ohlc: pd.DataFrame, swing_zones: List[Dict], internal_zones: List[Dict]):
-        if not self.orb_results or not self.orb_results["signals"]: return None
+        if not self.orb_results or not self.orb_results["signals"]:
+            return None
         latest_orb_sig = max(self.orb_results["signals"], key=lambda d: d["time"])
         direction = latest_orb_sig["direction"]
 
@@ -270,8 +269,8 @@ class ORBStrategy(StrategyBase):
         # 3. Calculate Raw Size (Pure Math)
         raw_size = int(self.risk / risk_per_contract)
         # 4. --- SAFETY CAP ---
-        MAX_CONTRACTS = 5
-        size = max(1, min(raw_size, MAX_CONTRACTS))
+        max_contracts = 5
+        size = max(1, min(raw_size, max_contracts))
 
         # 5. Calculate Take Profit
         if direction == BIAS.LONG:
@@ -280,7 +279,7 @@ class ORBStrategy(StrategyBase):
             tp = entry_price - (r * self.tp_multiple)
 
         # 6. Log Warning if Capped
-        if raw_size > MAX_CONTRACTS:
+        if raw_size > max_contracts:
             self.log.warning(
                 f"⚠️ RISK CAP: Math wanted {raw_size} contracts, capped at {size}. "
                 f"(Risk per contract: ${risk_per_contract:.2f})")
@@ -298,13 +297,15 @@ class ORBStrategy(StrategyBase):
                           timestamp=timestamp)
 
         if action in [TradeAction.CANCEL, TradeAction.EXIT]:
-            if self.active_trade: self.processed_zone_ids.add(self.active_trade.metadata['zone_id'])
+            if self.active_trade:
+                self.processed_zone_ids.add(self.active_trade.metadata['zone_id'])
         self.active_trade, self.trade_status = None, TradeStatus.NONE
         return sig
 
     def check_pending_validity(self, ohlc: pd.DataFrame, internal_zones: List[Dict], swing_zones: List[Dict]) -> \
             Optional[TradeSignal]:
-        if not self.active_trade: return None
+        if not self.active_trade:
+            return None
         curr = ohlc.iloc[-1]
         zone_id = self.active_trade.metadata.get('zone_id')
         if not any(z['start_time'] == zone_id for z in (internal_zones + swing_zones)):

@@ -1,12 +1,10 @@
-import re
 from pathlib import Path
-from typing import Optional
 
-import numpy as np
 import pandas as pd
 from plotly import graph_objects as go
 from plotly.subplots import make_subplots
 
+from daily_trading.bots.smc_bot.backtester.common_utils import parse_params_from_results_csv_filename
 from daily_trading.settings import logger
 
 
@@ -35,7 +33,7 @@ class BacktestResultsViewer:
         Analyst Fixes: Corrected PnL/DD logic, added conditional formatting,
         and included visibility for Canceled Trades.
         """
-        meta = self._parse_meta_from_filename(csv_results_file.name)
+        meta = parse_params_from_results_csv_filename(csv_results_file.name)
         df = pd.read_csv(csv_results_file)
 
         if df.empty:
@@ -134,7 +132,7 @@ class BacktestResultsViewer:
             "Canceled Trades": canceled,  # <--- Added as requested
             "Win Rate": f"{wr:.1f}%",
             "Net PnL": f"${pnl_val:,.0f}",
-            "Profit Factor": f"{round((wins * meta['rr_val']) / max(losses, 1), 2)}",
+            "Profit Factor": f"{round((wins * meta['rr']) / max(losses, 1), 2)}",
             "Max Drawdown": f"${max_drawdown:,.0f}",
             "Expectancy": f"${expectancy:,.1f}"
         }
@@ -193,61 +191,6 @@ class BacktestResultsViewer:
             include_plotlyjs='cdn',
             config={'displayModeBar': False}
         )
-
-    @staticmethod
-    def _parse_meta_from_filename(filename: str) -> Optional[dict]:
-        """Extract setup details from filename using a single flexible pattern."""
-
-        # Combined pattern with optional groups for sl and eb_mult
-        # The _? before results handles filenames both with and without that underscore
-        pattern = r"""
-            (?P<symbol>[A-Z0-9]+)_
-            (?P<session>[A-Z]+)
-            _sw(?P<sw>\d+)
-            _int(?P<int>\d+)
-            _off(?P<off>\d+)
-            _atr(?P<atr>[\d.]+)
-            _thr(?P<thr>[\d.]+)
-            _rr(?P<rr>[\d.]+)
-            (?:_sl(?P<sl_atr>[\d.]+))?           # Optional SL group
-            (?:_eb(?:_mult)?(?P<eb_mult>[\d.]+))? # Optional EB or EB_MULT group
-            _?results\.csv                        # Flexible results suffix
-        """
-
-        match = re.search(pattern, filename, re.IGNORECASE | re.VERBOSE)
-        if not match:
-            return None
-
-        gd = match.groupdict()
-        symbol = gd["symbol"].upper()
-        session = gd["session"].upper()
-
-        # Build dynamic description
-        parts = [
-            f"Symbol: {symbol} | {session}",
-            f"SW:{gd['sw']}",
-            f"INT:{gd['int']}",
-            f"FVG Offset:{gd['off']}",
-            f"Zone Precision:{gd['atr']}",
-            f"FVG THR:{gd['thr']}",
-            f"RR:{gd['rr']}"
-        ]
-
-        if gd.get("sl_atr"):
-            parts.append(f"SL_ATR:{gd['sl_atr']}")
-
-        if gd.get("eb_mult"):
-            parts.append(f"EB:{gd['eb_mult']}")
-
-        return {
-            "symbol": symbol,
-            "session": session,
-            "description": " | ".join(parts),
-            "rr_val": float(gd["rr"]),
-            # Optional: include raw values for calculations
-            "sl_atr": float(gd["sl_atr"]) if gd.get("sl_atr") else None,
-            "eb_mult": float(gd["eb_mult"]) if gd.get("eb_mult") else None
-        }
 
     def format_trade_plot(self, fig, setup_name: str, description: str, trade_idx: int, result: str):
         """Stylizes a technical chart into the modern UI theme."""

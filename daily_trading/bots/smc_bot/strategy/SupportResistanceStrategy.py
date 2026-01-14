@@ -2,11 +2,11 @@ import pandas as pd
 
 from daily_trading.bots.smc_bot.detectors.HighLowDetector import HighLowDetector
 from daily_trading.bots.smc_bot.detectors.LevelsDetector import LevelsDetector
-from daily_trading.bots.smc_bot.detectors.StrategyBase import GET_READY_ALERT, Trend
-from daily_trading.bots.smc_bot.strategy.StrategyBase import SignalSummary, StrategyBase
+from daily_trading.bots.smc_bot.detectors.DetectorsBase import GET_READY_ALERT, Trend
+from daily_trading.bots.smc_bot.strategy.StrategyBase import SignalSummary, DetectorsBase
 
 
-class SupportResistanceStrategy(StrategyBase):
+class SupportResistanceStrategy(DetectorsBase):
     """
     Analyzes OHLC mgc using Smart Money Concept (SMC) with Support and Resistance levels.
     Designed for scalping in volatile crypto markets with a 5-step process:

@@ -6,6 +6,7 @@ import pandas as pd
 import pytest
 
 from daily_trading.bots.smc_bot.backtester.BacktestResultsViewer import BacktestResultsViewer
+from daily_trading.bots.smc_bot.backtester.common_utils import parse_params_from_results_csv_filename
 from daily_trading.bots.smc_bot.backtester.MasterLeaderboardViewer import LeadershipBy, MasterLeaderboardViewer
 from daily_trading.settings import logger
 
@@ -32,89 +33,12 @@ def rank_results(df_results):
     return df.sort_values(by='Score', ascending=False)
 
 
-import re
-from typing import Optional, Dict, Any
-
-
-def parse_params_from_results_csv_filename(filename: str) -> Optional[Dict[str, Any]]:
-    """
-    Extract setup details from filename using a single flexible pattern.
-    Supports: 'MBT_NY_sw50_int5_off1_atr2.2_thr0.25_rr1.5_results.csv'
-    """
-    pattern = r"""
-        (?P<symbol>[A-Z0-9]+)_
-        (?P<session>[A-Z]+)
-        _sw(?P<sw>\d+)
-        _int(?P<int>\d+)
-        _off(?P<off>\d+)
-        _atr(?P<atr>[\d.]+)
-        _thr(?P<thr>[\d.]+)
-        _rr(?P<rr>[\d.]+)
-        (?:_sl(?P<sl_atr>[\d.]+))?            # Optional SL group
-        (?:_eb(?:_mult)?(?P<eb_mult>[\d.]+))? # Optional EB or EB_MULT group
-        _?results\.csv                        # Flexible results suffix
-    """
-
-    match = re.search(pattern, filename, re.IGNORECASE | re.VERBOSE)
-    if not match:
-        return None
-
-    gd = match.groupdict()
-
-    # 1. Parse and Convert Types
-    try:
-        symbol = gd["symbol"].upper()
-        session = gd["session"].upper()
-        sw_val = int(gd['sw'])
-        int_val = int(gd['int'])
-        off_val = int(gd['off'])
-        atr_val = float(gd['atr'])
-        thr_val = float(gd['thr'])
-        rr_val = float(gd['rr'])
-
-        # Handle Optionals (None if missing)
-        sl_atr_val = float(gd['sl_atr']) if gd.get('sl_atr') else None
-        eb_mult_val = float(gd['eb_mult']) if gd.get('eb_mult') else None
-    except ValueError:
-        return None  # Fail gracefully if number conversion fails
-
-    # 2. Build Description (Optional, for UI/Logging)
-    parts = [
-        f"Symbol: {symbol} | {session}",
-        f"SW:{sw_val}",
-        f"INT:{int_val}",
-        f"OFF:{off_val}",
-        f"ATR:{atr_val}",
-        f"THR:{thr_val}",
-        f"RR:{rr_val}"
-    ]
-    if sl_atr_val is not None:
-        parts.append(f"SL_ATR:{sl_atr_val}")
-    if eb_mult_val is not None:
-        parts.append(f"EB:{eb_mult_val}")
-
-    # 3. Return Dictionary with ALL Required Access Keys
-    return {
-        "symbol": symbol,
-        "session": session,
-        "sw": sw_val,
-        "int": int_val,
-        "off": off_val,
-        "atr": atr_val,
-        "thr": thr_val,
-        "rr": rr_val,  # Standard Key
-        "rr_val": rr_val,  # Legacy Key (requested in your example)
-        "sl_atr": sl_atr_val,  # Optional (None if missing)
-        "eb_mult": eb_mult_val,  # Optional (None if missing)
-        "description": " | ".join(parts)
-    }
-
-
 def aggregate_and_promote_champions(results_base_path: Path, filter_by: LeadershipBy,
                                     strategy_type="ORB"):
     ELITE_DIR = results_base_path / "ELITE_SETUPS"
     leaderboard_dir = results_base_path / "LEADERBOARDS"
     os.makedirs(leaderboard_dir, exist_ok=True)
+
     # Configuration
     MIN_TRADES = 10  # Hard filter for statistical significance
     MIN_WR = 45.0  # Hard filter for psychological viability
@@ -153,6 +77,8 @@ def aggregate_and_promote_champions(results_base_path: Path, filter_by: Leadersh
         # Calculate Average Trade (Efficiency Proxy)
         avg_trade = total_pnl / len(filled) if len(filled) > 0 else 0
 
+        # --- DYNAMIC OUTPUT CONSTRUCTION ---
+        # Initialize with mandatory common fields
         output = {
             "symbol": meta['symbol'],
             "session": meta['session'],
@@ -160,23 +86,45 @@ def aggregate_and_promote_champions(results_base_path: Path, filter_by: Leadersh
             "PnL": total_pnl,
             "AvgTrade": round(avg_trade, 2),
             "Trades": len(filled),
-            "rr": meta['rr'],
-            "sw": meta['sw'],
-            "int": meta['int'],
-            "off": meta['off'],
-            "atr": meta['atr'],
-            "thr": meta['thr'],
-            "sl_atr": meta['sl_atr'],
+            "rr": meta.get('rr', 0.0),  # Safe get
             "Full_Path": str(csv_path),
             "Original_Filename": csv_path.name,
-            "config": f"SW:{meta['sw']} | INT:{meta['int']} | OFF:{meta['off']} | ATR:{meta['atr']} | THR:{meta['thr']}"
         }
-        if "sl_atr" in meta:
-            output.update({"sl_atr": meta["sl_atr"]})
-            output["config"] += f" | SL_ATR:{meta['sl_atr']}"
-        if "eb_mult" in meta:
-            output.update({"eb_mult": meta['eb_mult']})
-            output["config"] += f" | EB:{meta['eb_mult']}"
+
+        # Build Config String & Add Specific Params conditionally
+        config_parts = []
+
+        # 1. Structural Params (if present)
+        if meta.get('sw') is not None:
+            output['sw'] = meta['sw']
+            output['int'] = meta['int']
+            output['off'] = meta['off']
+            output['atr'] = meta['atr']
+            output['thr'] = meta['thr']
+            config_parts.extend([
+                f"SW:{meta['sw']}",
+                f"INT:{meta['int']}",
+                f"OFF:{meta['off']}",
+                f"ATR:{meta['atr']}",
+                f"THR:{meta['thr']}"
+            ])
+
+        # 2. Tap Zone Params (Crucial update)
+        if meta.get('mit') is not None:
+            output['mit'] = meta['mit']
+            config_parts.append(f"MIT:{meta['mit']}")
+
+        # 3. Common Optional Params
+        if meta.get('sl_atr') is not None:
+            output['sl_atr'] = meta['sl_atr']
+            config_parts.append(f"SL:{meta['sl_atr']}")
+
+        if meta.get('eb_mult') is not None:
+            output['eb_mult'] = meta['eb_mult']
+            config_parts.append(f"EB:{meta['eb_mult']}")
+
+        # Finalize Config String
+        output['config'] = " | ".join(config_parts)
 
         all_summaries.append(output)
 
@@ -198,6 +146,7 @@ def aggregate_and_promote_champions(results_base_path: Path, filter_by: Leadersh
         group['Norm_PnL'] = (group['PnL'] / max_pnl) * 100
 
         # 2. Normalize Risk:Reward (0-100, capped at 2.5R)
+        # Note: If RR is missing, it defaults to 0.0, resulting in 0 score contribution
         group['Norm_RR'] = (group['rr'] / 2.5).clip(upper=1.0) * 100
 
         # 3. Calculate Performance Score
@@ -208,31 +157,27 @@ def aggregate_and_promote_champions(results_base_path: Path, filter_by: Leadersh
         )
 
         # 4. Apply Confidence Multiplier
-        # Penalizes low sample size without hiding potential gems.
-        # 25+ trades -> 1.0x score. 12 trades -> 0.5x score.
         confidence_mult = (group['Trades'] / TARGET_TRADES).clip(upper=1.0)
-
         group['Score'] = base_score * confidence_mult
 
-        # 5. Garbage Collection (Optional: Zero out statistically insignificant results)
-        # Keeps data visible but at bottom of list
+        # 5. Garbage Collection
         garbage_mask = (group['Trades'] < 5) | (group['WinRate'] < 30.0)
         group.loc[garbage_mask, 'Score'] = 0.0
 
         # Sort by Score
         sorted_group = group.sort_values(by="Score", ascending=False)
 
-        # Save Leaderboard (Include Score for transparency)
+        # Save Leaderboard
         leaderboard_name = f"TAP_{session}_{symbol}_Leaderboard.csv"
         sorted_group.to_csv(leaderboard_dir / leaderboard_name, index=False)
 
         # E. Identify Champion
         best = sorted_group.iloc[0]
 
-        # If the best score is -1, it means NO config met the minimum criteria
-        if best['Score'] == -1:
+        # If the best score is 0, it means NO config met the minimum criteria
+        if best['Score'] <= 0:
             logger.warning(
-                f"⚠️ No qualified champion for {symbol} {session} (Min Trades: {MIN_TRADES}, Min WR: {MIN_WR}%)")
+                f"⚠️ No qualified champion for {symbol} {session}")
             continue
 
         # F. Promote Champion
@@ -252,8 +197,6 @@ def aggregate_and_promote_champions(results_base_path: Path, filter_by: Leadersh
             f"🏆 CHAMPION: {symbol} ({session}) | Score: {best['Score']:.1f} | PnL: ${best['PnL']} | WR: {best['WinRate']}% | Cfg: {best['config']}")
 
     # 3. GENERATE MASTER DASHBOARD
-    # Note: We pass by_pnl=True purely for visualization in the master table,
-    # but the files selected were chosen via Score.
     viewer = MasterLeaderboardViewer(
         leaderboard_dir=leaderboard_dir,
         report_name="Dashboard_Zone_Tap_Leaderboard.html",

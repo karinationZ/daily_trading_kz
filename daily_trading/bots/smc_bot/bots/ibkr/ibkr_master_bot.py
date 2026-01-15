@@ -107,29 +107,33 @@ class MasterBot:
     async def ibkr_check_connection(self):
         """
         Checks connection. Returns True if connected.
-        Only logs if a Reconnect was actually required.
+        If disconnected, attempts to reconnect multiple times before returning False.
         """
-        # 1. Silent Success: If already connected, just return True.
-        # This prevents spamming your logs every 5 minutes.
+        # 1. Fast Path: If already connected, return immediately.
         if self.ib_client.ib.isConnected():
             return True
 
-        # 2. Attempt Connect (Only if disconnected)
-        try:
-            logger.warning("⚠️ IBKR Disconnected. Attempting Reconnect...")
-            await self.ib_client.connect()
+        logger.warning("⚠️ IBKR Disconnected. Attempting Reconnect sequence...")
 
-            # Connection successful
-            msg = "✅ IBKR Connection Verified / Restored."
-            logger.info(msg)
-            # Optional: Notify Telegram on restoration
-            # await self.orb_bot.telegram_bot_debug.send_message(msg)
-            return True
+        # 2. Retry Loop (Try 3 times rapidly before failing back to main loop)
+        for i in range(1, 6):
+            try:
+                await self.ib_client.connect()
+                # Give it a moment to stabilize
+                await asyncio.sleep(1)
 
-        except Exception as e:
-            msg = f"FATAL: IBKR Connect Failed: {e}"
-            logger.critical(msg)
-            return False
+                if self.ib_client.ib.isConnected():
+                    msg = "✅ IBKR Connection Verified / Restored."
+                    logger.info(msg)
+                    await self.orb_bot.telegram_bot_debug.send_message(msg)
+                    return True
+            except Exception as e:
+                logger.warning(f"Reconnect attempt {i}/3 failed: {e}")
+                await asyncio.sleep(2)  # Short pause between attempts
+
+        # 3. If we get here, all quick retries failed
+        logger.critical("FATAL: IBKR Connect Failed after retries.")
+        return False
 
     async def run(self):
         logger.info("🚀 IBKR MASTER BOT STARTING...")
@@ -158,12 +162,13 @@ class MasterBot:
                 if self.is_market_open():
                     last_logged_hour = -1
 
-                    # --- CONNECTION GUARD ---
-                    # If this returns False, SKIP the rest of the loop
-                    if not await self.ibkr_check_connection():
-                        logger.warning("No Connection. Retrying in 10s...")
-                        await asyncio.sleep(10)
-                        continue
+                    while not await self.ibkr_check_connection():
+                        logger.error("🚫 Connection Lost. Pausing 5s before next retry...")
+                        await asyncio.sleep(5)
+
+                        # Optional: Safety check - if market closed while we were retrying, break out
+                        if not self.is_market_open():
+                            break
 
                         # 4H Summary Logic
                     if current_hour_int % 4 == 0 and current_hour_int != last_logged_hour_summary:

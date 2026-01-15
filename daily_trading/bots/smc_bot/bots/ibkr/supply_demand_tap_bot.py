@@ -1,10 +1,9 @@
 import asyncio
-import traceback
 from typing import List
 from zoneinfo import ZoneInfo
 
 from daily_trading.bots.smc_bot.bots.BaseBot import SMCBotBase
-from daily_trading.bots.smc_bot.strategy.StrategyBase import TradeAction, TradeStatus
+from daily_trading.bots.smc_bot.strategy.StrategyBase import TradeStatus
 from daily_trading.bots.smc_bot.strategy.SupplyDemandZoneTapStrategy import SupplyDemandZoneTapStrategy
 from daily_trading.settings import logger, TELEGRAM_MAIN_CHANNEL_CHAT_ID
 
@@ -175,51 +174,3 @@ class SupplyDemandTapBot(SMCBotBase):
 
         if tasks:
             await asyncio.gather(*tasks)
-
-    async def run_strategy_cycle(self, strategy, df_5m, df_1h):
-        """
-        Isolated execution context for a single strategy.
-        """
-        try:
-            # 1. Run Analysis
-            analysis = strategy.analyze(df_5m, df_1h)
-
-            # 2. Report to Telegram (Only Significant Actions)
-            # We filter out 'PENDING' and 'IN_TRADE' statuses to avoid spamming the channel every 5 minutes.
-            if analysis.trade_signal:
-
-                is_significant = analysis.trade_signal.action in [
-                    TradeAction.ENTER,
-                    TradeAction.EXIT,
-                    TradeAction.CANCEL
-                ]
-
-                # Double Check: If it's CANCEL, only send if it was an active pending order getting killed
-                # If it's just "No Trade Found", we don't send.
-                if is_significant:
-                    action_emoji = {
-                        TradeAction.ENTER: "🚀 ENTER",
-                        TradeAction.EXIT: "💰 EXIT",
-                        TradeAction.CANCEL: "🚫 CANCEL"
-                    }.get(analysis.trade_signal.action, "⚠️ UPDATE")
-
-                    msg = (
-                        f"{action_emoji} {strategy.log_tag}\n"
-                        f"Action: {analysis.trade_signal.action.name}\n"
-                        f"Direction: {analysis.trade_signal.direction.name}\n"
-                        f"Size: {analysis.trade_signal}\n"
-                        f"Price: {analysis.trade_signal.price:.2f}\n"
-                        f"SL: {analysis.trade_signal.sl:.2f} | TP: {analysis.trade_signal.tp:.2f}\n"
-                        f"Time: {analysis.trade_signal.timestamp.strftime('%Y-%m-%d %H:%M')} UTC"
-                    )
-
-                    # Send Message with Chart (analysis.fig)
-                    # Note: getattr handles cases where fig might be None
-                    await self.telegram_bot.send_message(msg, getattr(analysis.trade_signal, 'fig', None))
-
-            # 3. Execute Orders
-            await self.handle_execution(strategy, analysis)
-
-        except Exception as e:
-            strategy.log.info(f"CYCLE ERROR: {e}", level="error")
-            logger.error(traceback.format_exc())

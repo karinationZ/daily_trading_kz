@@ -19,6 +19,7 @@ dist/
 .pytest_cache/
 .coverage
 htmlcov/
+*.cpython-311.pyc
 
 # IDE / OS
 .vscode/

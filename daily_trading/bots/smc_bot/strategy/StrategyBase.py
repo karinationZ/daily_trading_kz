@@ -42,6 +42,7 @@ class TradeSignal:
     reason: Optional[str] = None
     timestamp: Optional[datetime] = None
     metadata: Dict = field(default_factory=dict)
+    trade_result: Optional[str] = None
     fig: Optional[go.Figure] = None
 
 
@@ -174,11 +175,11 @@ class StrategyBase(ABC):
         return trend, recent_smc_events, fig
 
     # TODO: remove it
-    async def detect_bos_choch(self, detector: BosChochDetector, ohlc_1h: pd.DataFrame, trend: str, symbol: str) -> \
+    async def detect_bos_choch(self, detector: BosChochDetector, ohlc: pd.DataFrame, trend: str, symbol: str) -> \
             List[str]:
         """Step 2: Identify the most recent and valid BOS level in the trend direction."""
         recent_smc_events = []
-        results = detector.calculate_bos_choch(ohlc_1h, plot=True)
+        results = detector.calculate_bos_choch(ohlc, plot=True)
         self.bos_signals = results["signals"]
         self.bos_choch_fig = results["fig"]
         bos_choch_signals = sorted(results["signals"], key=lambda x: x["time"], reverse=True)

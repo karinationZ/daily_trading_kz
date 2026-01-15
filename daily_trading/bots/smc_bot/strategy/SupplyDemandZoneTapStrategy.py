@@ -150,18 +150,22 @@ class SupplyDemandZoneTapStrategy(StrategyBase):
 
         return {"entry": entry_price, "sl": sl, "tp": tp, "size": size}
 
-    def create_signal(self, action: TradeAction, timestamp: pd.Timestamp) -> TradeSignal:
-        """Utility for state cleanup and signal generation."""
-        sig = TradeSignal(
-            symbol=self.symbol,
-            action=action,
-            direction=self.active_trade.direction,
-            price=self.active_trade.price,
-            sl=self.active_trade.sl,
-            tp=self.active_trade.tp,
-            size=self.active_trade.size,
-            timestamp=timestamp
-        )
+    def create_signal(self, action: TradeAction, timestamp, custom_price: float = None) -> TradeSignal:
+        """
+        Creates a signal.
+        """
+        # 1. Determine which price to report
+        # If it's an EXIT, we want the execution price, not the entry price.
+        report_price = custom_price if custom_price is not None else self.active_trade.price
+
+        sig = TradeSignal(symbol=self.symbol,
+                          action=action,
+                          direction=self.active_trade.direction,
+                          price=report_price,
+                          sl=self.active_trade.sl,
+                          tp=self.active_trade.tp,
+                          size=self.active_trade.size,
+                          timestamp=timestamp)
         if action in [TradeAction.CANCEL, TradeAction.EXIT]:
             self.active_trade = None
             self.trade_status = TradeStatus.NONE
@@ -169,8 +173,8 @@ class SupplyDemandZoneTapStrategy(StrategyBase):
 
     def analyze(self, ohlc_5m: pd.DataFrame, ohlc_1h: pd.DataFrame) -> SignalSummary:
         """Main strategy execution loop: High-Priority Fill & Exit Logic."""
-        curr_5m = ohlc_5m.iloc[-1]
-        ts_now = curr_5m.name.tz_convert(self.timezone)
+        curr = ohlc_5m.iloc[-1]
+        ts_now = curr.name.tz_convert(self.timezone)
         s_info = SESSION_MAP[self.timezone.key]
 
         # 1. HTF Caching (Zones refresh once per hour)
@@ -184,63 +188,86 @@ class SupplyDemandZoneTapStrategy(StrategyBase):
         session_end = ts_now.replace(hour=s_info.get("end_hour", 16), minute=s_info.get("end_minute", 0))
         cutoff_ts = session_end - timedelta(minutes=self.end_buffer_minutes)
 
-        # 3. Handle FILLED Trades (Check SL/TP EVERY 5m bar)
-        if self.trade_status == TradeStatus.FILLED:
-            # Check Hard Session Exit
-            if ts_now >= cutoff_ts:
-                return SignalSummary(direction="EXIT", trade_signal=self.create_signal(TradeAction.EXIT, curr_5m.name))
-
-            trade = self.active_trade
-            is_long = trade.direction == BIAS.LONG
-
-            # SL/TP logic
-            hit = (is_long and (curr_5m['low'] <= trade.sl or curr_5m['high'] >= trade.tp)) or \
-                  (not is_long and (curr_5m['high'] >= trade.sl or curr_5m['low'] <= trade.tp))
-
-            if hit:
-                return SignalSummary(direction="EXIT", trade_signal=self.create_signal(TradeAction.EXIT, curr_5m.name))
-
-            # If we hit the cutoff while in trade
-            if ts_now >= cutoff_ts:
-                return SignalSummary(direction="EXIT", trade_signal=self.create_signal(TradeAction.EXIT, curr_5m.name))
-
-            return SignalSummary(direction="IN_TRADE")
-
-        # 4. Handle PENDING Orders (Fill Detection FIRST)
+        # 3. FILL LOGIC (High Priority)
+        # We check this FIRST. If it fills, we update status immediately.
+        filled = False
         if self.trade_status == TradeStatus.PENDING:
-            trade = self.active_trade
-            is_long = trade.direction == BIAS.LONG
-
-            # Check Fill
-            filled = (is_long and curr_5m['low'] <= trade.price) or \
-                     (not is_long and curr_5m['high'] >= trade.price)
+            is_long = self.active_trade.direction == BIAS.LONG
+            if is_long:
+                filled = curr["low"] <= self.active_trade.price
+            else:
+                filled = curr["high"] >= self.active_trade.price
 
             if filled:
                 self.trade_status = TradeStatus.FILLED
-                # Immediate SL/TP check on the same bar as fill
-                hit = (is_long and (curr_5m['low'] <= trade.sl or curr_5m['high'] >= trade.tp)) or \
-                      (not is_long and (curr_5m['high'] >= trade.sl or curr_5m['low'] <= trade.tp))
+                self.log.info(
+                    f"⚡ ORDER FILLED | {self.symbol}: {self.active_trade.direction.name} "
+                    f"@ {self.active_trade.price:.2f} | Time: {curr.name}")
 
-                if hit or ts_now >= cutoff_ts:
-                    return SignalSummary(direction="EXIT",
-                                         trade_signal=self.create_signal(TradeAction.EXIT, curr_5m.name))
-                return SignalSummary(direction="FILLED")
+        # 4. SESSION EXIT LOGIC (Evaluate both Active and Just-Filled trades)
+        if self.trade_status == TradeStatus.FILLED:
+            # Check for SL/TP first
+            is_long = self.active_trade.direction == BIAS.LONG
 
-            # If NOT filled, check for cancellation
+            # Detailed check to see WHICH one was hit
+            hit_sl = (is_long and curr["low"] <= self.active_trade.sl) or \
+                     (not is_long and curr["high"] >= self.active_trade.sl)
+
+            hit_tp = (is_long and curr["high"] >= self.active_trade.tp) or \
+                     (not is_long and curr["low"] <= self.active_trade.tp)
+
+            hit_sl_tp = hit_sl or hit_tp
+
+            # OR Check if we hit the Session Hard Exit
+            is_cutoff_time = ts_now >= cutoff_ts
+
+            if hit_sl_tp:
+                # Determine actual exit price
+                exit_price = self.active_trade.sl if hit_sl else self.active_trade.tp
+                self.log.info(f"🎯 TRADE EXIT (HIT {'SL' if hit_sl else 'TP'}) | Close: {curr['close']:.2f}")
+
+                # PASS THE EXIT PRICE HERE
+                signal = self.create_signal(TradeAction.EXIT, ohlc_5m.index[-1], custom_price=exit_price)
+                if hit_sl:
+                    signal.trade_result = "LOSS"
+                elif hit_tp:
+                    signal.trade_result = "WIN"
+                return SignalSummary(direction="EXIT", trade_signal=signal)
+
+            elif is_cutoff_time:
+                # Exit at current market close
+                exit_price = curr['close']
+                self.log.info(f"⏰ SESSION CUTOFF EXIT | Closing at {exit_price:.2f}")
+
+                # PASS THE MARKET CLOSE PRICE HERE
+                return SignalSummary(direction="EXIT",
+                                     trade_signal=self.create_signal(TradeAction.EXIT, ohlc_5m.index[-1],
+                                                                     custom_price=exit_price))
+
+            return SignalSummary(direction="FILLED" if filled else "IN_TRADE")
+
+        # 5. PENDING ORDER CANCELLATION (Only if NOT filled)
+        # We removed the redundant Fill check here. If it was filled, it was caught in Step 3.
+        if self.trade_status == TradeStatus.PENDING:
+
+            # A. Time Cutoff Cancel
             if ts_now >= cutoff_ts:
                 return SignalSummary(direction="CANCELLED",
-                                     trade_signal=self.create_signal(TradeAction.CANCEL, curr_5m.name))
+                                     trade_signal=self.create_signal(TradeAction.CANCEL, curr.name))
 
-            # Target reached before entry = Cancel
-            hit_target_early = (is_long and curr_5m['high'] >= trade.tp) or \
-                               (not is_long and curr_5m['low'] <= trade.tp)
+            # B. Target Reached Early Cancel (Invalidation)
+            trade = self.active_trade
+            is_long = trade.direction == BIAS.LONG
+            hit_target_early = (is_long and curr['high'] >= trade.tp) or \
+                               (not is_long and curr['low'] <= trade.tp)
+
             if hit_target_early:
                 return SignalSummary(direction="CANCELLED",
-                                     trade_signal=self.create_signal(TradeAction.CANCEL, curr_5m.name))
+                                     trade_signal=self.create_signal(TradeAction.CANCEL, curr.name))
 
             return SignalSummary(direction="PENDING")
 
-        # 5. Scan for NEW Taps (Only if session is active)
+        # 6. Scan for NEW Taps (Only if session is active)
         if self.trade_status == TradeStatus.NONE and ts_now < cutoff_ts:
             for zone in self.cached_zones_1h:
                 z_id = zone['start_time']
@@ -250,18 +277,18 @@ class SupplyDemandZoneTapStrategy(StrategyBase):
                 if self.validate_zone_reaction(ohlc_5m, zone['bias'], zone):
                     params = self.calculate_trade_params(ohlc_5m, zone, zone['bias'])
 
-                    # Basic sanity check
-                    if (zone['bias'] == BIAS.LONG and curr_5m['close'] >= params['tp']) or \
-                            (zone['bias'] == BIAS.SHORT and curr_5m['close'] <= params['tp']):
+                    # Basic sanity check (Don't enter if price is already past TP)
+                    if (zone['bias'] == BIAS.LONG and curr['close'] >= params['tp']) or \
+                            (zone['bias'] == BIAS.SHORT and curr['close'] <= params['tp']):
                         self.processed_zone_ids.add(z_id)
                         continue
 
                     trade = TradeSignal(
                         action=TradeAction.ENTER, symbol=self.symbol, direction=zone['bias'],
                         price=params['entry'], sl=params['sl'], tp=params['tp'],
-                        size=params['size'], timestamp=curr_5m.name, metadata={'zone_id': z_id,
-                                                                               "sl_atr": self.sl_atr_multiplier,
-                                                                               "eb_mult": self.eb_mult}
+                        size=params['size'], timestamp=curr.name, metadata={'zone_id': z_id,
+                                                                            "sl_atr": self.sl_atr_multiplier,
+                                                                            "eb_mult": self.eb_mult}
                     )
                     self.active_trade, self.trade_status = trade, TradeStatus.PENDING
                     self.processed_zone_ids.add(z_id)

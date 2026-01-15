@@ -1,4 +1,5 @@
 import asyncio
+import traceback
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 from zoneinfo import ZoneInfo
@@ -7,8 +8,8 @@ import pandas as pd
 import pytz
 
 from daily_trading.bots.smc_bot.bots.TelegramBot import TelegramBot
-from daily_trading.bots.smc_bot.detectors.ORBDetector import SESSION_MAP
 from daily_trading.bots.smc_bot.detectors.DetectorsBase import BIAS, GET_READY_ALERT, Trend
+from daily_trading.bots.smc_bot.detectors.ORBDetector import SESSION_MAP
 from daily_trading.bots.smc_bot.strategy.BosFvgFillStrategy_old import SignalSummary
 from daily_trading.bots.smc_bot.strategy.StrategyBase import TradeAction, TradeSignal, TradeStatus
 from daily_trading.brokers.BitUnixClient import BitUnixClient
@@ -204,6 +205,75 @@ class SMCBotBase:
             )
             strategy.trade_status = TradeStatus.PENDING
             strategy.log.info(f"♻️ RESTORED STATE: PENDING {direction.name} @ {entry_price}")
+
+    async def run_strategy_cycle(self, strategy, *args, **kwargs):
+        """
+        Isolated execution context for a single strategy.
+        Accepts variable arguments (*args) to pass different data requirements
+        (e.g., 1 DF for ORB, 2 DFs for SupplyDemand).
+        """
+        try:
+            # 1. Run Analysis (Generic Argument Passing)
+            analysis = strategy.analyze(*args, **kwargs)
+
+            # 2. Report to Telegram (Only Significant Actions)
+            # We filter out 'PENDING' and 'IN_TRADE' statuses.
+            if analysis.trade_signal:
+
+                is_significant = analysis.trade_signal.action in [
+                    TradeAction.ENTER,
+                    TradeAction.EXIT,
+                    TradeAction.CANCEL
+                ]
+
+                # Double Check: If it's CANCEL, only send if it was an active pending order getting killed
+                if is_significant:
+                    action_emoji = {
+                        TradeAction.ENTER: "🚀 ENTER",
+                        TradeAction.EXIT: "💰 EXIT",
+                        TradeAction.CANCEL: "🚫 CANCEL"
+                    }.get(analysis.trade_signal.action, "⚠️ UPDATE")
+
+                    # Price Formatting Logic
+                    # Ensures commas for thousands (e.g., 18,000.50) and fixed 2 decimals
+                    raw_price = analysis.trade_signal.price
+                    price_str = f"{raw_price:,.2f}"
+
+                    msg = (
+                        f"{action_emoji} {strategy.log_tag}\n"
+                        f"Action: {analysis.trade_signal.action.name}\n"
+                        f"Direction: {analysis.trade_signal.direction.name}\n"
+                        f"Size: {analysis.trade_signal.size}\n"
+                        f"Price: {price_str}\n"
+                        f"SL: {analysis.trade_signal.sl:,.2f} | TP: {analysis.trade_signal.tp:,.2f}\n"
+                        f"Time: {analysis.trade_signal.timestamp.strftime('%Y-%m-%d %H:%M')} UTC\n"
+                    )
+                    result = getattr(analysis.trade_signal, 'trade_result', None)
+                    if result == "LOSS":
+                        msg = f"RESULT:  🔴 {result}\n" + msg
+                    elif result == "WIN":
+                        msg = f"Result: 🟢 {result}\n" + msg
+
+                    # Send Message with Chart (analysis.fig)
+                    # Note: getattr handles cases where fig might be None
+                    await self.telegram_bot.send_message(msg, getattr(analysis.trade_signal, 'fig', None))
+
+                # Special Logic: If we just exited, fetch a Daily Summary
+                if analysis.trade_signal.action == TradeAction.EXIT:
+                    try:
+                        # Wait a moment for IBKR to update the ledger
+                        await asyncio.sleep(2)
+                        report = await self.ib_client.get_daily_summary()
+                        await self.telegram_bot.send_message(report)
+                    except Exception as e:
+                        logger.error(f"Failed to fetch post-exit summary: {e}")
+
+            # 3. Execute Orders
+            await self.handle_execution(strategy, analysis)
+
+        except Exception as e:
+            strategy.log(f"CYCLE ERROR: {e}", level="error")
+            logger.error(traceback.format_exc())
 
     async def handle_execution(self, strategy, analysis: SignalSummary):
         """

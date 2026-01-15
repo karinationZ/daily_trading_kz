@@ -4,6 +4,7 @@ from zoneinfo import ZoneInfo
 
 import pandas as pd
 
+from daily_trading.bots.smc_bot.detectors.BosChochDetector import BosChochDetector
 from daily_trading.bots.smc_bot.detectors.DetectorsBase import BIAS
 from daily_trading.bots.smc_bot.detectors.ORBDetector import ORBDetector, SESSION_MAP
 from daily_trading.bots.smc_bot.detectors.SupplyDemandZonesDetector import SupplyDemandZonesDetector
@@ -105,6 +106,8 @@ class ORBStrategy(StrategyBase):
                                                      zone_precision_factor=zone_precision_factor,
                                                      fvg_offset=fvg_offset,
                                                      fvg_threshold=fvg_threshold, wick_ratio=wick_ratio)
+        self.bos_detector = BosChochDetector(main_tf=main_tf, left_bars=5, right_bars=2,
+                                             wick_ratio=wick_ratio, volume_thresh=5)
 
         self.active_trade: Optional[TradeSignal] = None
         self.trade_status: TradeStatus = TradeStatus.NONE
@@ -193,7 +196,7 @@ class ORBStrategy(StrategyBase):
 
         return entry, sl
 
-    def trade_setup(self, entry, sl, direction, current_close, min_dist, zone_id, zone_type, ts):
+    def trade_setup(self, entry, sl, direction: BIAS, current_close, min_dist, zone_id, zone_type, ts):
         try:
             pos = self.calculate_trade_position(entry, sl, direction)
             if (direction == BIAS.LONG and current_close >= pos["tp"]) or \
@@ -213,10 +216,28 @@ class ORBStrategy(StrategyBase):
         return None, min_dist
 
     def check_zone_retrace(self, ohlc: pd.DataFrame, swing_zones: List[Dict], internal_zones: List[Dict]):
-        if not self.orb_results or not self.orb_results["signals"]:
+        # GET TREND FROM BOS (The "True" Structure)
+        bos_trend = self.bos_detector.get_current_trend(ohlc)
+        if bos_trend == BIAS.NEUTRAL:
             return None
+
+        # CHECK ORB CONFIRMATION (The Session "Momentum")
+        if not self.orb_results or not self.orb_results["signals"]:
+            # No ORB breakout yet -> We are inside the range -> Wait.
+            return None
+
         latest_orb_sig = max(self.orb_results["signals"], key=lambda d: d["time"])
-        direction = latest_orb_sig["direction"]
+        orb_direction = latest_orb_sig["direction"]
+
+        # We only trade if Structure (BOS) agrees with Session Momentum (ORB)
+        if bos_trend != orb_direction:
+            # Divergence detected (e.g., Bullish Structure but Bearish Breakout)
+            # Filter this out to avoid fakeouts.
+            return None
+
+        # PROCEED WITH TRADES
+        # Use bos_trend (which is now confirmed equal to orb_direction)
+        active_direction = orb_direction
 
         last_local = ohlc.index[-1].tz_convert(self.timezone)
         s_info = SESSION_MAP[self.timezone.key]
@@ -232,15 +253,17 @@ class ORBStrategy(StrategyBase):
         for zone, zone_type in all_candidates:
             zone_id = zone['start_time'].tz_convert("UTC") if zone['start_time'].tzinfo else zone[
                 'start_time'].tz_localize("UTC")
-            if zone["bias"] != direction or zone_id in self.processed_zone_ids or zone_id < lookback_start:
+            if zone["bias"] != active_direction or zone_id in self.processed_zone_ids or zone_id < lookback_start:
                 continue
 
-            if not self.validate_zone_reaction(ohlc, direction, zone):
+            if not self.validate_zone_reaction(ohlc, active_direction, zone):
                 continue
 
             # Execution
-            entry_p, sl_p = self.get_execution_levels(ohlc, zone, zone_type, direction, current_close)
-            signal, updated_dist = self.trade_setup(entry_p, sl_p, direction, current_close, min_distance, zone_id,
+            entry_p, sl_p = self.get_execution_levels(ohlc, zone, zone_type, active_direction, current_close)
+            signal, updated_dist = self.trade_setup(entry_p, sl_p,
+                                                    active_direction, current_close,
+                                                    min_distance, zone_id,
                                                     zone_type, ohlc.index[-1])
 
             if signal:
@@ -286,22 +309,6 @@ class ORBStrategy(StrategyBase):
 
         return {"sl": sl, "tp": tp, "size": size}
 
-    def create_signal(self, action: TradeAction, timestamp) -> TradeSignal:
-        sig = TradeSignal(symbol=self.symbol,
-                          action=action,
-                          direction=self.active_trade.direction,
-                          price=self.active_trade.price,
-                          sl=self.active_trade.sl,
-                          tp=self.active_trade.tp,
-                          size=self.active_trade.size,
-                          timestamp=timestamp)
-
-        if action in [TradeAction.CANCEL, TradeAction.EXIT]:
-            if self.active_trade:
-                self.processed_zone_ids.add(self.active_trade.metadata['zone_id'])
-        self.active_trade, self.trade_status = None, TradeStatus.NONE
-        return sig
-
     def check_pending_validity(self, ohlc: pd.DataFrame, internal_zones: List[Dict], swing_zones: List[Dict]) -> \
             Optional[TradeSignal]:
         if not self.active_trade:
@@ -315,13 +322,41 @@ class ORBStrategy(StrategyBase):
             return self.create_signal(TradeAction.CANCEL, ohlc.index[-1])
         return None
 
+    def create_signal(self, action: TradeAction, timestamp, custom_price: float = None) -> TradeSignal:
+        """
+        Creates a signal.
+        """
+        # 1. Determine which price to report
+        # If it's an EXIT, we want the execution price, not the entry price.
+        report_price = custom_price if custom_price is not None else self.active_trade.price
+
+        sig = TradeSignal(symbol=self.symbol,
+                          action=action,
+                          direction=self.active_trade.direction,
+                          price=report_price,
+                          sl=self.active_trade.sl,
+                          tp=self.active_trade.tp,
+                          size=self.active_trade.size,
+                          timestamp=timestamp)
+
+        # 2. Cleanup State
+        if action in [TradeAction.CANCEL, TradeAction.EXIT]:
+            if self.active_trade:
+                self.processed_zone_ids.add(self.active_trade.metadata['zone_id'])
+            # Reset state after signal creation
+            self.active_trade, self.trade_status = None, TradeStatus.NONE
+
+        return sig
+
     def analyze(self, ohlc: pd.DataFrame) -> SignalSummary:
         ts_now = ohlc.index[-1].tz_convert(self.timezone)
         s_info = SESSION_MAP[self.timezone.key]
         curr = ohlc.iloc[-1]
 
         # 1. SETUP CUTOFFS
-        session_end = ts_now.replace(hour=s_info.get("end_hour", 16), minute=s_info.get("end_minute", 0), second=0,
+        session_end = ts_now.replace(hour=s_info.get("end_hour", 16),
+                                     minute=s_info.get("end_minute", 0),
+                                     second=0,
                                      microsecond=0)
         pending_cutoff = session_end - timedelta(minutes=self.end_buffer_minutes)
         final_bar_for_entry_cutoff = session_end - timedelta(minutes=15)
@@ -351,25 +386,47 @@ class ORBStrategy(StrategyBase):
         if self.trade_status == TradeStatus.FILLED:
             # Check for SL/TP first
             is_long = self.active_trade.direction == BIAS.LONG
-            hit_sl_tp = (is_long and (curr["low"] <= self.active_trade.sl or curr["high"] >= self.active_trade.tp)) or \
-                        (not is_long and (curr["high"] >= self.active_trade.sl or curr["low"] <= self.active_trade.tp))
+
+            # Detailed check to see WHICH one was hit
+            hit_sl = (is_long and curr["low"] <= self.active_trade.sl) or \
+                     (not is_long and curr["high"] >= self.active_trade.sl)
+
+            hit_tp = (is_long and curr["high"] >= self.active_trade.tp) or \
+                     (not is_long and curr["low"] <= self.active_trade.tp)
+
+            hit_sl_tp = hit_sl or hit_tp
 
             # OR Check if we hit the Session Hard Exit (e.g., 19:45 or 19:55)
             # If we just filled but it's already cutoff time, we must EXIT at market price.
             is_cutoff_time = ts_now >= pending_cutoff
 
             if hit_sl_tp:
+                # Determine actual exit price
+                exit_price = self.active_trade.sl if hit_sl else self.active_trade.tp
+
                 self.log.info(
-                    f"🎯 TRADE EXIT (HIT TP or SL) | {self.symbol}: {self.active_trade.direction.name} "
-                    f"| Close: {curr['close']:.2f} | {curr.name}")
-                return SignalSummary(direction="EXIT",
-                                     trade_signal=self.create_signal(TradeAction.EXIT, ohlc.index[-1]))
+                    f"🎯 TRADE EXIT (HIT {'SL' if hit_sl else 'TP'}) | {self.symbol}: "
+                    f"Close: {curr['close']:.2f} | Target: {exit_price:.2f}")
+
+                signal = self.create_signal(TradeAction.EXIT, ohlc.index[-1], custom_price=exit_price)
+                if hit_sl:
+                    signal.trade_result = "LOSS"
+                elif hit_tp:
+                    signal.trade_result = "WIN"
+                # PASS THE EXIT PRICE HERE
+                return SignalSummary(direction="EXIT", trade_signal=signal)
+
             elif is_cutoff_time:
+                # Exit at current market close
+                exit_price = curr['close']
+
                 self.log.info(
-                    f"⏰ SESSION CUTOFF EXIT | Sending signal to close all orders |"
-                    f" {self.symbol}: {self.active_trade.direction.name} | Close: {curr['close']:.2f}")
+                    f"⏰ SESSION CUTOFF EXIT | {self.symbol} | Closing at {exit_price:.2f}")
+
+                # PASS THE MARKET CLOSE PRICE HERE
                 return SignalSummary(direction="EXIT",
-                                     trade_signal=self.create_signal(TradeAction.EXIT, ohlc.index[-1]))
+                                     trade_signal=self.create_signal(TradeAction.EXIT, ohlc.index[-1],
+                                                                     custom_price=exit_price))
 
             return SignalSummary(direction="FILLED" if filled else "IN_TRADE")
 

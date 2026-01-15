@@ -55,6 +55,16 @@ SD_CONFIG = {
         "sl_atr": 2.0,
         "rr": 2.0
     },
+    ("MNQ", "ASIA"): {
+        "sw": 35,
+        "int": 3,
+        "off": 3,
+        "atr": 2.0,
+        "thr": 0.15,
+        "eb_mult": 2.0,
+        "sl_atr": 2.0,
+        "rr": 2.0
+    },
 
     # MNQ NY
     # Stats: WR 69.23% | PnL 1406 | Score 75.11
@@ -76,6 +86,16 @@ SD_CONFIG = {
     # MGC LONDON
     # Stats: WR 55.77% | PnL 2831 | Score 74.30
     ("MGC", "LONDON"): {
+        "sw": 8,
+        "int": 3,
+        "off": 3,
+        "atr": 1.8,
+        "thr": 0.15,
+        "eb_mult": 1.5,
+        "sl_atr": 1.5,
+        "rr": 1.5
+    },
+    ("MGC", "ASIA"): {
         "sw": 8,
         "int": 3,
         "off": 3,

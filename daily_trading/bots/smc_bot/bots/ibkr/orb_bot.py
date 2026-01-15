@@ -271,7 +271,10 @@ class ORBBot(SMCBotBase):
 
             # 3. Validation: Check if data exists and strategy is in time window.
             if df_5m is not None and not df_5m.empty:
-                if self.is_strategy_in_window(strategy):
+                curr = df_5m.iloc[-1]
+                ts_now = curr.name.tz_convert(self.timezone)
+                is_session_started = strategy.is_session_started(ts_now, strategy.timezone)
+                if self.is_strategy_in_window(strategy) and is_session_started:
                     # Call the EXISTING logic function
                     tasks.append(self.run_strategy_cycle(strategy, df_5m))
 

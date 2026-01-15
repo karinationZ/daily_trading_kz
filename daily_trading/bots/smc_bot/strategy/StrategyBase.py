@@ -1,6 +1,6 @@
 from abc import ABC
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import datetime, timedelta
 from enum import auto, Enum
 from typing import Dict, List, Optional
 from typing import Tuple
@@ -13,6 +13,7 @@ from daily_trading.bots.smc_bot.bots.TelegramBot import TelegramBot
 from daily_trading.bots.smc_bot.detectors.BosChochDetector import BosChochDetector
 from daily_trading.bots.smc_bot.detectors.DetectorsBase import BIAS, DetectorsBase, Trend
 from daily_trading.bots.smc_bot.detectors.HighLowDetector import HighLowDetector
+from daily_trading.bots.smc_bot.detectors.ORBDetector import SESSION_MAP
 from daily_trading.settings import logger
 
 
@@ -125,6 +126,30 @@ class StrategyBase(ABC):
         else:
             tz_short = "ASIA"
         return tz_short
+
+    @staticmethod
+    def is_session_started(ts_now, timezone: ZoneInfo) -> bool:
+        """
+        Check if trading session has started.
+        Returns True only if session has started (ignores end time).
+
+        SESSION_MAP times (in local timezone):
+        - NY: 9:30 AM - 4:00 PM EST
+        - London: 8:00 AM - 2:30 PM GMT
+        - Tokyo: 9:00 AM - 3:00 PM JST
+        """
+        s_info = SESSION_MAP[timezone.key]
+
+        # Get session start
+        session_start = ts_now.replace(
+            hour=s_info.get("start_hour", 0),
+            minute=s_info.get("start_minute", 0),
+            second=0,
+            microsecond=0
+        )
+
+        # Check if session has started
+        return ts_now >= session_start
 
     async def manage_cache_event(self, cache_key: Tuple[str, str], event: str, current_time: datetime) -> bool:
         """Manage cache for a new event, return True if event is new."""

@@ -165,7 +165,7 @@ class Backtester:
 
                     if filled:
                         active_position = ord_
-                        active_position['entry_time'] = curr_time
+                        active_position['timestamp'] = curr_time
                         active_position['status'] = "FILLED"
                         active_order = None
 
@@ -213,7 +213,7 @@ class Backtester:
         # --- FIX END ---
 
         trade = {
-            'entry_time': trade_dict.get('entry_time', trade_dict.get('created_time')),
+            'timestamp': trade_dict.get('timestamp', trade_dict.get('created_time')),
             'exit_time': exit_time,
             'symbol': getattr(self.strategy, "symbol", "TEST"),
             'direction': direction,

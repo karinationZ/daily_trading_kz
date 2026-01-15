@@ -277,6 +277,7 @@ class ORBBot(SMCBotBase):
                 if self.is_strategy_in_window(strategy) and is_session_started:
                     # Call the EXISTING logic function
                     tasks.append(self.run_strategy_cycle(strategy, df_5m))
-
+                else:
+                    strategy.log.info(f"💤 {strategy.tz_short} Session has not started yet!")
         if tasks:
             await asyncio.gather(*tasks)

@@ -85,12 +85,12 @@ class ORBStrategy(StrategyBase):
         self.symbol = symbol
         self.timezone = timezone
 
-        tz_short = self.get_tz_short(self.timezone)
-        self.log_tag = f"ORB | {symbol}:{tz_short}"
+        self.tz_short = self.get_tz_short(self.timezone)
+        self.log_tag = f"ORB | {symbol}:{self.tz_short}"
         self.log = logger.bind(bot_id=self.log_tag)
 
         # Unique IBKR Tag
-        self.ext_tag = f"{symbol}_{tz_short}_ORB"
+        self.ext_tag = f"{symbol}_{self.tz_short}_ORB"
 
         self.risk = risk
         self.tp_multiple = tp_multiple

@@ -16,7 +16,9 @@ dist/
 *.egg-info/
 
 # Test / coverage
-.pytest_cache/
+# Comprehensive Python cache ignore
+**/__pycache__/
+**/.pytest_cache/
 .coverage
 htmlcov/
 *.cpython-311.pyc

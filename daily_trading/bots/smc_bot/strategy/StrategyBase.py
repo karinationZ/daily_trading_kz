@@ -124,6 +124,7 @@ class StrategyBase(ABC):
             tz_short = "LONDON"
         else:
             tz_short = "ASIA"
+        return tz_short
 
     async def manage_cache_event(self, cache_key: Tuple[str, str], event: str, current_time: datetime) -> bool:
         """Manage cache for a new event, return True if event is new."""

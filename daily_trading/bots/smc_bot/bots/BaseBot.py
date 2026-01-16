@@ -29,6 +29,7 @@ class TimeZone:
     UTC = ZoneInfo("UTC")
     NY = ZoneInfo("America/New_York")
     LONDON = ZoneInfo("Europe/London")
+    ASIA = ZoneInfo("Asia/Tokyo")
 
 
 class SMCBotBase:

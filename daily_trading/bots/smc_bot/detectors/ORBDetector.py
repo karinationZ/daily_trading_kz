@@ -23,7 +23,7 @@ SESSION_MAP = {
 # ORB Detector
 # ==========================
 class ORBDetector(DetectorsBase):
-    def __init__(self, timezone: ZoneInfo, main_tf, orb_minutes: int = 15, target_percent: float = 0.5,
+    def __init__(self, timezone: ZoneInfo, main_tf="5m", orb_minutes: int = 15, target_percent: float = 0.5,
                  plot_tail: int = 500, wick_ratio: float = 0.10):
         super().__init__(main_tf, plot_tail, wick_ratio=wick_ratio)
         self.tz = timezone

@@ -191,7 +191,7 @@ class SupplyDemandTapBot(SMCBotBase):
 
             curr = df_5m.iloc[-1]
             ts_now = curr.name.tz_convert(self.timezone)
-            is_session_started = strategy.is_session_started(ts_now, strategy.timezone)
+            is_session_started = strategy.is_pre_session_started(ts_now, strategy.timezone)
 
             if self.is_strategy_in_window(strategy) and is_session_started:
                 # 4. Run Logic

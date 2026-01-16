@@ -113,7 +113,6 @@ class SupplyDemandZoneTapStrategy(StrategyBase):
             sl = self.sd_detector_1h.calculate_atr_stop_loss(ohlc,
                                                              entry_price,
                                                              direction=direction,
-                                                             atr_length=14,
                                                              atr_multiplier=self.sl_atr_multiplier)
             r = entry_price - sl
             tp = entry_price + (r * self.tp_multiple)
@@ -122,7 +121,6 @@ class SupplyDemandZoneTapStrategy(StrategyBase):
             sl = self.sd_detector_1h.calculate_atr_stop_loss(ohlc,
                                                              entry_price,
                                                              direction=direction,
-                                                             atr_length=14,
                                                              atr_multiplier=self.sl_atr_multiplier)
 
             r = sl - entry_price
@@ -140,7 +138,7 @@ class SupplyDemandZoneTapStrategy(StrategyBase):
         # 3. Calculate Raw Size (Pure Math)
         raw_size = int(self.risk / risk_per_contract)
         # 4. --- SAFETY CAP ---
-        max_contracts = 5
+        max_contracts = 10
         size = max(1, min(raw_size, max_contracts))
 
         if raw_size > max_contracts:
@@ -206,6 +204,14 @@ class SupplyDemandZoneTapStrategy(StrategyBase):
 
         # 4. SESSION EXIT LOGIC (Evaluate both Active and Just-Filled trades)
         if self.trade_status == TradeStatus.FILLED:
+            # --- SAFEGUARD: ZOMBIE KILLER ---
+            # If data is corrupted (0.00), kill the trade to stop infinite loops.
+            if self.active_trade.sl <= 0 or self.active_trade.price <= 0:
+                self.log.error(f"🧟 ZOMBIE TRADE DETECTED (Bad Data) | {self.symbol}. Clearing state.")
+                self.active_trade = None
+                self.trade_status = TradeStatus.NONE
+                return SignalSummary(direction="NEUTRAL")
+
             # Check for SL/TP first
             is_long = self.active_trade.direction == BIAS.LONG
 
@@ -276,6 +282,13 @@ class SupplyDemandZoneTapStrategy(StrategyBase):
 
                 if self.validate_zone_reaction(ohlc_5m, zone['bias'], zone):
                     params = self.calculate_trade_params(ohlc_5m, zone, zone['bias'])
+
+                    # Reject invalid math immediately
+                    if params['entry'] <= 0 or params['sl'] <= 0 or params['size'] <= 0:
+                        self.log.warning(f"⚠️ SKIPPING INVALID SETUP: {params}")
+                        # Optionally mark processed so we don't retry same bad math
+                        self.processed_zone_ids.add(z_id)
+                        continue
 
                     # Basic sanity check (Don't enter if price is already past TP)
                     if (zone['bias'] == BIAS.LONG and curr['close'] >= params['tp']) or \

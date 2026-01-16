@@ -72,6 +72,14 @@ class StrategyBase(ABC):
         "SIL": 1000.0,
         "MCL": 100.0
     }
+    HARD_MIN_DIST = {
+        "MNQ": 10.0,  # $20 risk min effective calculation
+        "MES": 4.0,  # $20 risk min effective calculation
+        "MGC": 3.0,  # $30 risk min effective calculation (Fixes your 11 contract issue)
+        "MBT": 25.0,
+        "SIL": 0.05,
+        "MCL": 0.15
+    }
 
     ENTRY_BUFFER = {
         "MNQ": 0.5,
@@ -128,7 +136,7 @@ class StrategyBase(ABC):
         return tz_short
 
     @staticmethod
-    def is_session_started(ts_now, timezone: ZoneInfo) -> bool:
+    def is_pre_session_started(ts_now, timezone: ZoneInfo) -> bool:
         """
         Check if trading session has started.
         Returns True only if session has started (ignores end time).
@@ -147,9 +155,9 @@ class StrategyBase(ABC):
             second=0,
             microsecond=0
         )
+        pre_session_start = session_start - timedelta(hours=1)
 
-        # Check if session has started
-        return ts_now >= session_start
+        return ts_now >= pre_session_start
 
     async def manage_cache_event(self, cache_key: Tuple[str, str], event: str, current_time: datetime) -> bool:
         """Manage cache for a new event, return True if event is new."""

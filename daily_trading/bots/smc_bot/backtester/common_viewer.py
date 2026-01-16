@@ -1,3 +1,4 @@
+import glob
 import os
 import shutil
 from pathlib import Path
@@ -9,6 +10,9 @@ from daily_trading.bots.smc_bot.backtester.BacktestResultsViewer import Backtest
 from daily_trading.bots.smc_bot.backtester.common_utils import parse_params_from_results_csv_filename
 from daily_trading.bots.smc_bot.backtester.MasterLeaderboardViewer import LeadershipBy, MasterLeaderboardViewer
 from daily_trading.settings import logger
+
+RANKING_COLUMN = "Score"
+TOP_N = 10
 
 
 def rank_results(df_results):
@@ -31,6 +35,57 @@ def rank_results(df_results):
     )
 
     return df.sort_values(by='Score', ascending=False)
+
+
+def merge_leaderboards(input_folder, output_file):
+    # 1. Find all CSV files in the folder (excluding the output file if it exists)
+    all_files = glob.glob(os.path.join(input_folder, "*.csv"))
+    all_files = [f for f in all_files if f != os.path.join(input_folder, output_file)]
+
+    if not all_files:
+        print("❌ No CSV files found in the specified folder.")
+        return
+
+    master_list = []
+
+    print(f"🔍 Found {len(all_files)} files. Processing...")
+
+    for filename in all_files:
+        # Read the CSV
+        df = pd.read_csv(filename)
+
+        # Check if required columns exist
+        if RANKING_COLUMN not in df.columns:
+            print(f"⚠️  Skipping {filename}: Column '{RANKING_COLUMN}' not found.")
+            continue
+
+        # Sort by Score (Descending) just in case the file wasn't sorted
+        df_sorted = df.sort_values(by=RANKING_COLUMN, ascending=False)
+
+        # Take the Top N
+        top_rows = df_sorted.head(TOP_N)
+
+        # Optional: Add a column to track which file it came from
+        top_rows["Source_File"] = os.path.basename(filename)
+
+        master_list.append(top_rows)
+        print(f"✅ Added top {len(top_rows)} rows from: {os.path.basename(filename)}")
+
+    # 2. Concatenate all dataframes
+    if master_list:
+        final_df = pd.concat(master_list, ignore_index=True)
+
+        # 3. Final Sort (Optional: Sort the master list by Score as well)
+        final_df = final_df.sort_values(by=RANKING_COLUMN, ascending=False)
+
+        # 4. Save to CSV
+        final_df.to_csv(input_folder / output_file, index=False)
+        print("\n" + "=" * 50)
+        print(f"🚀 SUCCESS! Merged {len(master_list)} files.")
+        print(f"📄 Saved {len(final_df)} total rows to: {output_file}")
+        print("=" * 50)
+    else:
+        print("⚠️  No valid data found to merge.")
 
 
 def aggregate_and_promote_champions(results_base_path: Path, filter_by: LeadershipBy,
@@ -204,5 +259,7 @@ def aggregate_and_promote_champions(results_base_path: Path, filter_by: Leadersh
         sort_by=LeadershipBy.PNL
     )
     viewer.generate_master_dashboard()
+
+    merge_leaderboards(leaderboard_dir, "MASTER_LEADERBOARD.csv")
 
     logger.info(f"✅ Aggregation complete. Weighted Champions located in: {WINNERS_DIR}")

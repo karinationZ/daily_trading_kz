@@ -4,7 +4,6 @@ from zoneinfo import ZoneInfo
 
 import pandas as pd
 
-from daily_trading.bots.smc_bot.detectors.BosChochDetector import BosChochDetector
 from daily_trading.bots.smc_bot.detectors.DetectorsBase import BIAS
 from daily_trading.bots.smc_bot.detectors.ORBDetector import ORBDetector, SESSION_MAP
 from daily_trading.bots.smc_bot.detectors.SupplyDemandZonesDetector import SupplyDemandZonesDetector
@@ -106,8 +105,8 @@ class ORBStrategy(StrategyBase):
                                                      zone_precision_factor=zone_precision_factor,
                                                      fvg_offset=fvg_offset,
                                                      fvg_threshold=fvg_threshold, wick_ratio=wick_ratio)
-        self.bos_detector = BosChochDetector(main_tf=main_tf, left_bars=5, right_bars=2,
-                                             wick_ratio=wick_ratio, volume_thresh=5)
+        # self.bos_detector = BosChochDetector(main_tf=main_tf, left_bars=5, right_bars=2,
+        #                                      wick_ratio=wick_ratio, volume_thresh=5)
 
         self.active_trade: Optional[TradeSignal] = None
         self.trade_status: TradeStatus = TradeStatus.NONE
@@ -158,45 +157,72 @@ class ORBStrategy(StrategyBase):
             return True
 
     def get_execution_levels(self, ohlc, zone: Dict, zone_type: str, direction: BIAS, current_close: float):
-        # Compute dynamic buffers
+        # 1. Get ATR and define Multipliers
         atr = self.sd_detector.get_current_atr(ohlc)
+
+        # Standard Buffers
         entry_buffer = atr * self.entry_buffer_mult
         sl_buffer = atr * self.sl_buffer_mult
-        tick_buffer = atr * self.tick_buffer_mult  # For London swing SL
-        tz_key = str(self.timezone).lower()
+        tick_buffer = atr * self.tick_buffer_mult
 
-        if "london" in tz_key:
+        # MINIMUM STOP DISTANCE (Volatility Floor)
+        # 1.0 is standard. 1.5 is very safe but might make TP hard to hit.
+        min_atr_dist = atr * 1.0
+
+        # 2. Determine Base Entry/SL based on Zone Logic (London vs NY)
+        # (This is your existing logic)
+        is_london_logic = self.timezone in [ZoneInfo("Europe/London"), ZoneInfo("Asia/Tokyo")]
+
+        if is_london_logic:
             if zone_type == "SWING":
-                # London Swing: Entry based on Close, SL based on tick_buffer
                 if direction == BIAS.LONG:
                     entry = current_close + entry_buffer
-                    sl = zone["bottom"] - tick_buffer
+                    structural_sl = zone["bottom"] - tick_buffer
                 else:
-                    # BIAS.SHORT
                     entry = current_close - entry_buffer
-                    sl = zone["top"] + tick_buffer
-            else:
-                # London Internal: Entry based on Zone Edge, SL based on sl_buffer
+                    structural_sl = zone["top"] + tick_buffer
+            else:  # Internal
                 if direction == BIAS.LONG:
                     entry = zone["top"] + entry_buffer
-                    sl = zone["bottom"] - sl_buffer
+                    structural_sl = zone["bottom"] - sl_buffer
                 else:
-                    # BIAS.SHORT
                     entry = zone["bottom"] - entry_buffer
-                    sl = zone["top"] + sl_buffer
+                    structural_sl = zone["top"] + sl_buffer
         else:
-            # NY LOGIC: All entries based on Close, SL based on sl_buffer
+            # NY LOGIC
             if direction == BIAS.LONG:
                 entry = current_close + entry_buffer
-                sl = zone["bottom"] - sl_buffer
+                structural_sl = zone["bottom"] - sl_buffer
             else:
-                # BIAS.SHORT
                 entry = current_close - entry_buffer
-                sl = zone["top"] + sl_buffer
+                structural_sl = zone["top"] + sl_buffer
 
-        return entry, sl
+        # 3. --- THE FIX: ENFORCE MINIMUM ATR DISTANCE ---
+
+        current_dist = abs(entry - structural_sl)
+
+        # Calculate the "Safety SL" based on volatility
+        if direction == BIAS.LONG:
+            volatility_sl = entry - min_atr_dist
+            # For Longs, SL is below price. We want the LOWER one (Further away).
+            final_sl = min(structural_sl, volatility_sl)
+        else:
+            volatility_sl = entry + min_atr_dist
+            # For Shorts, SL is above price. We want the HIGHER one (Further away).
+            final_sl = max(structural_sl, volatility_sl)
+
+        # Optional: Log if we modified the SL
+        # if final_sl != structural_sl:
+        #    print(f"DEBUG: SL Widened for Noise. Zone SL: {structural_sl} -> Volatility SL: {final_sl}")
+
+        return entry, final_sl
 
     def trade_setup(self, entry, sl, direction: BIAS, current_close, min_dist, zone_id, zone_type, ts):
+        # Sanity Check Inputs ---
+        if entry <= 0 or sl <= 0:
+            self.log.warning(f"⚠️ SKIPPING INVALID SETUP: Entry {entry} or SL {sl} is invalid (Zero/Negative). "
+                             f"Zone: {zone_id}")
+            return None, min_dist
         try:
             pos = self.calculate_trade_position(entry, sl, direction)
             if (direction == BIAS.LONG and current_close >= pos["tp"]) or \
@@ -216,11 +242,6 @@ class ORBStrategy(StrategyBase):
         return None, min_dist
 
     def check_zone_retrace(self, ohlc: pd.DataFrame, swing_zones: List[Dict], internal_zones: List[Dict]):
-        # GET TREND FROM BOS (The "True" Structure)
-        bos_trend = self.bos_detector.get_current_trend(ohlc)
-        if bos_trend == BIAS.NEUTRAL:
-            return None
-
         # CHECK ORB CONFIRMATION (The Session "Momentum")
         if not self.orb_results or not self.orb_results["signals"]:
             # No ORB breakout yet -> We are inside the range -> Wait.
@@ -229,14 +250,6 @@ class ORBStrategy(StrategyBase):
         latest_orb_sig = max(self.orb_results["signals"], key=lambda d: d["time"])
         orb_direction = latest_orb_sig["direction"]
 
-        # We only trade if Structure (BOS) agrees with Session Momentum (ORB)
-        if bos_trend != orb_direction:
-            # Divergence detected (e.g., Bullish Structure but Bearish Breakout)
-            # Filter this out to avoid fakeouts.
-            return None
-
-        # PROCEED WITH TRADES
-        # Use bos_trend (which is now confirmed equal to orb_direction)
         active_direction = orb_direction
 
         last_local = ohlc.index[-1].tz_convert(self.timezone)
@@ -292,7 +305,7 @@ class ORBStrategy(StrategyBase):
         # 3. Calculate Raw Size (Pure Math)
         raw_size = int(self.risk / risk_per_contract)
         # 4. --- SAFETY CAP ---
-        max_contracts = 5
+        max_contracts = 10
         size = max(1, min(raw_size, max_contracts))
 
         # 5. Calculate Take Profit
@@ -413,7 +426,6 @@ class ORBStrategy(StrategyBase):
                     signal.trade_result = "LOSS"
                 elif hit_tp:
                     signal.trade_result = "WIN"
-                # PASS THE EXIT PRICE HERE
                 return SignalSummary(direction="EXIT", trade_signal=signal)
 
             elif is_cutoff_time:

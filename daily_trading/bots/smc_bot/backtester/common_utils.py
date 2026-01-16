@@ -7,28 +7,28 @@ import pandas as pd
 
 def parse_params_from_results_csv_filename(filename: str) -> Optional[Dict[str, Any]]:
     """
-    Extract setup details from filename. Supports three formats:
-    1. New Buffer Variant: '{symbol}_{sess}_sw{}_int{}_off{}_atr{}_rr{}_eb_mult{}_sl_buffer_{}_results.csv'
-    2. Complex (Legacy):   '{symbol}_{sess}_sw{}_int{}_off{}_atr{}_thr{}_rr{}_results.csv'
-    3. Tap Zone:           '{symbol}_{sess}_rr{}_mit{}_sl{}_results.csv'
+    Extract setup details from filename. Supports updated formats including 'Tags' and 'THR'.
     """
 
-    # --- PATTERN 1: New Buffer Variant (Matches your f-string exactly) ---
-    # f"{symbol}_{sess_name}_sw{sw}_int{int}_off{off}_atr{atr}_rr{rr}_eb_mult{eb_mult}_sl_buffer_{sl_buffer}_results.csv"
+    # --- PATTERN 1: New Buffer Variant (Updated) ---
+    # Handles: MNQ_NY_CHAMP_sw15_..._thr0.25_eb_mult0.05_sl_buffer_0.1_results.csv
+    # MES_NY_1TO1_sw40_int5_off2_atr1.8_rr1.0_thr0.2
     pattern_buffer_variant = r"""
         (?P<symbol>[A-Z0-9]+)_
         (?P<session>[A-Z]+)
+        (?:_.*?)?                 # <--- FIX 1: Non-capturing group to ignore tags like 'CHAMP' or 'MOON'
         _sw(?P<sw>\d+)
         _int(?P<int>\d+)
         _off(?P<off>\d+)
         _atr(?P<atr>[\d.]+)
         _rr(?P<rr>[\d.]+)
+        _thr(?P<thr>[\d.]+)
         _eb_mult(?P<eb_mult>[\d.]+)
         _sl_buffer_(?P<sl_buffer>[\d.]+)
         _results\.csv
     """
 
-    # --- PATTERN 2: Structural / Complex (Legacy) ---
+    # --- PATTERN 2: Complex (Legacy) ---
     pattern_complex = r"""
         (?P<symbol>[A-Z0-9]+)_
         (?P<session>[A-Z]+)
@@ -59,6 +59,9 @@ def parse_params_from_results_csv_filename(filename: str) -> Optional[Dict[str, 
     if match:
         gd = match.groupdict()
         try:
+            # FIX 3: Parse THR if it exists, otherwise Default to None (or 0.0)
+            thr_val = float(gd['thr']) if gd.get('thr') else None
+
             return {
                 "symbol": gd["symbol"].upper(),
                 "session": gd["session"].upper(),
@@ -68,11 +71,11 @@ def parse_params_from_results_csv_filename(filename: str) -> Optional[Dict[str, 
                 "atr": float(gd['atr']),
                 "rr": float(gd['rr']),
                 "eb_mult": float(gd['eb_mult']),
-                "sl_atr": float(gd['sl_buffer']),  # Mapping 'sl_buffer' to standard 'sl_atr' key
-                "thr": None,  # This pattern doesn't have threshold
+                "sl_atr": float(gd['sl_buffer']),
+                "thr": thr_val,  # <--- Now correctly populated
                 "mit": None,
                 "description": (f"Symbol: {gd['symbol'].upper()} | {gd['session'].upper()} | "
-                                f"SW:{gd['sw']} EB:{gd['eb_mult']} SL:{gd['sl_buffer']}")
+                                f"SW:{gd['sw']} THR:{thr_val} RR:{gd['rr']}")
             }
         except ValueError:
             pass

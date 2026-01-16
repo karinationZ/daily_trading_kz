@@ -9,178 +9,96 @@ from daily_trading.settings import logger, TELEGRAM_MAIN_CHANNEL_CHAT_ID
 
 ORB_CONFIG = {
     # ==========================================================================
-    # GROUP 1: MNQ (The Profit Engine)
+    # GROUP 1: MNQ (THE EARNER)
+    # Strategy: NY = Momentum (High RR), London/Asia = Scalping (High WR)
     # ==========================================================================
 
-    # MNQ NY: The Aggressive Runner
-    # Champ: SW15 | ATR1.8 | THR0.4 | RR2.5
-    # Stats: Score 86.7 | PnL $3162 | WR 66.7%
+    # MNQ NY: The "Zero Lag" Momentum King
+    # Stats: PnL $1,899 | WR 40% | RR 4.0 | Zero Entry Buffer
     ("MNQ", "NY"): {
-        # Strategy Logic
         "swing_length": 15,
         "internal_length": 4,
-        "fvg_offset": 1,  # Aggressive Momentum Entry
-        "fvg_threshold": 0.4,
+        "fvg_offset": 1,
+        "fvg_threshold": 0.25,
         "zone_precision_factor": 1.8,
-        "tp_multiple": 2.5,  # Targeting Home Runs
-        # Dynamic Buffers
-        "entry_buffer_mult": 0.05,
+        "tp_multiple": 4.0,       # Confirmed Winner
+        "entry_buffer_mult": 0.0, # Zero Lag
         "sl_buffer_mult": 0.1,
         "tick_buffer_mult": 0.05
     },
 
-    # MNQ LONDON: The Consistent Scalper
-    # Champ: SW12 | ATR1.8 | THR0.2 | RR1.2
-    # Stats: Score 73.6 | PnL $2,556 | WR 60.0%
+    # MNQ LONDON: The 62% Win Rate Scalper
+    # Stats: PnL $1,821 | WR 62% | RR 1.0
     ("MNQ", "LONDON"): {
-        # Strategy Logic
         "swing_length": 12,
         "internal_length": 5,
-        "fvg_offset": 4,  # Deep Reversal Entry
+        "fvg_offset": 3,
         "fvg_threshold": 0.2,
         "zone_precision_factor": 1.8,
-        "tp_multiple": 1.2,  # Scalping Target
-        # Dynamic Buffers
+        "tp_multiple": 1.0,       # High Win Rate Focus
         "entry_buffer_mult": 0.05,
-        "sl_buffer_mult": 0.1,
+        "sl_buffer_mult": 0.15,
         "tick_buffer_mult": 0.05
     },
-    # MNQ ASIA: The Night Owl (Added from Screenshot)
-    # Stats: Score 72.9 | PnL $2,169 | WR 60.3%
+
+    # MNQ ASIA: The Hyper Scalper
+    # Stats: PnL $1,405 | WR 56% | RR 1.0 | Fast Structure (SW 6)
     ("MNQ", "ASIA"): {
-        # Strategy Logic
-        "swing_length": 10,  # SW:10
-        "internal_length": 5,  # INT:5
-        "fvg_offset": 5,  # OFF:5 (Deep Retracement)
-        "fvg_threshold": 0.2,  # THR:0.2
-        "zone_precision_factor": 2.0,  # ATR:2.0
-        "tp_multiple": 1.1,
-        # Dynamic Buffers
-        "entry_buffer_mult": 0.05,
-        "sl_buffer_mult": 0.1,
-        "tick_buffer_mult": 0.05
-    },
-
-    # ==========================================================================
-    # GROUP 2: MES (The Stability Anchor)
-    # ==========================================================================
-
-    # MES LONDON: Structural Grinder
-    # Champ: SW26 | ATR1.8 | THR0.25
-    # Stats: Score 71.4 | PnL $1,185 | WR 54.55%
-    ("MES", "LONDON"): {
-        # Strategy Logic
-        "swing_length": 26,
+        "swing_length": 5,        # Hyper Speed
         "internal_length": 5,
-        "fvg_offset": 3,
-        "fvg_threshold": 0.25,
-        "zone_precision_factor": 1.8,
-        "tp_multiple": 1.2,  # Conservative
-        # Dynamic Buffers (Increased for London Low Volatility)
-        "entry_buffer_mult": 0.05,
-        "sl_buffer_mult": 0.1,  # Increased per your setup
-        "tick_buffer_mult": 0.05  # Increased per your setup
-    },
-
-    # MES NY: Deep Value
-    # Champ: SW50 | ATR1.8 | THR0.25
-    # Stats: Score 74.3 | PnL $1522 | WR 61.8%
-    ("MES", "NY"): {
-        # Strategy Logic
-        "swing_length": 50,
-        "internal_length": 5,
-        "fvg_offset": 1,
-        "fvg_threshold": 0.25,
-        "zone_precision_factor": 1.8,
-        "tp_multiple": 1.2,
-        # Dynamic Buffers
-        "entry_buffer_mult": 0.05,
-        "sl_buffer_mult": 0.1,
-        "tick_buffer_mult": 0.05
-    },
-
-    # ==========================================================================
-    # GROUP 3: COMMODITIES (MGC/SIL)
-    # ==========================================================================
-
-    # MGC LONDON: Gold Volatility
-    # Champ: SW12 | ATR2.5 | THR0.2
-    # Stats: Score 73.3 | PnL $2,693 | WR 53.23%
-    ("MGC", "LONDON"): {
-        # Strategy Logic
-        "swing_length": 12,
-        "internal_length": 5,
-        "fvg_offset": 3,
-        "fvg_threshold": 0.2,
-        "zone_precision_factor": 2.5,
-        "tp_multiple": 1.2,
-        # Dynamic Buffers (Doubled for London Gold)
-        "entry_buffer_mult": 0.05,
-        "sl_buffer_mult": 0.2,  # <--- INCREASED
-        "tick_buffer_mult": 0.1  # <--- INCREASED
-    },
-
-    # MGC LONDON: Gold Volatility
-    # Champ: SW12 | ATR2.5 | THR0.2
-    # Stats: Score 76.2 | PnL $2,522 | WR 60.63%
-    ("MGC", "NY"): {
-        # Strategy Logic
-        "swing_length": 12,
-        "internal_length": 3,
-        "fvg_offset": 1,
-        "fvg_threshold": 0.2,
-        "zone_precision_factor": 2.5,
-        "tp_multiple": 1.5,
-        # Dynamic Buffers (standard)
-        "entry_buffer_mult": 0.05,
-        "sl_buffer_mult": 0.1,
-        "tick_buffer_mult": 0.05
-    },
-    # MGC ASIA: Overnight Gold (Added from Screenshot)
-    # Stats: Score 73.2 | PnL $3,849 | WR 53.1%
-    ("MGC", "ASIA"): {
-        # Strategy Logic
-        "swing_length": 55,  # SW:55 (Wide Structure)
-        "internal_length": 5,  # INT:5
-        "fvg_offset": 4,  # OFF:4
-        "fvg_threshold": 0.1,  # THR:0.1 (Strict FVG)
-        "zone_precision_factor": 2.0,  # ATR:2.0
-        "tp_multiple": 1.5,
-        # Dynamic Buffers
-        "entry_buffer_mult": 0.05,
-        "sl_buffer_mult": 0.1,
-        "tick_buffer_mult": 0.05
-    },
-
-    # SIL LONDON: Silver Patience
-    # Champ: SW75 | ATR2.5 | THR0.25
-    # Stats: Score 70.2 | PnL $1,096 | WR 51.43%
-    ("SIL", "LONDON"): {
-        # Strategy Logic
-        "swing_length": 75,  # Massive Structure
-        "internal_length": 10,
         "fvg_offset": 5,
-        "fvg_threshold": 0.25,
-        "zone_precision_factor": 2.5,  # Wide Zones
-        "tp_multiple": 1.2,
-        # Dynamic Buffers
+        "fvg_threshold": 0.15,
+        "zone_precision_factor": 2.0,
+        "tp_multiple": 1.0,
         "entry_buffer_mult": 0.05,
-        "sl_buffer_mult": 0.2,  # <--- INCREASED
-        "tick_buffer_mult": 0.1  # <--- INCREASED
+        "sl_buffer_mult": 0.15,
+        "tick_buffer_mult": 0.05
     },
 
-    # SIL NY: Momentum
-    # Champ: SW60 | ATR2.5 | THR0.3
-    # Stats: PnL $1,043 | WR 50.0%
-    ("SIL", "NY"): {
-        "swing_length": 60,
-        "internal_length": 15,
-        "fvg_offset": 1,
-        "fvg_threshold": 0.3,
+    # ==========================================================================
+    # GROUP 2: MGC (GOLD) (THE CASH MACHINE)
+    # Strategy: "The Trident" - Consistent Profits across all sessions.
+    # Universal Structure: SW 24 is the law.
+    # ==========================================================================
+
+    # MGC LONDON: The ~$3k Champion
+    # Stats: PnL $2768 | WR 51% | RR 1.5
+    ("MGC", "LONDON"): {
+        "swing_length": 24,
+        "internal_length": 4,
+        "fvg_offset": 3,
+        "fvg_threshold": 0.2,
+        "zone_precision_factor": 2.3,
+        "tp_multiple": 1.5,       # Sweet Spot
+        "entry_buffer_mult": 0.02,
+        "sl_buffer_mult": 0.15,
+        "tick_buffer_mult": 0.05
+    },
+
+    # MGC NY: The Volatility Earner
+    # Stats: PnL $2,672 | WR 51% | RR 1.7
+    ("MGC", "NY"): {
+        "swing_length": 24,
+        "internal_length": 3,
+        "fvg_offset": 2,
+        "fvg_threshold": 0.2,
         "zone_precision_factor": 2.5,
-        "tp_multiple": 1.5,
-        # Dynamic Buffers
-        "entry_buffer_mult": 0.05,
+        "tp_multiple": 1.7,       # Volatility Premium
+        "entry_buffer_mult": 0.02,
+        "sl_buffer_mult": 0.12,
+        "tick_buffer_mult": 0.05
+    },
+
+    # MGC ASIA: The Steady Earner
+    # Stats: PnL $2,366 | WR 52% | RR 1.4
+    ("MGC", "ASIA"): {
+        "swing_length": 24,
+        "internal_length": 4,
+        "fvg_offset": 3,
+        "fvg_threshold": 0.1,
+        "zone_precision_factor": 2.0,
+        "tp_multiple": 1.4,
+        "entry_buffer_mult": 0.02,
         "sl_buffer_mult": 0.1,
         "tick_buffer_mult": 0.05
     }
@@ -273,7 +191,7 @@ class ORBBot(SMCBotBase):
             if df_5m is not None and not df_5m.empty:
                 curr = df_5m.iloc[-1]
                 ts_now = curr.name.tz_convert(self.timezone)
-                is_session_started = strategy.is_session_started(ts_now, strategy.timezone)
+                is_session_started = strategy.is_pre_session_started(ts_now, strategy.timezone)
                 if self.is_strategy_in_window(strategy) and is_session_started:
                     # Call the EXISTING logic function
                     tasks.append(self.run_strategy_cycle(strategy, df_5m))

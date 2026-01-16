@@ -302,12 +302,11 @@ class DetectorsBase:
 
         return f"{seconds}s"
 
-    @staticmethod
     def calculate_atr_stop_loss(
+            self,
             ohlc: pd.DataFrame,
             entry_price: float,
             direction: BIAS,
-            atr_length: int = 14,
             atr_multiplier: float = 1.5,
     ) -> float:
         """
@@ -325,15 +324,7 @@ class DetectorsBase:
             float: A tick-conformed Stop Loss price.
         """
         # 1. Efficient Vectorized True Range (TR) Calculation
-        high_low = ohlc['high'] - ohlc['low']
-        high_cp = (ohlc['high'] - ohlc['close'].shift(1)).abs()
-        low_cp = (ohlc['low'] - ohlc['close'].shift(1)).abs()
-
-        tr = pd.concat([high_low, high_cp, low_cp], axis=1).max(axis=1)
-
-        # 2. Calculate ATR using RMA (Running Moving Average - TradingView Standard)
-        # alpha = 1/length matches Pine Script's ta.atr()
-        atr = tr.ewm(alpha=1 / atr_length, min_periods=atr_length, adjust=False).mean().iloc[-1]
+        atr = self.get_current_atr(ohlc)
 
         # 3. Calculate Raw Stop Loss
         atr_distance = atr * atr_multiplier

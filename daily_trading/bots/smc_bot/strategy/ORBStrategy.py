@@ -5,9 +5,10 @@ from zoneinfo import ZoneInfo
 import pandas as pd
 
 from daily_trading.bots.smc_bot.detectors.DetectorsBase import BIAS
-from daily_trading.bots.smc_bot.detectors.ORBDetector import ORBDetector, SESSION_MAP
+from daily_trading.bots.smc_bot.detectors.ORBDetector import ORBDetector
 from daily_trading.bots.smc_bot.detectors.SupplyDemandZonesDetector import SupplyDemandZonesDetector
-from daily_trading.bots.smc_bot.strategy.StrategyBase import SignalSummary, StrategyBase, TradeAction, TradeSignal, \
+from daily_trading.bots.smc_bot.strategy.StrategyBase import SESSION_MAP, SignalSummary, StrategyBase, TradeAction, \
+    TradeSignal, \
     TradeStatus
 from daily_trading.settings import logger
 
@@ -372,7 +373,10 @@ class ORBStrategy(StrategyBase):
                                      second=0,
                                      microsecond=0)
         pending_cutoff = session_end - timedelta(minutes=self.end_buffer_minutes)
-        final_bar_for_entry_cutoff = session_end - timedelta(minutes=15)
+        if self.tz_short == "NY":
+            final_bar_for_entry_cutoff = session_end - timedelta(hours=2)
+        else:
+            final_bar_for_entry_cutoff = session_end - timedelta(minutes=15)
 
         # 2. INDICATORS FIRST (Required to check fill validity)
         self.orb_results = self.orb_detector.calculate(ohlc)
@@ -429,16 +433,17 @@ class ORBStrategy(StrategyBase):
                 return SignalSummary(direction="EXIT", trade_signal=signal)
 
             elif is_cutoff_time:
-                # Exit at current market close
+                self.log.info(f"⏰ SESSION CUTOFF EXIT")
                 exit_price = curr['close']
+                # DETERMINE RESULT BASED ON PNL
+                pnl = (exit_price - self.active_trade.price)
+                if self.active_trade.direction == BIAS.SHORT:
+                    pnl = -pnl
 
-                self.log.info(
-                    f"⏰ SESSION CUTOFF EXIT | {self.symbol} | Closing at {exit_price:.2f}")
-
-                # PASS THE MARKET CLOSE PRICE HERE
-                return SignalSummary(direction="EXIT",
-                                     trade_signal=self.create_signal(TradeAction.EXIT, ohlc.index[-1],
-                                                                     custom_price=exit_price))
+                res = "WIN" if pnl > 0 else "LOSS"
+                sig = self.create_signal(TradeAction.EXIT, curr.name, custom_price=exit_price)
+                sig.trade_result = res
+                return SignalSummary(direction="EXIT", trade_signal=sig)
 
             return SignalSummary(direction="FILLED" if filled else "IN_TRADE")
 

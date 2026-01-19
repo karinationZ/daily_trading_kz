@@ -9,42 +9,44 @@ from daily_trading.settings import logger, TELEGRAM_MAIN_CHANNEL_CHAT_ID
 
 ORB_CONFIG = {
     # ==========================================================================
-    # GROUP 1: MNQ (THE EARNER)
-    # Strategy: NY = Momentum (High RR), London/Asia = Scalping (High WR)
+    # GROUP 1: MNQ (THE MOMENTUM ENGINE)
     # ==========================================================================
 
-    # MNQ NY: The "Zero Lag" Momentum King
-    # Stats: PnL $1,899 | WR 40% | RR 4.0 | Zero Entry Buffer
+    # MNQ NY: The "5R" Sniper
+    # Stats: PnL $2,181 | WR 40% | RR 5.0
+    # Change: RR increased to 5.0. SL Buffer increased to 0.15 to accommodate volatility.
     ("MNQ", "NY"): {
-        "swing_length": 15,
+        "swing_length": 15,  # Tied with 12/18, kept 15 for consistency
         "internal_length": 4,
         "fvg_offset": 1,
         "fvg_threshold": 0.25,
         "zone_precision_factor": 1.8,
-        "tp_multiple": 4.0,       # Confirmed Winner
-        "entry_buffer_mult": 0.0, # Zero Lag
-        "sl_buffer_mult": 0.1,
+        "tp_multiple": 5.0,  # <--- UPGRADED from 4.25
+        "entry_buffer_mult": 0.0,
+        "sl_buffer_mult": 0.15,  # <--- INCREASED from 0.10 for stability
         "tick_buffer_mult": 0.05
     },
 
-    # MNQ LONDON: The 62% Win Rate Scalper
+    # MNQ LONDON: The 62% Scalper
     # Stats: PnL $1,821 | WR 62% | RR 1.0
+    # Status: Unchanged. Leaderboard confirms these exact settings.
     ("MNQ", "LONDON"): {
         "swing_length": 12,
         "internal_length": 5,
         "fvg_offset": 3,
         "fvg_threshold": 0.2,
         "zone_precision_factor": 1.8,
-        "tp_multiple": 1.0,       # High Win Rate Focus
+        "tp_multiple": 1.0,
         "entry_buffer_mult": 0.05,
         "sl_buffer_mult": 0.15,
         "tick_buffer_mult": 0.05
     },
 
     # MNQ ASIA: The Hyper Scalper
-    # Stats: PnL $1,405 | WR 56% | RR 1.0 | Fast Structure (SW 6)
+    # Stats: PnL $1,423 | WR 55.8% | RR 1.0
+    # Status: Settings confirmed. PnL reflects current data snapshot.
     ("MNQ", "ASIA"): {
-        "swing_length": 5,        # Hyper Speed
+        "swing_length": 5,
         "internal_length": 5,
         "fvg_offset": 5,
         "fvg_threshold": 0.15,
@@ -57,40 +59,41 @@ ORB_CONFIG = {
 
     # ==========================================================================
     # GROUP 2: MGC (GOLD) (THE CASH MACHINE)
-    # Strategy: "The Trident" - Consistent Profits across all sessions.
-    # Universal Structure: SW 24 is the law.
     # ==========================================================================
 
-    # MGC LONDON: The ~$3k Champion
-    # Stats: PnL $2768 | WR 51% | RR 1.5
+    # MGC LONDON: The Golden King
+    # Stats: PnL $3,528 | WR 51.6% | RR 1.6
+    # Status: Performance updated ($3528 vs old $3417). No param changes needed.
     ("MGC", "LONDON"): {
         "swing_length": 24,
         "internal_length": 4,
         "fvg_offset": 3,
         "fvg_threshold": 0.2,
         "zone_precision_factor": 2.3,
-        "tp_multiple": 1.5,       # Sweet Spot
+        "tp_multiple": 1.6,
         "entry_buffer_mult": 0.02,
         "sl_buffer_mult": 0.15,
         "tick_buffer_mult": 0.05
     },
 
-    # MGC NY: The Volatility Earner
-    # Stats: PnL $2,672 | WR 51% | RR 1.7
+    # MGC NY: The Elite 2.0
+    # Stats: PnL $3,056 | WR 69% | RR 2.0
+    # Change: Major overhaul. RR up to 2.0. Offset tightened to 1. Threshold 0.25.
     ("MGC", "NY"): {
-        "swing_length": 24,
+        "swing_length": 28,  # Selected 28 over 24 for stability at higher RR
         "internal_length": 3,
-        "fvg_offset": 2,
-        "fvg_threshold": 0.2,
-        "zone_precision_factor": 2.5,
-        "tp_multiple": 1.7,       # Volatility Premium
+        "fvg_offset": 1,  # <--- TIGHTENED from 2
+        "fvg_threshold": 0.25,  # <--- INCREASED from 0.2
+        "zone_precision_factor": 2.3,  # <--- ADJUSTED from 2.5
+        "tp_multiple": 2.0,  # <--- UPGRADED from 1.7
         "entry_buffer_mult": 0.02,
         "sl_buffer_mult": 0.12,
         "tick_buffer_mult": 0.05
     },
 
     # MGC ASIA: The Steady Earner
-    # Stats: PnL $2,366 | WR 52% | RR 1.4
+    # Stats: PnL $2,366 | WR 51.7% | RR 1.4
+    # Status: Unchanged.
     ("MGC", "ASIA"): {
         "swing_length": 24,
         "internal_length": 4,
@@ -180,7 +183,7 @@ class ORBBot(SMCBotBase):
             # If it is INACTIVE and blocked, we skip it.
             if strategy.symbol in blocked_symbols and strategy.trade_status == TradeStatus.NONE:
                 # Only log occasionally to avoid spam
-                # logger.debug(f"Skipping {strategy.symbol} (Busy in another strategy)")
+                strategy.log.warning(f"Skipping {strategy.symbol} (Busy in another strategy)")
                 continue
 
             # 2. Extract Data: ORBBot only needs "5m" data.

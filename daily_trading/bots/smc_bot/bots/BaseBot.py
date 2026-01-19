@@ -9,9 +9,8 @@ import pytz
 
 from daily_trading.bots.smc_bot.bots.TelegramBot import TelegramBot
 from daily_trading.bots.smc_bot.detectors.DetectorsBase import BIAS, GET_READY_ALERT, Trend
-from daily_trading.bots.smc_bot.detectors.ORBDetector import SESSION_MAP
 from daily_trading.bots.smc_bot.strategy.BosFvgFillStrategy_old import SignalSummary
-from daily_trading.bots.smc_bot.strategy.StrategyBase import TradeAction, TradeSignal, TradeStatus
+from daily_trading.bots.smc_bot.strategy.StrategyBase import SESSION_MAP, TradeAction, TradeSignal, TradeStatus
 from daily_trading.brokers.BitUnixClient import BitUnixClient
 from daily_trading.brokers.IBKRClient import IBKRClient
 # from daily_trading.brokers.YFinance import YFinanceClient

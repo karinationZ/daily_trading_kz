@@ -5,9 +5,9 @@ from zoneinfo import ZoneInfo
 import pandas as pd
 
 from daily_trading.bots.smc_bot.detectors.DetectorsBase import BIAS
-from daily_trading.bots.smc_bot.detectors.ORBDetector import SESSION_MAP
 from daily_trading.bots.smc_bot.detectors.SupplyDemandZonesDetector import SupplyDemandZonesDetector
-from daily_trading.bots.smc_bot.strategy.StrategyBase import SignalSummary, StrategyBase, TradeAction, TradeSignal, \
+from daily_trading.bots.smc_bot.strategy.StrategyBase import SESSION_MAP, SignalSummary, StrategyBase, TradeAction, \
+    TradeSignal, \
     TradeStatus
 from daily_trading.settings import logger
 
@@ -104,6 +104,71 @@ class SupplyDemandZoneTapStrategy(StrategyBase):
         else:
             return True
 
+    @staticmethod
+    def is_zone_already_mitigated(ohlc_5m: pd.DataFrame, zone: Dict, threshold: float = 0.5) -> bool:
+        """
+        Checks if the zone was ALREADY mitigated (penetrated > threshold%)
+        by any candle AFTER zone creation but BEFORE the current candle.
+
+        Args:
+            threshold: 0.5 means 50% of the zone depth.
+        """
+        zone_start = zone['start_time']
+
+        # 1. Timezone Alignment (Robust)
+        try:
+            if zone_start.tzinfo is None:
+                # Zone is naive, localize to match OHLC
+                zone_start = zone_start.tz_localize(ohlc_5m.index.tz)
+            else:
+                # Zone is aware, convert to match OHLC
+                zone_start = zone_start.tz_convert(ohlc_5m.index.tz)
+        except TypeError:
+            # Fallback: If OHLC is naive and Zone is aware (or vice versa mismatch)
+            # We strip TZ from both to compare raw times
+            zone_start = zone_start.replace(tzinfo=None)
+            # Note: This relies on the loop filtering below, assumes df index is processed
+
+        # 2. Get Historical Data (Between Zone Creation and Current Candle)
+        # We look strictly > zone_start to avoid checking the candle that created the zone.
+        # We use [:-1] to exclude the CURRENT candle (because we want to trade the current one).
+        history = ohlc_5m[ohlc_5m.index > zone_start].iloc[:-1]
+
+        if history.empty:
+            return False  # No history exists, so it can't be mitigated
+
+        # 3. Calculate Logic
+        top = zone['top']
+        bottom = zone['bottom']
+        height = top - bottom
+
+        # 4. Check for Penetration
+        if zone['bias'] == BIAS.LONG:
+            # Demand Zone: Entry is at TOP.
+            # We check if Price went LOWER than (Top - 50% Height)
+            limit_price = top - (height * threshold)
+
+            # Use 'low' for Demand (deepest point of candle)
+            deepest_dip = history['low'].min()
+
+            if deepest_dip <= limit_price:
+                # self.log.info(f"🚫 Zone {zone_start} mitigated! Low {deepest_dip:.2f} < Limit {limit_price:.2f}")
+                return True
+
+        else:  # BIAS.SHORT
+            # Supply Zone: Entry is at BOTTOM.
+            # We check if Price went HIGHER than (Bottom + 50% Height)
+            limit_price = bottom + (height * threshold)
+
+            # Use 'high' for Supply (highest point of candle)
+            highest_peak = history['high'].max()
+
+            if highest_peak >= limit_price:
+                # self.log.info(f"🚫 Zone {zone_start} mitigated! High {highest_peak:.2f} > Limit {limit_price:.2f}")
+                return True
+
+        return False
+
     def calculate_trade_params(self, ohlc, zone: Dict, direction: BIAS) -> Dict:
         """Calculates entry at zone edge and SL beyond HTF zone boundary."""
         curr_candle = ohlc.iloc[-1]
@@ -169,15 +234,15 @@ class SupplyDemandZoneTapStrategy(StrategyBase):
             self.trade_status = TradeStatus.NONE
         return sig
 
-    def analyze(self, ohlc_5m: pd.DataFrame, ohlc_1h: pd.DataFrame) -> SignalSummary:
+    def analyze(self, df_ltf: pd.DataFrame, df_htf: pd.DataFrame) -> SignalSummary:
         """Main strategy execution loop: High-Priority Fill & Exit Logic."""
-        curr = ohlc_5m.iloc[-1]
+        curr = df_ltf.iloc[-1]
         ts_now = curr.name.tz_convert(self.timezone)
         s_info = SESSION_MAP[self.timezone.key]
 
         # 1. HTF Caching (Zones refresh once per hour)
         if ts_now.hour != self.last_processed_hour:
-            swing_zones, internal_zones = self.sd_detector_1h.calculate(ohlc_1h)
+            swing_zones, internal_zones = self.sd_detector_1h.calculate(df_htf)
             self.cached_zones_1h = swing_zones + internal_zones
             self.last_processed_hour = ts_now.hour
             self.log.info(f"1H Zones: {self.cached_zones_1h}")
@@ -233,7 +298,7 @@ class SupplyDemandZoneTapStrategy(StrategyBase):
                 self.log.info(f"🎯 TRADE EXIT (HIT {'SL' if hit_sl else 'TP'}) | Close: {curr['close']:.2f}")
 
                 # PASS THE EXIT PRICE HERE
-                signal = self.create_signal(TradeAction.EXIT, ohlc_5m.index[-1], custom_price=exit_price)
+                signal = self.create_signal(TradeAction.EXIT, df_ltf.index[-1], custom_price=exit_price)
                 if hit_sl:
                     signal.trade_result = "LOSS"
                 elif hit_tp:
@@ -247,7 +312,7 @@ class SupplyDemandZoneTapStrategy(StrategyBase):
 
                 # PASS THE MARKET CLOSE PRICE HERE
                 return SignalSummary(direction="EXIT",
-                                     trade_signal=self.create_signal(TradeAction.EXIT, ohlc_5m.index[-1],
+                                     trade_signal=self.create_signal(TradeAction.EXIT, df_ltf.index[-1],
                                                                      custom_price=exit_price))
 
             return SignalSummary(direction="FILLED" if filled else "IN_TRADE")
@@ -277,11 +342,19 @@ class SupplyDemandZoneTapStrategy(StrategyBase):
         if self.trade_status == TradeStatus.NONE and ts_now < cutoff_ts:
             for zone in self.cached_zones_1h:
                 z_id = zone['start_time']
+
                 if z_id in self.processed_zone_ids:
                     continue
 
-                if self.validate_zone_reaction(ohlc_5m, zone['bias'], zone):
-                    params = self.calculate_trade_params(ohlc_5m, zone, zone['bias'])
+                # Check Historical Mitigation (Robust / Restart Safe)
+                # If price went > 50% into the zone in the past, kill it.
+                if self.is_zone_already_mitigated(df_ltf, zone, threshold=0.5):
+                    # We add to processed so we don't re-calculate this heavy check every tick
+                    self.processed_zone_ids.add(z_id)
+                    continue
+
+                if self.validate_zone_reaction(df_ltf, zone['bias'], zone):
+                    params = self.calculate_trade_params(df_ltf, zone, zone['bias'])
 
                     # Reject invalid math immediately
                     if params['entry'] <= 0 or params['sl'] <= 0 or params['size'] <= 0:

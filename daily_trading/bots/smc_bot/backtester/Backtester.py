@@ -1,4 +1,5 @@
-
+import uuid
+# Import constants
 from datetime import datetime, time, timedelta
 from typing import List, Optional
 from zoneinfo import ZoneInfo
@@ -9,260 +10,215 @@ import plotly.graph_objects as go
 
 from daily_trading.bots.smc_bot.detectors.DetectorsBase import BIAS
 from daily_trading.bots.smc_bot.detectors.ORBDetector import SESSION_MAP
-from daily_trading.bots.smc_bot.strategy.StrategyBase import TradeAction, TradeStatus
+from daily_trading.bots.smc_bot.strategy.StrategyBase import TradeAction
 from daily_trading.settings import logger
 
 
 class Backtester:
     """
-    Unified Backtester for Single-TF (ORB) and Multi-TF (SupplyDemand) Strategies.
+    THE ACCOUNTANT.
 
-    Features:
-    - Auto-detects mode based on provided data.
-    - Robust Exchange Simulation (Gaps, Slippage, Independent Fills).
-    - Phantom Fill Protection.
+    Role:
+    1. Feeds Data (STF/MTF).
+    2. Records Signals emitted by the Strategy.
+    3. Calculates PnL based on Strategy's reported prices.
+
+    It contains NO trading logic. It trusts the Strategy implicitly.
     """
 
-    def __init__(self, strategy, timezone: ZoneInfo, plot_tail: int = 300):
+    def __init__(self, strategy, timezone: ZoneInfo):
         self.strategy = strategy
         self.timezone = timezone
-        self.plot_tail = plot_tail
-        self.trades: List[dict] = []
-        self.pending_trade: Optional[dict] = None
-
-    @staticmethod
-    def load_csv(file_path: str, symbol: str, csv_tz: str = "UTC") -> pd.DataFrame:
-        df = pd.read_csv(file_path)
-        df.columns = [c.lower() for c in df.columns]
-        time_col = 'timestamp' if 'timestamp' in df.columns else 'time'
-        if df[time_col].dtype in [np.int64, np.float64]:
-            df['timestamp'] = pd.to_datetime(df[time_col], unit='s', utc=True)
-        else:
-            df['timestamp'] = pd.to_datetime(df[time_col]).dt.tz_localize(csv_tz).dt.tz_convert("UTC")
-        df = df.set_index('timestamp').sort_index()
-        df['symbol'] = symbol
-        return df[~df.index.duplicated(keep='first')]
-
-    @staticmethod
-    def is_win(trade: dict, close_price: float) -> bool:
-        if trade["direction"] == "LONG":
-            return close_price > trade["entry"]
-        return close_price < trade["entry"]
+        self.journal: List[dict] = []  # Completed trade records
+        self.active_record: Optional[dict] = None  # Currently open/pending ledger entry
 
     def run(self,
             ohlc_5m: pd.DataFrame,
             ohlc_1h: Optional[pd.DataFrame] = None,
+            ohlc_4h: Optional[pd.DataFrame] = None,  # <--- ADDED
             lookback_5m: int = 200,
-            lookback_1h: int = 200):
-        """
-        Universal Run Loop.
-        - If ohlc_1h is passed -> MTF Mode (passes 2 DFs to strategy).
-        - If ohlc_1h is None   -> STF Mode (passes 1 DF to strategy).
-        """
+            lookback_1h: int = 200,
+            lookback_4h: int = 200):
+
+        # 1. SETUP
         mode = "MTF" if ohlc_1h is not None else "STF"
-        logger.info(f"{mode} Backtest Started | Symbol: {self.strategy.symbol}")
+        logger.info(f"🏁 {mode} Backtest | {self.strategy.symbol}")
 
-        # 1. Setup Data
-        ohlc_5m = ohlc_5m.sort_index()
-        if ohlc_5m.index.tz is None: ohlc_5m.index = ohlc_5m.index.tz_localize("UTC")
-
+        # Standardize Data
+        ohlc_5m = self._prepare_data(ohlc_5m)
         if ohlc_1h is not None:
-            ohlc_1h = ohlc_1h.sort_index()
-            if ohlc_1h.index.tz is None: ohlc_1h.index = ohlc_1h.index.tz_localize("UTC")
+            ohlc_1h = self._prepare_data(ohlc_1h)
+
+        if ohlc_4h is not None:
+            ohlc_4h = self._prepare_data(ohlc_4h)
 
         self.strategy.reset_session_state()
-        self.trades, self.pending_trade = [], None
+        self.journal = []
+        self.active_record = None
 
-        # 2. Session Setup
+        # Session Times for pre-filtering (Optimization)
         s_info = SESSION_MAP[self.timezone.key]
-        sess_start_wall = time(s_info["start_hour"], s_info["start_minute"])
-        sess_end_wall = time(s_info.get("end_hour", 16), s_info.get("end_minute", 0))
-        dummy_dt = datetime.combine(datetime.min, sess_start_wall) - timedelta(hours=1)
-        pre_market_wall = dummy_dt.time()
+        sess_start = time(s_info["start_hour"], s_info["start_minute"])
+        sess_end = time(s_info.get("end_hour", 16), s_info.get("end_minute", 0))
+        pre_market = (datetime.combine(datetime.min, sess_start) - timedelta(hours=1)).time()
 
         start_idx = max(lookback_5m, 1)
 
-        # MAIN LOOP
+        # 2. MAIN DATA FEED LOOP
         for i in range(start_idx, len(ohlc_5m)):
             ts_utc = ohlc_5m.index[i]
-            ts_local = ts_utc.astimezone(self.timezone)
-            ts_local_time = ts_local.time()
 
-            # Session Filter
-            is_interesting = False
-            if pre_market_wall < sess_end_wall:
-                if pre_market_wall <= ts_local_time <= sess_end_wall: is_interesting = True
-            else:
-                if ts_local_time >= pre_market_wall or ts_local_time <= sess_end_wall: is_interesting = True
-            if not is_interesting: continue
+            # A. Session Filter (Skip overnight processing to save speed)
+            # Note: Strategy also handles cutoffs, this is just to skip "dead" data
+            t_local = ts_utc.astimezone(self.timezone).time()
+            is_active = False
+            if pre_market < sess_end:
+                if pre_market <= t_local <= sess_end: is_active = True
+            else:  # Overnight session (Asia)
+                if t_local >= pre_market or t_local <= sess_end: is_active = True
 
-            # 3. Prepare Windows
-            curr_bar = ohlc_5m.iloc[i]
+            if not is_active: continue
+
+            # B. Prepare Windows
             window_5m = ohlc_5m.iloc[i - lookback_5m: i + 1]
 
-            # 4. Strategy Analysis (Generic Dispatch)
+            # C. Execute Strategy
             if mode == "MTF":
-                # Slice 1H Context: Bars closed BEFORE current 5m time
+                # Strict lookahead protection: 1H candle must be closed before 5m time
                 window_1h = ohlc_1h[ohlc_1h.index < ts_utc].tail(lookback_1h)
-                if len(window_1h) < 8: continue  # Not enough context
-                result = self.strategy.analyze(window_5m, window_1h)
+                if len(window_1h) < 8:
+                    continue
+                # Prepare Arguments
+                strategy_args = {'df_ltf': window_5m, 'df_htf': window_1h}
+
+                # 4H Slicing Logic
+                if ohlc_4h is not None:
+                    # Strict lookahead protection: 4H candle must be closed before 5m time
+                    window_4h = ohlc_4h[ohlc_4h.index < ts_utc].tail(lookback_4h)
+
+                    # Ensure we have enough 4H data (at least 2 bars for trend calc)
+                    if len(window_4h) < 2:
+                        continue
+
+                    strategy_args['df_4h'] = window_4h
+                # -----------------------------
+                analysis = self.strategy.analyze(**strategy_args)
             else:
-                # Single Timeframe (ORB)
-                result = self.strategy.analyze(window_5m)
+                analysis = self.strategy.analyze(window_5m)
 
-            # ====================================================================
-            # PHASE 1: EXCHANGE SIMULATOR (Fill Validation)
-            # ====================================================================
-            if self.pending_trade and self.pending_trade["status"] == "PENDING":
-                entry_price = self.pending_trade["entry"]
-                is_long = self.pending_trade["direction"] == "LONG"
+            # 3. RECORD KEEPING (The Accountant)
+            if analysis.trade_signal:
+                self._process_signal(analysis.trade_signal, ts_utc)
 
-                filled = False
-                if is_long:
-                    if curr_bar["low"] <= entry_price: filled = True
-                else:
-                    if curr_bar["high"] >= entry_price: filled = True
+        return pd.DataFrame(self.journal)
 
-                if filled:
-                    self.pending_trade["status"] = "FILLED"
-                    self.pending_trade["fill_time"] = ts_utc
-                    self.strategy.trade_status = TradeStatus.FILLED
+    def _process_signal(self, sig, ts_utc):
+        """Updates the Ledger based on Strategy Signals."""
 
-            # ====================================================================
-            # PHASE 2: EXCHANGE SIMULATOR (Auto TP/SL Exit)
-            # ====================================================================
-            if self.pending_trade and self.pending_trade["status"] == "FILLED":
-                t_rec = self.pending_trade
-                is_long = t_rec["direction"] == "LONG"
-                sl_price, tp_price = t_rec["sl"], t_rec["tp"]
-
-                bar_open, b_high, b_low = curr_bar["open"], curr_bar["high"], curr_bar["low"]
-
-                exit_triggered = False
-                exit_price, res, comment = 0.0, "", ""
-
-                # Gap Check
-                if is_long:
-                    if bar_open <= sl_price:
-                        exit_triggered, exit_price, res, comment = True, bar_open, "LOSS", "Gap SL"
-                    elif bar_open >= tp_price:
-                        exit_triggered, exit_price, res, comment = True, bar_open, "WIN", "Gap TP"
-                else:
-                    if bar_open >= sl_price:
-                        exit_triggered, exit_price, res, comment = True, bar_open, "LOSS", "Gap SL"
-                    elif bar_open <= tp_price:
-                        exit_triggered, exit_price, res, comment = True, bar_open, "WIN", "Gap TP"
-
-                # Touch Check
-                if not exit_triggered:
-                    if is_long:
-                        if b_low <= sl_price:
-                            exit_triggered, exit_price, res, comment = True, sl_price, "LOSS", "Hard SL Hit"
-                        elif b_high >= tp_price:
-                            exit_triggered, exit_price, res, comment = True, tp_price, "WIN", "Hard TP Hit"
-                    else:
-                        if b_high >= sl_price:
-                            exit_triggered, exit_price, res, comment = True, sl_price, "LOSS", "Hard SL Hit"
-                        elif b_low <= tp_price:
-                            exit_triggered, exit_price, res, comment = True, tp_price, "WIN", "Hard TP Hit"
-
-                if exit_triggered:
-                    self._calculate_and_close(t_rec, exit_price, ts_utc, res, comment)
-                    self.trades.append(t_rec)
-                    self.pending_trade = None
-                    self.strategy.trade_status = TradeStatus.NONE
-                    continue
-
-            # ====================================================================
-            # PHASE 3: SIGNAL PROCESSING (Enter/Cancel/Exit)
-            # ====================================================================
-            if not result.trade_signal: continue
-            sig = result.trade_signal
-
-            # 1. ENTER
-            if sig.action == TradeAction.ENTER:
-                if self.pending_trade and self.pending_trade["status"] == "FILLED":
-                    continue
-
-                self.pending_trade = {
-                    "timestamp": sig.timestamp,
-                    "utc_signal": ts_utc,
-                    "window_indices_5m": (i - lookback_5m, i),
+        # --- NEW TRADE ---
+        if sig.action == TradeAction.ENTER:
+            if self.active_record is None:
+                # Create new ledger entry
+                self.active_record = {
+                    "timestamp": ts_utc,
+                    "trade_id": str(uuid.uuid4())[:8],  # Short unique ID
                     "direction": sig.direction.name,
-                    "entry": sig.price,
+                    "entry_time": ts_utc,
+                    "entry_price": sig.price,
                     "sl": sig.sl,
                     "tp": sig.tp,
-                    "size": sig.size,
-                    "status": "PENDING",
+                    "result": None,
                     "metadata": sig.metadata,
-                    # Optional: Store raw params if needed for debugging
-                    "sl_atr": sig.metadata.get("sl_atr", 0) if sig.metadata else 0,
-                    "fill_time": None,
-                    "comments": ""
+                    "size": sig.size,
+                    "exit_time": None,
+                    "exit_price": None,
+                    "pnl": 0.0,
+                    "comment": None,
+                    "status": "OPEN",
+                    "symbol": self.strategy.symbol,
                 }
 
-            # 2. CANCEL
-            elif sig.action == TradeAction.CANCEL and self.pending_trade:
-                t_rec = self.pending_trade
-                if t_rec["status"] == "PENDING":
-                    t_rec.update({
-                        "exit_time": ts_utc,
-                        "exit_price": 0.0,
-                        "result": "CANCELLED",
-                        "pnl": 0.0,
-                        "status": "CLOSED",
-                        "comments": "Signal Cancelled"
-                    })
-                else:
-                    self._calculate_and_close(t_rec, curr_bar["close"], ts_utc, None, "Cancelled After Fill")
+        # --- UPDATE ORDER ---
+        # (Used in Confirmation Strategies to cancel/replace pending orders)
+        elif sig.action == TradeAction.UPDATE and self.active_record:
+            # Just update the price/sl/tp/size of the active pending record
+            self.active_record.update({
+                "entry_price": sig.price,
+                "sl": sig.sl,
+                "tp": sig.tp,
+                "size": sig.size,
+                "metadata": sig.metadata  # Update metadata (e.g., new FVG ID)
+            })
 
-                self.trades.append(t_rec)
-                self.pending_trade = None
-                self.strategy.trade_status = TradeStatus.NONE
+        # --- EXIT TRADE ---
+        elif sig.action == TradeAction.EXIT and self.active_record:
+            # Calculate PnL
+            exit_price = sig.price
+            entry_price = self.active_record["entry_price"]
+            size = self.active_record["size"]
+            direction = self.active_record["direction"]
+            point_value = getattr(self.strategy, "point_value", 1.0)
 
-            # 3. EXIT (Manual/Session)
-            elif sig.action == TradeAction.EXIT and self.pending_trade:
-                t_rec = self.pending_trade
-                if t_rec["status"] == "PENDING":
-                    t_rec.update({
-                        "exit_time": ts_utc,
-                        "exit_price": 0.0,
-                        "result": "CANCELLED",
-                        "pnl": 0.0,
-                        "status": "CLOSED",
-                        "comments": "Session Cutoff (Never Filled)"
-                    })
-                else:
-                    price = curr_bar["close"]
-                    res = "WIN" if self.is_win(t_rec, price) else "LOSS"
-                    self._calculate_and_close(t_rec, price, ts_utc, res, "Session Cutoff / Manual Exit")
+            # Logic provided by Strategy (WIN/LOSS tag)
+            result_tag = getattr(sig, 'trade_result', 'UNKNOWN')
 
-                self.trades.append(t_rec)
-                self.pending_trade = None
-                self.strategy.trade_status = TradeStatus.NONE
+            if direction == "LONG":
+                pnl = (exit_price - entry_price) * size * point_value
+            else:
+                pnl = (entry_price - exit_price) * size * point_value
 
-        return pd.DataFrame(self.trades)
+            self.active_record.update({
+                "status": "CLOSED",
+                "exit_time": ts_utc,
+                "exit_price": exit_price,
+                "pnl": round(pnl, 2),
+                "result": result_tag,
+                "comment": "Strategy Exit"
+            })
 
-    def _calculate_and_close(self, t_rec, exit_price, exit_time, result, comment):
-        """Helper to close trade and calc PnL."""
-        is_long = t_rec["direction"] == "LONG"
-        # Handle cases where strategy might not expose POINT_VALUE directly (fallback to 1 if missing)
-        pv = getattr(self.strategy, "POINT_VALUE", {}).get(self.strategy.symbol,
-                                                           getattr(self.strategy, "point_value", 1.0))
+            # Commit to Journal and Clear Active
+            self.journal.append(self.active_record)
+            self.active_record = None
 
-        if is_long:
-            dollar_pnl = (exit_price - t_rec["entry"]) * t_rec["size"] * pv
+        # --- CANCEL ORDER ---
+        elif sig.action == TradeAction.CANCEL and self.active_record:
+            self.active_record.update({
+                "status": "CANCELLED",
+                "exit_time": ts_utc,
+                "exit_price": 0.0,
+                "pnl": 0.0,
+                "result": "CANCELLED",
+                "comment": "Signal Cancelled"
+            })
+            self.journal.append(self.active_record)
+            self.active_record = None
+
+    @staticmethod
+    def _prepare_data(df):
+        """Helper to ensure UTC index."""
+        df = df.sort_index()
+        if df.index.tz is None:
+            df.index = df.index.tz_localize("UTC")
         else:
-            dollar_pnl = (t_rec["entry"] - exit_price) * t_rec["size"] * pv
+            df.index = df.index.tz_convert("UTC")
+        return df
 
-        t_rec.update({
-            "exit_time": exit_time,
-            "exit_price": exit_price,
-            "result": result,
-            "pnl": round(dollar_pnl, 2),
-            "status": "CLOSED",
-            "comments": comment
-        })
+    @staticmethod
+    def load_csv(file_path: str, symbol: str) -> pd.DataFrame:
+        """Utility for loading data."""
+        df = pd.read_csv(file_path)
+        df.columns = [c.lower() for c in df.columns]
+        time_col = 'timestamp' if 'timestamp' in df.columns else 'time'
+
+        # Robust Time Parsing
+        if df[time_col].dtype in [np.int64, np.float64]:
+            df['timestamp'] = pd.to_datetime(df[time_col], unit='s', utc=True)
+        else:
+            df['timestamp'] = pd.to_datetime(df[time_col], utc=True)
+
+        df = df.set_index('timestamp').sort_index()
+        df['symbol'] = symbol
+        return df[~df.index.duplicated(keep='first')]
 
     def plot_trade(self, trade_idx: int, ohlc_5m: pd.DataFrame, ohlc_1h: Optional[pd.DataFrame] = None) -> Optional[
         go.Figure]:
@@ -300,7 +256,7 @@ class Backtester:
 
         # 3. Supply/Demand Specific Overlays (If 1H data provided)
         if ohlc_1h is not None and hasattr(self.strategy, "sd_detector_1h"):
-            view_1h = ohlc_1h[ohlc_1h.index <= trade["utc_signal"]].tail(100)
+            view_1h = ohlc_1h[ohlc_1h.index <= trade["timestamp"]].tail(100)
             swing_1h, internal_1h = self.strategy.sd_detector_1h.calculate(view_1h)
             for z in (swing_1h + internal_1h):
                 color = "rgba(0, 200, 0, 0.15)" if z['bias'] == BIAS.LONG else "rgba(200, 0, 0, 0.15)"
@@ -308,7 +264,7 @@ class Backtester:
                               y0=z['bottom'], y1=z['top'], fillcolor=color, line_width=0, layer="below")
 
         # 4. Standard Trade Boxes
-        entry_ts = trade["utc_signal"]
+        entry_ts = trade["timestamp"]
         exit_ts = trade.get("exit_time", view_5m.index[-1])
         is_win = trade["result"] == "WIN"
 

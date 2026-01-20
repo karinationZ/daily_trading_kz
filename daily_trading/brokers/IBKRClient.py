@@ -1,7 +1,7 @@
 import asyncio
 import math
 from datetime import datetime, timedelta
-from typing import Any, List, Optional
+from typing import Any, List
 from zoneinfo import ZoneInfo
 
 import pandas as pd
@@ -296,7 +296,7 @@ class IBKRClient:
                     side = "LONG" if size > 0 else "SHORT"
                     lines.append(f"• {sym}: {side} {abs(size)}")
             else:
-                lines.append("🧘 **Current Status: No open/pending orders**")
+                lines.append("🧘 **Current Status: No Open/Pending Orders**")
 
             lines.append("────────────────")
 
@@ -314,3 +314,54 @@ class IBKRClient:
         except Exception as e:
             logger.error(f"Report Error: {e}")
             return f"⚠️ Report Error: {e}"
+
+    async def get_active_bracket_levels(self, symbol: str, order_ref: str) -> dict:
+        """
+        Fetches the ACTUAL live StopLoss and TakeProfit prices sitting at IBKR.
+        Used to verify Entry signals.
+        """
+        # 1. Force refresh of open orders
+        await self.ib.reqOpenOrdersAsync()
+
+        # 2. Filter trades
+        open_trades = self.ib.openTrades()
+        sl_price = 0.0
+        tp_price = 0.0
+
+        found = False
+
+        for t in open_trades:
+            # Check Symbol and Order Reference
+            if t.contract.symbol == symbol and t.order.orderRef == order_ref:
+                # Identify Stop Loss (Order Type 'STP' or 'STP LMT')
+                if t.order.orderType in ['STP', 'TRAIL']:
+                    sl_price = t.order.auxPrice
+                    found = True
+                # Identify Take Profit (Order Type 'LMT' and usually opposite side of position)
+                elif t.order.orderType == 'LMT':
+                    # Note: This might confuse Limit Entry with Limit TP if both are open.
+                    # Usually Entry fills immediately, leaving only TP as LMT.
+                    tp_price = t.order.lmtPrice
+                    found = True
+
+        return {"sl": sl_price, "tp": tp_price, "found": found}
+
+    async def get_last_fill_price(self, symbol: str) -> float:
+        """
+        Fetches the price of the most recent execution for a symbol.
+        Used to report TRUE exit price (accounting for slippage).
+        """
+        # Request recent executions
+        execs = await self.ib.reqExecutionsAsync(ExecutionFilter())
+
+        # Filter for our symbol
+        symbol_execs = [e for e in execs if e.contract.symbol == symbol]
+
+        if not symbol_execs:
+            return 0.0
+
+        # Sort by time descending (newest first)
+        last_exec = sorted(symbol_execs, key=lambda x: x.time, reverse=True)[0]
+
+        # Return average price of that fill
+        return last_exec.execution.avgPrice

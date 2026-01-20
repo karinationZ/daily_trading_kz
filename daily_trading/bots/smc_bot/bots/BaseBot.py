@@ -208,70 +208,97 @@ class SMCBotBase:
 
     async def run_strategy_cycle(self, strategy, *args, **kwargs):
         """
-        Isolated execution context for a single strategy.
-        Accepts variable arguments (*args) to pass different data requirements
-        (e.g., 1 DF for ORB, 2 DFs for SupplyDemand).
+        Refactored Cycle: Execute -> Verify -> Report
         """
         try:
-            # 1. Run Analysis (Generic Argument Passing)
+            # 1. Run Analysis
             analysis = strategy.analyze(*args, **kwargs)
 
-            # 2. Report to Telegram (Only Significant Actions)
-            # We filter out 'PENDING' and 'IN_TRADE' statuses.
+            # 2. EXECUTE ORDERS FIRST (If signal exists)
+            # We do this before reporting so we can report ACTUAL data
             if analysis.trade_signal:
+                await self.handle_execution(strategy, analysis)
 
-                is_significant = analysis.trade_signal.action in [
-                    TradeAction.ENTER,
-                    TradeAction.EXIT,
-                    TradeAction.CANCEL
-                ]
+                # Wait a brief moment for IBKR to acknowledge orders or fills
+                await asyncio.sleep(1.0)
 
-                # Double Check: If it's CANCEL, only send if it was an active pending order getting killed
+                # 3. REPORT TO TELEGRAM
+            if analysis.trade_signal:
+                sig = analysis.trade_signal
+                is_significant = sig.action in [TradeAction.ENTER, TradeAction.EXIT, TradeAction.CANCEL]
+
                 if is_significant:
                     action_emoji = {
                         TradeAction.ENTER: "🚀 ENTER",
                         TradeAction.EXIT: "💰 EXIT",
                         TradeAction.CANCEL: "🚫 CANCEL"
-                    }.get(analysis.trade_signal.action, "⚠️ UPDATE")
+                    }.get(sig.action, "⚠️ UPDATE")
 
-                    # Price Formatting Logic
-                    # Ensures commas for thousands (e.g., 18,000.50) and fixed 2 decimals
-                    raw_price = analysis.trade_signal.price
-                    price_str = f"{raw_price:,.2f}"
+                    # --- DEBUG / VERIFICATION LOGIC ---
+
+                    # A. VERIFY ENTRY (Check Active Pending SL/TP at IBKR)
+                    verified_sl = sig.sl
+                    verified_tp = sig.tp
+                    debug_note = ""
+
+                    if sig.action == TradeAction.ENTER:
+                        # Ask IBKR what orders are actually open
+                        bracket = await self.ib_client.get_active_bracket_levels(sig.symbol, strategy.ext_tag)
+
+                        if bracket['found']:
+                            verified_sl = bracket['sl']
+                            verified_tp = bracket['tp']
+
+                            # Check for discrepancies
+                            if abs(verified_sl - sig.sl) > 0.01:
+                                debug_note += f"\n⚠️ <b>SL ADJ:</b> Bot {sig.sl} → IBKR {verified_sl}"
+                        else:
+                            debug_note += "\n⚠️ <b>WARNING:</b> No Bracket Orders found at IBKR!"
+
+                    # B. VERIFY EXIT (Check Actual Fill Price vs Expected)
+                    display_price = sig.price
+
+                    if sig.action == TradeAction.EXIT:
+                        real_fill = await self.ib_client.get_last_fill_price(sig.symbol)
+                        if real_fill > 0:
+                            slippage = real_fill - sig.price
+                            display_price = real_fill  # Show the REAL price in the main line
+                            if abs(slippage) > 0.5:  # Only show substantial slippage note
+                                debug_note += f"\n💸 <b>Slippage:</b> {slippage:+.2f} pts (Exp: {sig.price})"
+
+                    # --- CONSTRUCT MESSAGE ---
+                    price_str = f"{display_price:,.2f}"
 
                     msg = (
                         f"{action_emoji} {strategy.log_tag}\n"
-                        f"Action: {analysis.trade_signal.action.name}\n"
-                        f"Direction: {analysis.trade_signal.direction.name}\n"
-                        f"Size: {analysis.trade_signal.size}\n"
-                        f"Price: {price_str}\n"
-                        f"SL: {analysis.trade_signal.sl:,.2f} | TP: {analysis.trade_signal.tp:,.2f}\n"
-                        f"Time: {analysis.trade_signal.timestamp.strftime('%Y-%m-%d %H:%M')} UTC\n"
+                        f"Action: {sig.action.name}\n"
+                        f"Direction: {sig.direction.name}\n"
+                        f"Size: {sig.size}\n"
+                        f"Price: {price_str}\n"  # Shows Real Fill on Exit, Signal Price on Entry
+                        f"SL: {verified_sl:,.2f} | TP: {verified_tp:,.2f}\n"  # Shows Real Pending Orders
+                        f"Time: {sig.timestamp.strftime('%Y-%m-%d %H:%M')} UTC"
+                        f"{debug_note}\n"  # Adds the debug info
                     )
-                    if analysis.trade_signal.action == TradeAction.EXIT:
-                        if analysis.trade_signal.sl != 0 and analysis.trade_signal.tp != 0:
-                            result = getattr(analysis.trade_signal, 'trade_result', None)
+
+                    # Add Win/Loss tag for Exits
+                    if sig.action == TradeAction.EXIT:
+                        if sig.sl != 0 and sig.tp != 0:
+                            result = getattr(sig, 'trade_result', None)
                             if result == "LOSS":
-                                msg = f"RESULT:  🔴 {result}\n" + msg
+                                msg = f"RESULT: 🔴 {result}\n" + msg
                             elif result == "WIN":
-                                msg = f"Result: 🟢 {result}\n" + msg
+                                msg = f"RESULT: 🟢 {result}\n" + msg
 
-                    # Send Message with Chart (analysis.fig)
-                    # Note: getattr handles cases where fig might be None
-                    await self.telegram_bot.send_message(msg, getattr(analysis.trade_signal, 'fig', None))
+                    await self.telegram_bot.send_message(msg, getattr(sig, 'fig', None))
 
-                # Special Logic: If we just exited, fetch a Daily Summary
-                if analysis.trade_signal.action == TradeAction.EXIT:
+                # Special Logic: Daily Summary after Exit
+                if sig.action == TradeAction.EXIT:
                     try:
-                        # Wait a moment for IBKR to update the ledger
-                        await asyncio.sleep(30)
+                        await asyncio.sleep(15)  # Give IBKR time to update ledger
                         report = await self.ib_client.get_daily_summary()
                         await self.telegram_bot.send_message(report)
                     except Exception as e:
                         logger.error(f"Failed to fetch post-exit summary: {e}")
-
-            # 3. Execute Orders
-            await self.handle_execution(strategy, analysis)
 
         except Exception as e:
             strategy.log(f"CYCLE ERROR: {e}", level="error")

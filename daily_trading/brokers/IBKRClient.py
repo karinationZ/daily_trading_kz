@@ -315,32 +315,34 @@ class IBKRClient:
             logger.error(f"Report Error: {e}")
             return f"⚠️ Report Error: {e}"
 
-    async def get_active_bracket_levels(self, symbol: str, order_ref: str) -> dict:
+    async def get_active_bracket_levels(self, symbol: str, order_ref: str, direction: str) -> dict:
         """
-        Fetches the ACTUAL live StopLoss and TakeProfit prices sitting at IBKR.
-        Used to verify Entry signals.
+        Fetches ACTUAL live StopLoss and TakeProfit prices from IBKR.
+        Uses direction to distinguish between Entry Limit and TP Limit orders.
         """
-        # 1. Force refresh of open orders
         await self.ib.reqOpenOrdersAsync()
-
-        # 2. Filter trades
         open_trades = self.ib.openTrades()
+
         sl_price = 0.0
         tp_price = 0.0
-
         found = False
 
+        # Determine expected TP Side (Opposite to Strategy Direction)
+        # If Strategy is LONG, TP is a SELL order.
+        tp_side = 'SELL' if direction == 'LONG' else 'BUY'
+
         for t in open_trades:
-            # Check Symbol and Order Reference
             if t.contract.symbol == symbol and t.order.orderRef == order_ref:
-                # Identify Stop Loss (Order Type 'STP' or 'STP LMT')
-                if t.order.orderType in ['STP', 'TRAIL']:
+
+                # 1. STOP LOSS (Order Type 'STP' or 'TRAIL')
+                # SL is always on the exit side (same as TP side)
+                if t.order.orderType in ['STP', 'TRAIL', 'STP LMT']:
                     sl_price = t.order.auxPrice
                     found = True
-                # Identify Take Profit (Order Type 'LMT' and usually opposite side of position)
-                elif t.order.orderType == 'LMT':
-                    # Note: This might confuse Limit Entry with Limit TP if both are open.
-                    # Usually Entry fills immediately, leaving only TP as LMT.
+
+                # 2. TAKE PROFIT (Order Type 'LMT' on the Exit Side)
+                # We check t.order.action to ensure we don't grab the Entry Limit order
+                elif t.order.orderType == 'LMT' and t.order.action == tp_side:
                     tp_price = t.order.lmtPrice
                     found = True
 

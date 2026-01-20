@@ -243,15 +243,27 @@ class SMCBotBase:
 
                     if sig.action == TradeAction.ENTER:
                         # Ask IBKR what orders are actually open
-                        bracket = await self.ib_client.get_active_bracket_levels(sig.symbol, strategy.ext_tag)
-
+                        bracket = await self.ib_client.get_active_bracket_levels(
+                            sig.symbol,
+                            strategy.ext_tag,
+                            sig.direction.name
+                        )
                         if bracket['found']:
                             verified_sl = bracket['sl']
                             verified_tp = bracket['tp']
 
-                            # Check for discrepancies
+                            # 1. Check SL Discrepancy
                             if abs(verified_sl - sig.sl) > 0.01:
-                                debug_note += f"\n⚠️ <b>SL ADJ:</b> Bot {sig.sl} → IBKR {verified_sl}"
+                                debug_note += f"\n⚠️ <b>SL ADJ:</b> Bot {sig.sl:,.2f} → IBKR {verified_sl:,.2f}"
+
+                            # 2. Check TP Discrepancy (ADDED)
+                            if abs(verified_tp - sig.tp) > 0.01:
+                                debug_note += f"\n⚠️ <b>TP ADJ:</b> Bot {sig.tp:,.2f} → IBKR {verified_tp:,.2f}"
+
+                            else:
+                                debug_note = "✔️SL Bot {sig.sl:,.2f} → IBKR {verified_sl:,.2f}\n" \
+                                             "✔️TP Bot {sig.tp:,.2f} → IBKR {verified_tp:,.2f}"
+
                         else:
                             debug_note += "\n⚠️ <b>WARNING:</b> No Bracket Orders found at IBKR!"
 

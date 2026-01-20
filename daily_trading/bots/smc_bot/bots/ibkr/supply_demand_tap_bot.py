@@ -87,15 +87,15 @@ class SupplyDemandTapBot(SMCBotBase):
                     symbol=symbol,
                     timezone=tz,
                     risk=self.risk,
-                    tp_multiple=cfg["rr"],
+                    tp_multiple=cfg["tp_multiple"],
                     fvg_based_only=True,
-                    swing_length=cfg["sw"],
-                    internal_length=cfg["int"],
-                    fvg_offset=cfg["off"],
-                    zone_precision_factor=cfg["atr"],
-                    fvg_threshold=cfg["thr"],
-                    sl_atr_multiplier=cfg["sl_atr"],
-                    eb_mult=cfg["eb_mult"]
+                    swing_length=cfg["swing_length"],
+                    internal_length=cfg["internal_length"],
+                    fvg_offset=cfg["fvg_offset"],
+                    zone_precision_factor=cfg["zone_precision_factor"],
+                    fvg_threshold=cfg["fvg_threshold"],
+                    sl_atr_multiplier=cfg["sl_buffer_mult"],
+                    eb_mult=cfg["entry_buffer_mult"]
                 )
                 self.strategies.append(strategy)
                 unique_symbols.add(symbol)

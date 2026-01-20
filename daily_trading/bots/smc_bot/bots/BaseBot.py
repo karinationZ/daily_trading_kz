@@ -264,7 +264,7 @@ class SMCBotBase:
                 if analysis.trade_signal.action == TradeAction.EXIT:
                     try:
                         # Wait a moment for IBKR to update the ledger
-                        await asyncio.sleep(2)
+                        await asyncio.sleep(30)
                         report = await self.ib_client.get_daily_summary()
                         await self.telegram_bot.send_message(report)
                     except Exception as e:

@@ -296,7 +296,7 @@ class IBKRClient:
                     side = "LONG" if size > 0 else "SHORT"
                     lines.append(f"• {sym}: {side} {abs(size)}")
             else:
-                lines.append("🧘 **Current Status: FLAT**")
+                lines.append("🧘 **Current Status: No open/pending orders**")
 
             lines.append("────────────────")
 

@@ -231,48 +231,34 @@ class IBKRClient:
             print(f"No open position found for {symbol}. You are flat.")
 
     async def get_daily_summary(self) -> str:
-        """
-        Generates PnL Report with DEBUG LOGGING enabled to troubleshoot 0.00 PnL.
-        """
         try:
-            # 1. Get the Active Account ID
             accounts = self.ib.managedAccounts()
             if not accounts:
-                return "⚠️ No accounts managed."
+                return "⚠️ No accounts."
             account_id = accounts[0]
 
-            logger.info(f"--- 🔍 DEBUG: STARTING REPORT FOR ACCOUNT {account_id} ---")
-
-            # 2. Get Account Summary
+            # 1. Get Account Summary (Net Liq, PnL)
             summary = await self.ib.accountSummaryAsync()
+            net_liq = realized = unrealized = 0.0
 
-            net_liq = 0.0
-            realized = 0.0
-            unrealized = 0.0
-
-            # --- DEBUG LOOP ---
-            # This will print raw data from IBKR to your console/logs
-            found_data = False
             for row in summary:
-                # MATCH LOGIC: Accept Specific Account OR 'All'
-                # Also check currency to avoid duplicates if you hold multiple currencies
                 if (row.account == account_id or row.account == 'All') and row.currency == 'USD':
-
                     if row.tag == 'NetLiquidation':
                         net_liq = float(row.value)
-
                     elif row.tag == 'RealizedPnL':
                         realized = float(row.value)
-
                     elif row.tag == 'UnrealizedPnL':
                         unrealized = float(row.value)
 
-            if not found_data:
-                logger.warning(f"⚠️ DEBUG: Loop finished but no 'NetLiquidation' found for {account_id} USD.")
+            # 2. Get ACTUAL Current Positions (The Truth)
+            positions = await self.ib.reqPositionsAsync()
+            current_holdings = {}
+            for p in positions:
+                if p.account == account_id and p.position != 0:
+                    current_holdings[p.contract.symbol] = p.position
 
-            # 3. Get Activity (Last 24 Hours)
+            # 3. Get Daily Activity (Volume)
             executions = await self.ib.reqExecutionsAsync(ExecutionFilter())
-
             ny_now = datetime.now(ZoneInfo("America/New_York"))
             start_of_day = ny_now.replace(hour=0, minute=0, second=0, microsecond=0)
 
@@ -303,14 +289,25 @@ class IBKRClient:
                 "────────────────"
             ]
 
+            # --- NEW: DISPLAY ACTUAL POSITIONS ---
+            if current_holdings:
+                lines.append("🏗️ **Current Positions:**")
+                for sym, size in current_holdings.items():
+                    side = "LONG" if size > 0 else "SHORT"
+                    lines.append(f"• {sym}: {side} {abs(size)}")
+            else:
+                lines.append("🧘 **Current Status: FLAT**")
+
+            lines.append("────────────────")
+
+            # --- DISPLAY VOLUME (Removed "Direction" logic to avoid confusion) ---
             if not todays_fills:
                 lines.append("💤 No trades executed today.")
             else:
-                lines.append(f"📊 **Volume ({len(todays_fills)} Fills):**")
+                lines.append(f"📊 **Today's Activity ({len(todays_fills)} Fills):**")
                 for sym, counts in activity.items():
-                    net = counts['b'] - counts['s']
-                    direction = "FLAT" if net == 0 else (f"LONG {net}" if net > 0 else f"SHORT {abs(net)}")
-                    lines.append(f"• **{sym}**: {direction} (B:{int(counts['b'])} S:{int(counts['s'])})")
+                    # Just report what we did, don't try to guess position
+                    lines.append(f"• **{sym}**: Bought {int(counts['b'])} | Sold {int(counts['s'])}")
 
             return "\n".join(lines)
 

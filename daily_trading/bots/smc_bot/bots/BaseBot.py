@@ -333,7 +333,7 @@ class SMCBotBase:
 
                 # Check if we are in the last 6 minutes of the session
                 session_end = ts_now.replace(hour=end_hour, minute=end_minute, second=0)
-                is_eod = ts_now >= (session_end - timedelta(minutes=6))
+                is_eod = ts_now >= (session_end - timedelta(minutes=5))
 
                 if is_eod:
                     strategy.log.info(f"EOD LIQUIDATION: Market Exit.")

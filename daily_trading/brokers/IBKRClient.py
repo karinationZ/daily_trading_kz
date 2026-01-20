@@ -367,3 +367,15 @@ class IBKRClient:
 
         # Return average price of that fill
         return last_exec.execution.avgPrice
+    async def check_flatness(self, symbol: str) -> (bool, float):
+        """
+        Returns (True, 0.0) if flat, or (False, size) if position exists.
+        """
+        # Force refresh
+        positions = await self.ib.reqPositionsAsync()
+
+        for p in positions:
+            if p.contract.symbol == symbol and p.position != 0:
+                return False, p.position
+
+        return True, 0.0

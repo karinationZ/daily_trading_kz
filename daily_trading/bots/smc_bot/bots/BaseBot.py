@@ -208,23 +208,23 @@ class SMCBotBase:
 
     async def run_strategy_cycle(self, strategy, *args, **kwargs):
         """
-        Refactored Cycle: Execute -> Verify -> Report
+        Cycle: Analyze -> Execute -> Wait -> Report -> Safety Check
         """
         try:
             # 1. Run Analysis
             analysis = strategy.analyze(*args, **kwargs)
+            sig = analysis.trade_signal
 
-            # 2. EXECUTE ORDERS FIRST (If signal exists)
-            # We do this before reporting so we can report ACTUAL data
-            if analysis.trade_signal:
+            # 2. EXECUTE ORDERS FIRST
+            if sig:
+                # Execute the strategy's intent (Enter/Exit)
                 await self.handle_execution(strategy, analysis)
 
-                # Wait a brief moment for IBKR to acknowledge orders or fills
+                # Wait for IBKR to process the order and update status
                 await asyncio.sleep(1.0)
 
-                # 3. REPORT TO TELEGRAM
-            if analysis.trade_signal:
-                sig = analysis.trade_signal
+            # 3. REPORT TO TELEGRAM (Verify what happened)
+            if sig:
                 is_significant = sig.action in [TradeAction.ENTER, TradeAction.EXIT, TradeAction.CANCEL]
 
                 if is_significant:
@@ -235,14 +235,15 @@ class SMCBotBase:
                     }.get(sig.action, "⚠️ UPDATE")
 
                     # --- DEBUG / VERIFICATION LOGIC ---
-
-                    # A. VERIFY ENTRY (Check Active Pending SL/TP at IBKR)
-                    verified_sl = sig.sl
-                    verified_tp = sig.tp
                     debug_note = ""
 
+                    # Defaults (in case verification fails)
+                    verified_sl = sig.sl
+                    verified_tp = sig.tp
+                    display_price = sig.price
+
+                    # A. VERIFY ENTRY
                     if sig.action == TradeAction.ENTER:
-                        # Ask IBKR what orders are actually open
                         bracket = await self.ib_client.get_active_bracket_levels(
                             sig.symbol,
                             strategy.ext_tag,
@@ -252,68 +253,76 @@ class SMCBotBase:
                             verified_sl = bracket['sl']
                             verified_tp = bracket['tp']
 
-                            # 1. Check SL Discrepancy
                             if abs(verified_sl - sig.sl) > 0.01:
                                 debug_note += f"\n⚠️ <b>SL ADJ:</b> Bot {sig.sl:,.2f} → IBKR {verified_sl:,.2f}"
 
-                            # 2. Check TP Discrepancy (ADDED)
                             if abs(verified_tp - sig.tp) > 0.01:
                                 debug_note += f"\n⚠️ <b>TP ADJ:</b> Bot {sig.tp:,.2f} → IBKR {verified_tp:,.2f}"
 
-                            else:
-                                debug_note = "✔️SL Bot {sig.sl:,.2f} → IBKR {verified_sl:,.2f}\n" \
-                                             "✔️TP Bot {sig.tp:,.2f} → IBKR {verified_tp:,.2f}"
-
+                            # Valid Entry Found
+                            if not debug_note:
+                                debug_note = f"\n✔️ Bracket Confirmed at IBKR"
                         else:
                             debug_note += "\n⚠️ <b>WARNING:</b> No Bracket Orders found at IBKR!"
 
-                    # B. VERIFY EXIT (Check Actual Fill Price vs Expected)
-                    display_price = sig.price
-
+                    # B. VERIFY EXIT
                     if sig.action == TradeAction.EXIT:
+                        # Get Real Fill Price
                         real_fill = await self.ib_client.get_last_fill_price(sig.symbol)
                         if real_fill > 0:
                             slippage = real_fill - sig.price
-                            display_price = real_fill  # Show the REAL price in the main line
-                            if abs(slippage) > 0.5:  # Only show substantial slippage note
-                                debug_note += f"\n💸 <b>Slippage:</b> {slippage:+.2f} pts (Exp: {sig.price})"
+                            display_price = real_fill
+                            if abs(slippage) > 0.5:
+                                debug_note += f"\n💸 <b>Slippage:</b> {slippage:+.2f} pts"
 
                     # --- CONSTRUCT MESSAGE ---
                     price_str = f"{display_price:,.2f}"
-
                     msg = (
                         f"{action_emoji} {strategy.log_tag}\n"
                         f"Action: {sig.action.name}\n"
                         f"Direction: {sig.direction.name}\n"
                         f"Size: {sig.size}\n"
-                        f"Price: {price_str}\n"  # Shows Real Fill on Exit, Signal Price on Entry
-                        f"SL: {verified_sl:,.2f} | TP: {verified_tp:,.2f}\n"  # Shows Real Pending Orders
+                        f"Price: {price_str}\n"
+                        f"SL: {verified_sl:,.2f} | TP: {verified_tp:,.2f}\n"
                         f"Time: {sig.timestamp.strftime('%Y-%m-%d %H:%M')} UTC"
-                        f"{debug_note}\n"  # Adds the debug info
+                        f"{debug_note}\n"
                     )
 
-                    # Add Win/Loss tag for Exits
-                    if sig.action == TradeAction.EXIT:
-                        if sig.sl != 0 and sig.tp != 0:
-                            result = getattr(sig, 'trade_result', None)
-                            if result == "LOSS":
-                                msg = f"RESULT: 🔴 {result}\n" + msg
-                            elif result == "WIN":
-                                msg = f"RESULT: 🟢 {result}\n" + msg
+                    # Add Win/Loss Result
+                    if sig.action == TradeAction.EXIT and getattr(sig, 'trade_result', None):
+                        icon = "🟢" if sig.trade_result == "WIN" else "🔴"
+                        msg = f"RESULT: {icon} {sig.trade_result}\n" + msg
 
                     await self.telegram_bot.send_message(msg, getattr(sig, 'fig', None))
 
-                # Special Logic: Daily Summary after Exit
-                if sig.action == TradeAction.EXIT:
-                    try:
-                        await asyncio.sleep(15)  # Give IBKR time to update ledger
-                        report = await self.ib_client.get_daily_summary()
-                        await self.telegram_bot.send_message(report)
-                    except Exception as e:
-                        logger.error(f"Failed to fetch post-exit summary: {e}")
+                    # 4. SAFETY CHECK (The Logic You Requested)
+                    if sig.action == TradeAction.EXIT:
+                        # Wait a moment for everything to settle
+                        await asyncio.sleep(2.0)
 
-            # 3. Execute Orders
-            await self.handle_execution(strategy, analysis)
+                        # Check flatness
+                        is_flat, position_size = await self.ib_client.check_flatness(sig.symbol)
+
+                        if not is_flat:
+                            # CRITICAL: We tried to exit, but we still have a position!
+                            warn_msg = f"🚨 <b>EMERGENCY:</b> Exit sent but Position is {position_size}! Force Closing."
+                            logger.error(warn_msg)
+                            await self.telegram_bot.send_message(warn_msg)
+
+                            # Force Close
+                            await self.ib_client.close_positions_smartly(sig.symbol)
+                        else:
+                            # We are flat, but ensure no zombie pending orders remain
+                            await self.ib_client.cancel_all_orders(order_ref=strategy.ext_tag)
+
+                    # 5. Daily Report
+                    if sig.action == TradeAction.EXIT:
+                        try:
+                            await asyncio.sleep(15)
+                            report = await self.ib_client.get_daily_summary()
+                            await self.telegram_bot.send_message(report)
+                        except Exception as e:
+                            logger.error(f"Summary Error: {e}")
 
         except Exception as e:
             strategy.log(f"CYCLE ERROR: {e}", level="error")

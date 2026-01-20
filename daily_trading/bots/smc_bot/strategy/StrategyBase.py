@@ -154,18 +154,23 @@ class StrategyBase(ABC):
         - London: 8:00 AM - 2:30 PM GMT
         - Tokyo: 9:00 AM - 3:00 PM JST
         """
+        ts_local = ts_now.tz_convert(timezone)
+
         s_info = SESSION_MAP[timezone.key]
 
-        # Get session start
-        session_start = ts_now.replace(
+        # 2. Construct session start using the LOCALIZED timestamp
+        session_start = ts_local.replace(
             hour=s_info.get("start_hour", 0),
             minute=s_info.get("start_minute", 0),
             second=0,
             microsecond=0
         )
+
+        # 3. Calculate Pre-Session Start (e.g., 1 hour before)
         pre_session_start = session_start - timedelta(hours=1)
 
-        return ts_now >= pre_session_start
+        # 4. Compare (Both are now in the same timezone)
+        return ts_local >= pre_session_start
 
     async def manage_cache_event(self, cache_key: Tuple[str, str], event: str, current_time: datetime) -> bool:
         """Manage cache for a new event, return True if event is new."""

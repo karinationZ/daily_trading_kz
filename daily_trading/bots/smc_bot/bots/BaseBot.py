@@ -249,11 +249,12 @@ class SMCBotBase:
                         f"Time: {analysis.trade_signal.timestamp.strftime('%Y-%m-%d %H:%M')} UTC\n"
                     )
                     if analysis.trade_signal.action == TradeAction.EXIT:
-                        result = getattr(analysis.trade_signal, 'trade_result', None)
-                        if result == "LOSS":
-                            msg = f"RESULT:  🔴 {result}\n" + msg
-                        elif result == "WIN":
-                            msg = f"Result: 🟢 {result}\n" + msg
+                        if analysis.trade_signal.sl != 0 and analysis.trade_signal.tp != 0:
+                            result = getattr(analysis.trade_signal, 'trade_result', None)
+                            if result == "LOSS":
+                                msg = f"RESULT:  🔴 {result}\n" + msg
+                            elif result == "WIN":
+                                msg = f"Result: 🟢 {result}\n" + msg
 
                     # Send Message with Chart (analysis.fig)
                     # Note: getattr handles cases where fig might be None

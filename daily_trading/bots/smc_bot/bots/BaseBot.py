@@ -312,6 +312,9 @@ class SMCBotBase:
                     except Exception as e:
                         logger.error(f"Failed to fetch post-exit summary: {e}")
 
+            # 3. Execute Orders
+            await self.handle_execution(strategy, analysis)
+
         except Exception as e:
             strategy.log(f"CYCLE ERROR: {e}", level="error")
             logger.error(traceback.format_exc())

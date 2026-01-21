@@ -258,8 +258,9 @@ class IBKRClient:
             start_of_day = utc_now.replace(hour=0, minute=0, second=0, microsecond=0)
 
             # CRITICAL FIX: Sort by Time AND execId to handle simultaneous fills correctly
+            tz = timezone.utc
             todays_fills = sorted(
-                [f for f in executions if f.time.astimezone(timezone.utc) >= start_of_day],
+                [f for f in executions if f.time.astimezone(tz) >= start_of_day],
                 key=lambda x: (x.time, x.execution.execId)
             )
 
@@ -275,7 +276,7 @@ class IBKRClient:
                 side = fill.execution.side
                 price = fill.execution.avgPrice
                 qty = fill.execution.shares
-                fill_time = fill.time.astimezone(timezone.utc)
+                fill_time = fill.time.astimezone(tz)
 
                 if sym not in open_inventory: open_inventory[sym] = []
 
@@ -374,7 +375,7 @@ class IBKRClient:
                 f"👤 Account: `{account_id}`",
                 "────────────────",
                 f"💰 Net Liq: ${net_liq:,.2f}",
-                f"{pnl_icon} Realized: ${realized:,.2f}",
+                f"{pnl_icon} Daily PnL: ${realized:,.2f}",
                 f"🎲 Open PnL: ${unrealized:,.2f}",
                 "────────────────"
             ]
@@ -397,7 +398,7 @@ class IBKRClient:
                     t_exit = t['exit_dt'].strftime('%H:%M')
 
                     header = f"{icon} {t['symbol']} {t['direction']} ({int(t['qty'])}) <b>${t['pnl']:+.2f}</b>"
-                    details = f"   ⏳ {t_entry} @ {t['entry_price']:,.2f} ➜ {t_exit} @ {t['exit_price']:,.2f}"
+                    details = f"   ⏳ {t_entry} @ {t['entry_price']:,.2f} ➜ {t_exit} {tz} @ {t['exit_price']:,.2f}"
                     lines.append(f"{header}\n{details}")
             else:
                 lines.append("💤 No round-trip trades completed today.")

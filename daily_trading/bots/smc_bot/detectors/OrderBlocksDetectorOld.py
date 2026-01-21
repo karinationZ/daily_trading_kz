@@ -6,7 +6,7 @@ from daily_trading.bots.smc_bot.detectors.DetectorsBase import DetectorsBase, Tr
 from daily_trading.settings import logger
 
 
-class OrderBlocksDetector(DetectorsBase):
+class OrderBlocksDetectorOld(DetectorsBase):
     def __init__(self, main_tf, left_bars=5, right_bars=5, tap_back_ratio=0.1):
         super().__init__(main_tf=main_tf, left_bars=left_bars, right_bars=right_bars)
         self.tap_back_ratio = tap_back_ratio

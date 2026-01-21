@@ -1,8 +1,7 @@
 import asyncio
 import math
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Any, List
-from zoneinfo import ZoneInfo
 
 import pandas as pd
 from ib_async import Contract, ExecutionFilter, Future, IB, LimitOrder, MarketOrder, util
@@ -24,6 +23,11 @@ class IBKRClient:
         "MBT": 5.00,  # Micro Bitcoin
         "MCL": 0.01,  # Micro WTI Crude Oil
         "SIL": 0.005  # Micro Silver (CME)
+    }
+
+    MULTIPLIERS = {
+        "MNQ": 2, "MES": 5, "MGC": 10, "MBT": 0.1, "MCL": 100, "SIL": 1000,
+        "NQ": 20, "ES": 50, "GC": 100, "CL": 1000, "RTY": 50, "M2K": 5
     }
 
     # Map intervals to IB durations and bar sizes
@@ -233,14 +237,12 @@ class IBKRClient:
     async def get_daily_summary(self) -> str:
         try:
             accounts = self.ib.managedAccounts()
-            if not accounts:
-                return "⚠️ No accounts."
+            if not accounts: return "⚠️ No accounts."
             account_id = accounts[0]
 
-            # 1. Get Account Summary (Net Liq, PnL)
+            # 1. Get Account Totals
             summary = await self.ib.accountSummaryAsync()
             net_liq = realized = unrealized = 0.0
-
             for row in summary:
                 if (row.account == account_id or row.account == 'All') and row.currency == 'USD':
                     if row.tag == 'NetLiquidation':
@@ -250,37 +252,125 @@ class IBKRClient:
                     elif row.tag == 'UnrealizedPnL':
                         unrealized = float(row.value)
 
-            # 2. Get ACTUAL Current Positions (The Truth)
-            positions = await self.ib.reqPositionsAsync()
-            current_holdings = {}
-            for p in positions:
-                if p.account == account_id and p.position != 0:
-                    current_holdings[p.contract.symbol] = p.position
-
-            # 3. Get Daily Activity (Volume)
+            # 2. Get Today's Executions (UTC)
             executions = await self.ib.reqExecutionsAsync(ExecutionFilter())
-            ny_now = datetime.now(ZoneInfo("America/New_York"))
-            start_of_day = ny_now.replace(hour=0, minute=0, second=0, microsecond=0)
+            utc_now = datetime.now(timezone.utc)
+            start_of_day = utc_now.replace(hour=0, minute=0, second=0, microsecond=0)
 
-            todays_fills = []
-            activity = {}
+            # CRITICAL FIX: Sort by Time AND execId to handle simultaneous fills correctly
+            todays_fills = sorted(
+                [f for f in executions if f.time.astimezone(timezone.utc) >= start_of_day],
+                key=lambda x: (x.time, x.execution.execId)
+            )
 
-            for fill in executions:
-                if fill.time.astimezone(ZoneInfo("America/New_York")) >= start_of_day:
-                    todays_fills.append(fill)
-                    sym = fill.contract.symbol
-                    if sym not in activity: activity[sym] = {'b': 0, 's': 0}
+            # 3. FIFO MATCHING LOGIC
+            raw_trades = []
+            open_inventory = {}
+            calculated_total_pnl = 0.0
+            inventory_mismatch = False
+            orphan_note = ""
 
-                    if fill.execution.side == 'BOT':
-                        activity[sym]['b'] += fill.execution.shares
-                    elif fill.execution.side == 'SLD':
-                        activity[sym]['s'] += fill.execution.shares
+            for fill in todays_fills:
+                sym = fill.contract.symbol
+                side = fill.execution.side
+                price = fill.execution.avgPrice
+                qty = fill.execution.shares
+                fill_time = fill.time.astimezone(timezone.utc)
 
-            # 4. Construct Message
+                if sym not in open_inventory: open_inventory[sym] = []
+
+                needed_side = 'SLD' if side == 'BOT' else 'BOT'
+
+                # Match against inventory
+                while qty > 0 and open_inventory[sym] and open_inventory[sym][0]['side'] == needed_side:
+                    match = open_inventory[sym][0]
+                    match_qty = min(qty, match['qty'])
+
+                    is_long = (match['side'] == 'BOT')
+                    mult = self.MULTIPLIERS.get(sym, 1.0)
+
+                    diff = price - match['price'] if is_long else match['price'] - price
+                    pnl = diff * match_qty * mult
+                    calculated_total_pnl += pnl
+
+                    raw_trades.append({
+                        'symbol': sym,
+                        'direction': "LONG" if is_long else "SHORT",
+                        'qty': match_qty,
+                        'pnl': pnl,
+                        'entry_dt': match['time'],
+                        'exit_dt': fill_time,
+                        'entry_price': match['price'],
+                        'exit_price': price,
+                    })
+
+                    qty -= match_qty
+                    match['qty'] -= match_qty
+                    if match['qty'] <= 0: open_inventory[sym].pop(0)
+
+                if qty > 0:
+                    open_inventory[sym].append({'price': price, 'qty': qty, 'side': side, 'time': fill_time})
+
+            # 4. AGGREGATION STEP
+            consolidated_trades = []
+            if raw_trades:
+                # Sort by Exit Time
+                raw_trades.sort(key=lambda x: x['exit_dt'])
+
+                current = raw_trades[0]
+
+                for i in range(1, len(raw_trades)):
+                    next_t = raw_trades[i]
+
+                    time_diff = (next_t['exit_dt'] - current['exit_dt']).total_seconds() / 60
+
+                    is_same_group = (
+                            current['symbol'] == next_t['symbol'] and
+                            current['direction'] == next_t['direction'] and
+                            time_diff < 5.0
+                    )
+
+                    if is_same_group:
+                        total_qty = current['qty'] + next_t['qty']
+
+                        current_entry_val = current['entry_price'] * current['qty']
+                        next_entry_val = next_t['entry_price'] * next_t['qty']
+                        avg_entry = (current_entry_val + next_entry_val) / total_qty
+
+                        current_exit_val = current['exit_price'] * current['qty']
+                        next_exit_val = next_t['exit_price'] * next_t['qty']
+                        avg_exit = (current_exit_val + next_exit_val) / total_qty
+
+                        current['qty'] = total_qty
+                        current['pnl'] += next_t['pnl']
+                        current['entry_price'] = avg_entry
+                        current['exit_price'] = avg_exit
+
+                        if next_t['entry_dt'] < current['entry_dt']: current['entry_dt'] = next_t['entry_dt']
+                        if next_t['exit_dt'] > current['exit_dt']: current['exit_dt'] = next_t['exit_dt']
+
+                    else:
+                        consolidated_trades.append(current)
+                        current = next_t
+
+                consolidated_trades.append(current)
+
+            # 5. Check Overnight
+            positions = await self.ib.reqPositionsAsync()
+            actual_pos_map = {p.contract.symbol: p.position for p in positions if
+                              p.account == account_id and p.position != 0}
+
+            for sym, items in open_inventory.items():
+                calc_qty = sum([i['qty'] * (1 if i['side'] == 'BOT' else -1) for i in items])
+                actual_qty = actual_pos_map.get(sym, 0.0)
+                if calc_qty != 0 and actual_qty == 0:
+                    inventory_mismatch = True
+                    orphan_note += f"\n⚠️ <b>Overnight Close:</b> {sym} {abs(calc_qty)} contracts."
+
+            # 6. Build Report
             pnl_icon = "🟢" if realized >= 0 else "🔴"
-
             lines = [
-                f"📅 **REPORT: {ny_now.strftime('%Y-%m-%d')}**",
+                f"📅 **REPORT: {utc_now.strftime('%Y-%m-%d')} (UTC)**",
                 f"👤 Account: `{account_id}`",
                 "────────────────",
                 f"💰 Net Liq: ${net_liq:,.2f}",
@@ -289,25 +379,32 @@ class IBKRClient:
                 "────────────────"
             ]
 
-            # --- NEW: DISPLAY ACTUAL POSITIONS ---
-            if current_holdings:
-                lines.append("🏗️ **Current Positions:**")
-                for sym, size in current_holdings.items():
+            if actual_pos_map:
+                lines.append("🏗️ **Open Positions:**")
+                for sym, size in actual_pos_map.items():
                     side = "LONG" if size > 0 else "SHORT"
                     lines.append(f"• {sym}: {side} {abs(size)}")
             else:
-                lines.append("🧘 **Current Status: No Open/Pending Orders**")
+                lines.append("🧘 **Current Status: FLAT**")
 
             lines.append("────────────────")
 
-            # --- DISPLAY VOLUME (Removed "Direction" logic to avoid confusion) ---
-            if not todays_fills:
-                lines.append("💤 No trades executed today.")
+            if consolidated_trades:
+                lines.append(f"📊 **Today's Trades (Calc: ${calculated_total_pnl:+.2f}):**")
+                for t in consolidated_trades:
+                    icon = "🟢" if t['pnl'] >= 0 else "🔴"
+                    t_entry = t['entry_dt'].strftime('%H:%M')
+                    t_exit = t['exit_dt'].strftime('%H:%M')
+
+                    header = f"{icon} {t['symbol']} {t['direction']} ({int(t['qty'])}) <b>${t['pnl']:+.2f}</b>"
+                    details = f"   ⏳ {t_entry} @ {t['entry_price']:,.2f} ➜ {t_exit} @ {t['exit_price']:,.2f}"
+                    lines.append(f"{header}\n{details}")
             else:
-                lines.append(f"📊 **Today's Activity ({len(todays_fills)} Fills):**")
-                for sym, counts in activity.items():
-                    # Just report what we did, don't try to guess position
-                    lines.append(f"• **{sym}**: Bought {int(counts['b'])} | Sold {int(counts['s'])}")
+                lines.append("💤 No round-trip trades completed today.")
+
+            if inventory_mismatch:
+                lines.append("────────────────")
+                lines.append(f"📉 <i>Note: Realized PnL includes overnight positions.</i>{orphan_note}")
 
             return "\n".join(lines)
 
@@ -367,6 +464,7 @@ class IBKRClient:
 
         # Return average price of that fill
         return last_exec.execution.avgPrice
+
     async def check_flatness(self, symbol: str) -> (bool, float):
         """
         Returns (True, 0.0) if flat, or (False, size) if position exists.

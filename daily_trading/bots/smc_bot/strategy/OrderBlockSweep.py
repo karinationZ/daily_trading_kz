@@ -7,7 +7,7 @@ import pandas as pd
 from daily_trading.bots.smc_bot.detectors.CandlePatternDetector import CandlePatternDetector
 from daily_trading.bots.smc_bot.detectors.FvgDetector import FvgDetector
 from daily_trading.bots.smc_bot.detectors.HighLowDetector import HighLowDetector
-from daily_trading.bots.smc_bot.detectors.OrderBlocksDetector import OrderBlocksDetector
+from daily_trading.bots.smc_bot.detectors.OrderBlocksDetectorOld import OrderBlocksDetectorOld
 from daily_trading.bots.smc_bot.detectors.DetectorsBase import BIAS, Trend
 from daily_trading.bots.smc_bot.strategy.StrategyBase import SignalSummary, DetectorsBase
 from daily_trading.settings import logger
@@ -43,7 +43,7 @@ class OrderBlockSweepStrategy(DetectorsBase):
             'swing_1h': HighLowDetector(main_tf),
             'fvg_1h': FvgDetector(main_tf),
             'candle_1h': CandlePatternDetector(self.main_tf),
-            'ob_1h': OrderBlocksDetector(main_tf)
+            'ob_1h': OrderBlocksDetectorOld(main_tf)
         }
         self.nearest_ob = None
         logger.info(f"ContinuationBlockOrderSweepStrategy initialized with detectors")

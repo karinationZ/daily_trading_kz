@@ -13,7 +13,7 @@ from daily_trading.bots.smc_bot.detectors.BosChochDetector import BosChochDetect
 from daily_trading.bots.smc_bot.detectors.FvgDetector import FvgDetector
 from daily_trading.bots.smc_bot.detectors.HighLowDetector import HighLowDetector
 from daily_trading.bots.smc_bot.detectors.LevelsDetector import LevelsDetector
-from daily_trading.bots.smc_bot.detectors.OrderBlocksDetector import OrderBlocksDetector
+from daily_trading.bots.smc_bot.detectors.OrderBlocksDetectorOld import OrderBlocksDetectorOld
 from daily_trading.bots.smc_bot.detectors.VolumeProfiler import VolumeProfiler
 from daily_trading.settings import GEMINI_API_KEY, logger
 from daily_trading.technicals.CryptoSentimentAnalyzer import CryptoSentimentAnalyzer
@@ -89,7 +89,7 @@ class GeminiTradeAssistant:
         detector_fvg = FvgDetector(main_tf="15min", pivot_period=5, left_bars=5)
         detector_bos = BosChochDetector(self.main_tf, show_bull=True, show_bear=True)
         high_low_detector = HighLowDetector(self.main_tf)
-        ob_detector = OrderBlocksDetector(self.main_tf)
+        ob_detector = OrderBlocksDetectorOld(self.main_tf)
         support_levels_detector = LevelsDetector(main_tf="15m", pivot_length=3, strength=4)
         vol_profiler = VolumeProfiler(main_tf="1h")
         analyzer = CryptoSentimentAnalyzer()

@@ -33,10 +33,10 @@ class Backtester:
         self.active_record: Optional[dict] = None  # Currently open/pending ledger entry
 
     def run(self,
-            ohlc_5m: pd.DataFrame,
+            main_tf: pd.DataFrame,
             ohlc_1h: Optional[pd.DataFrame] = None,
             ohlc_4h: Optional[pd.DataFrame] = None,  # <--- ADDED
-            lookback_5m: int = 200,
+            lookback_main_tf: int = 200,
             lookback_1h: int = 200,
             lookback_4h: int = 200):
 
@@ -45,7 +45,7 @@ class Backtester:
         logger.info(f"🏁 {mode} Backtest | {self.strategy.symbol}")
 
         # Standardize Data
-        ohlc_5m = self._prepare_data(ohlc_5m)
+        main_tf = self._prepare_data(main_tf)
         if ohlc_1h is not None:
             ohlc_1h = self._prepare_data(ohlc_1h)
 
@@ -62,11 +62,11 @@ class Backtester:
         sess_end = time(s_info.get("end_hour", 16), s_info.get("end_minute", 0))
         pre_market = (datetime.combine(datetime.min, sess_start) - timedelta(hours=1)).time()
 
-        start_idx = max(lookback_5m, 1)
+        start_idx = max(lookback_main_tf, 1)
 
         # 2. MAIN DATA FEED LOOP
-        for i in range(start_idx, len(ohlc_5m)):
-            ts_utc = ohlc_5m.index[i]
+        for i in range(start_idx, len(main_tf)):
+            ts_utc = main_tf.index[i]
 
             # A. Session Filter (Skip overnight processing to save speed)
             # Note: Strategy also handles cutoffs, this is just to skip "dead" data
@@ -80,7 +80,7 @@ class Backtester:
             if not is_active: continue
 
             # B. Prepare Windows
-            window_5m = ohlc_5m.iloc[i - lookback_5m: i + 1]
+            window_main_tf = main_tf.iloc[i - lookback_main_tf: i + 1]
 
             # C. Execute Strategy
             if mode == "MTF":
@@ -89,7 +89,7 @@ class Backtester:
                 if len(window_1h) < 8:
                     continue
                 # Prepare Arguments
-                strategy_args = {'df_ltf': window_5m, 'df_htf': window_1h}
+                strategy_args = {'df_ltf': window_main_tf, 'df_htf': window_1h}
 
                 # 4H Slicing Logic
                 if ohlc_4h is not None:
@@ -104,7 +104,7 @@ class Backtester:
                 # -----------------------------
                 analysis = self.strategy.analyze(**strategy_args)
             else:
-                analysis = self.strategy.analyze(window_5m)
+                analysis = self.strategy.analyze(window_main_tf)
 
             # 3. RECORD KEEPING (The Accountant)
             if analysis.trade_signal:

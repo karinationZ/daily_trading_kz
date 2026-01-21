@@ -336,7 +336,7 @@ class DetectorsBase:
 
         return round(sl, 2)
 
-    def get_current_atr(self, ohlc: pd.DataFrame) -> float:
+    def get_current_atr(self, ohlc: pd.DataFrame, atr_length_buffer=14) -> float:
         """
         Calculate current ATR using the provided logic.
         """
@@ -345,7 +345,7 @@ class DetectorsBase:
         low_cp = (ohlc['low'] - ohlc['close'].shift(1)).abs()
 
         tr = pd.concat([high_low, high_cp, low_cp], axis=1).max(axis=1)
-        atr = tr.ewm(alpha=1 / self.atr_length_buffer, min_periods=self.atr_length_buffer, adjust=False).mean().iloc[-1]
+        atr = tr.ewm(alpha=1 / self.atr_length_buffer, min_periods=atr_length_buffer, adjust=False).mean().iloc[-1]
         return atr
 
     def adaptive_wick_threshold(self, range_to_atr: float) -> float:

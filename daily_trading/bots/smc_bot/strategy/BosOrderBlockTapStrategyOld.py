@@ -5,7 +5,7 @@ import pandas as pd
 
 from daily_trading.bots.smc_bot.detectors.BosChochDetector import BosChochDetector
 from daily_trading.bots.smc_bot.detectors.HighLowDetector import HighLowDetector
-from daily_trading.bots.smc_bot.detectors.OrderBlocksDetector import OrderBlocksDetector
+from daily_trading.bots.smc_bot.detectors.OrderBlocksDetectorOld import OrderBlocksDetectorOld
 from daily_trading.bots.smc_bot.detectors.DetectorsBase import BIAS, Trend
 from daily_trading.bots.smc_bot.strategy.StrategyBase import SignalSummary, DetectorsBase
 from daily_trading.settings import logger
@@ -36,7 +36,7 @@ class BosOrderBlockTapStrategy(DetectorsBase):
         self.detectors = {
             'swing_1h': HighLowDetector(main_tf),  # Detects HH/HL/LL/LH on 1H
             'bos_1h': BosChochDetector(main_tf),  # Detects BOS/CHOCH on 1H
-            'ob_15m': OrderBlocksDetector('15m')  # Detects OBs on 15m
+            'ob_15m': OrderBlocksDetectorOld('15m')  # Detects OBs on 15m
         }
         self.ob_fig = None
         self.ob_tap_cache = {}  # Cache: {symbol: tap_ob_timestamp}

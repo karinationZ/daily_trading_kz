@@ -2,7 +2,7 @@ import asyncio
 import traceback
 
 from daily_trading.bots.smc_bot.bots.BaseBot import SMCBotBase
-from daily_trading.bots.smc_bot.strategy.BosOrderBlockTapStrategy import BosOrderBlockTapStrategy
+from daily_trading.bots.smc_bot.strategy.BosOrderBlockTapStrategyOld import BosOrderBlockTapStrategy
 from daily_trading.settings import logger
 
 

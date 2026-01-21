@@ -19,7 +19,7 @@ from daily_trading.bots.smc_bot.detectors.LiquidityGrabDetector import Liquidity
 from daily_trading.bots.smc_bot.detectors.LiquidityPoolDetector import LiquidityPoolDetector
 from daily_trading.bots.smc_bot.detectors.LiquiditySweepDetector import LiquiditySweepDetector
 from daily_trading.bots.smc_bot.detectors.ORBDetector import ORBDetector
-from daily_trading.bots.smc_bot.detectors.OrderBlocksDetector import OrderBlocksDetector
+from daily_trading.bots.smc_bot.detectors.OrderBlocksDetectorOld import OrderBlocksDetectorOld
 from daily_trading.bots.smc_bot.detectors.SupplyDemandZonesDetector import SupplyDemandZonesDetector
 from daily_trading.bots.smc_bot.detectors.VolumeProfiler import VolumeProfiler
 from daily_trading.bots.smc_bot.strategy.ORBStrategy import ORBStrategy
@@ -48,13 +48,14 @@ async def test_trend():
 
 @pytest.mark.asyncio
 async def test_bos_detector():
-    bot = SMCBotBase(symbols=[symbol], lookback_days=lookback_days, main_tf=main_tf)
-    ohlc = await bot.fetch_bitunix_ohlc_data(symbol, main_tf)
+    symbol = "MNQ"
+    bot = SMCBotBase(symbols=[symbol], main_tf="1h", market_type="futures")
+    ohlc = await bot.fetch_ibkr_ohlc_data(symbol, "1h", num_candles=200)
 
     # with pd.option_context('display.max_rows', None, 'display.max_columns', None):
     #     logger.info("\n{}", ohlc.tail(50).to_string())
 
-    detector = BosChochDetector(main_tf, show_bull=True, show_bear=True)
+    detector = BosChochDetector(main_tf, show_bull=True, show_bear=True, left_bars=5, right_bars=5)
     results = detector.calculate_bos_choch(ohlc, plot=True)
     fig = results["fig"]
     fig.show()
@@ -207,7 +208,7 @@ async def test_merge_ob_and_bos():
     # with pd.option_context('display.max_rows', None, 'display.max_columns', None):
     #     logger.info("\n{}", ohlc.tail(50).to_string())
 
-    ob_detector = OrderBlocksDetector(main_tf)
+    ob_detector = OrderBlocksDetectorOld(main_tf)
     results = ob_detector.calculate_order_blocks(ohlc_15m, plot=True)
     ob_signals = results["order_blocks"]
     ob_fig = results["fig"]
@@ -276,7 +277,7 @@ async def test_orb_calculation():
 
 
 @pytest.mark.asyncio
-async def test_order_blocks():
+async def test_order_blocks_old():
     # bot = SMCBotBase(symbols=[symbol], lookback_days=lookback_days, main_tf=main_tf)
     # ohlc = await bot.fetch_ohlc_data(symbol, main_tf)
 
@@ -290,7 +291,7 @@ async def test_order_blocks():
         end_ts="2025-03-10 19:55:00+00:00"
     )
 
-    detector = OrderBlocksDetector(main_tf)
+    detector = OrderBlocksDetectorOld(main_tf)
     results = detector.calculate_order_blocks(ohlc, plot=True)
     print(results)
     fig = results["fig"]
@@ -301,23 +302,21 @@ async def test_order_blocks():
 async def test_supply_demand_zones():
     symbol = "MNQ"
     bot = SMCBotBase(symbols=[symbol], main_tf="1h", market_type="futures")
-    # ohlc = await bot.fetch_ohlc_data(symbol, "5m", num_candles=500)
+    ohlc = await bot.fetch_ibkr_ohlc_data(symbol, "1h", num_candles=200)
 
-    pathlib = f"/project/daily_trading/bots/smc_bot/tests/ohlc_data/{symbol.lower()}.csv"
-    ohlc = load_data(
-        pathlib,
-        start_ts="2025-03-03 12:30:00+00:00",
-        end_ts="2025-03-03 17:00:00+00:00"
-    )
-    # ohlc = pd.read_csv('/project/daily_trading/bots/smc_bot/tests/window.csv')
-    logger.info(ohlc.tail(200).to_string())
+    # pathlib = f"/project/daily_trading/bots/smc_bot/tests/ohlc_data/{symbol.lower()}.csv"
+    # ohlc = load_data(
+    #     pathlib,
+    #     start_ts="2025-03-03 12:30:00+00:00",
+    #     end_ts="2025-03-03 17:00:00+00:00"
+    # )
     # Tested_V12_MNQ_NY_sw12_int4_off1_atr2_2_thr0_3_rr1_5_results_copy
     detector = SupplyDemandZonesDetector(fvg_based_only=True,
-                                         fvg_offset=1,
-                                         swing_length=12,
-                                         internal_length=4,
-                                         zone_precision_factor=2.2,
-                                         fvg_threshold=0.3)
+                                         fvg_offset=5,
+                                         swing_length=50,
+                                         internal_length=5,
+                                         zone_precision_factor=1.8,
+                                         fvg_threshold=0.15)
 
     #
     # ohlc_before = ohlc.loc[ohlc.index < cutoff]
@@ -470,93 +469,5 @@ async def test_ibkr():
     msg = await client.get_daily_summary()
     logger.info(msg)
 
-    ohlc = await client.get_klines("MES", "5m")
-    print()
+    # ohlc = await client.get_klines("MES", "5m")
 
-    # Setup Target Variables
-    # symbol = "MNQ"
-    # timezone = ZoneInfo("America/New_York")
-    #
-    # # CRITICAL: This tag must match exactly what ORBStrategy generates internally
-    # # Logic: f"{symbol}_{session_short}_ORB" -> MNQ_NY_ORB
-    # target_ref = "TEST_MNQ_NY_ORB"
-    # open_orders = await client.get_open_orders()
-    # positions = await client.get_active_positions()
-    # print(f"ORDERS: {open_orders}")
-    # print(f"POSITIONS: {positions}")
-    #
-    # try:
-    #     logger.info(f"--- 1. Getting Market Data for {symbol} ---")
-    #     df = await client.get_klines(symbol, "5m")
-    #     assert not df.empty, "Failed to get market data"
-    #     current_price = df['close'].iloc[-1]
-    #
-    #     # Calculate a SAFE Limit Entry (5% below market) so it stays PENDING
-    #     entry_price = client.round_to_tick(current_price * 0.95, symbol)
-    #     sl_price = client.round_to_tick(entry_price - 20, symbol)
-    #     tp_price = client.round_to_tick(entry_price + 50, symbol)
-    #
-    #     logger.info(f"Current: {current_price} | Placing Test Order @ {entry_price} (Ref: {target_ref})")
-    #
-    #     # --- 2. Place the Bracket Order on IBKR ---
-    #     await client.place_bracket_order(
-    #         symbol=symbol,
-    #         quantity=1,
-    #         entry=entry_price,
-    #         sl=sl_price,
-    #         tp=tp_price,
-    #         direction="LONG",
-    #         order_ref=target_ref
-    #     )
-    #
-    #     # Give IBKR a moment to register
-    #     await asyncio.sleep(2)
-    #
-    #     # --- 3. Simulate Bot Restart (Fetch Raw Data) ---
-    #     logger.info("--- Simulating Bot Restart & Fetching State ---")
-    #     open_orders = await client.get_open_orders()
-    #     positions = await client.get_active_positions()
-    #
-    #     # Verify we actually have the orders on the server before testing sync
-    #     my_orders = [o for o in open_orders if o.order.orderRef == target_ref]
-    #     assert len(my_orders) == 3, f"Setup Failed: Expected 3 orders on IBKR, found {len(my_orders)}"
-    #
-    #     # --- 4. Instantiate Strategy & Run Sync ---
-    #     # We create a fresh strategy instance with default risk/params
-    #     strategy = ORBStrategy(symbol=symbol, timezone=timezone)
-    #     strategy.ext_tag = target_ref
-    #
-    #     # ASSERT PRE-CONDITION: State should be empty
-    #     assert strategy.trade_status == TradeStatus.NONE
-    #     assert strategy.active_trade is None
-    #
-    #     # EXECUTE SYNC
-    #     logger.info("Running strategy.sync_state()...")
-    #     SMCBotBase.sync_state(strategy, positions, open_orders)
-    #
-    #     # --- 5. ASSERTIONS ---
-    #     logger.info(f"Post-Sync Status: {strategy.trade_status}")
-    #
-    #     # A. Status Check
-    #     assert strategy.trade_status == TradeStatus.PENDING, \
-    #         f"Sync Failed: Expected PENDING, got {strategy.trade_status}"
-    #
-    #     # B. Active Trade Object Check
-    #     assert strategy.active_trade is not None, "Sync Failed: active_trade is None"
-    #
-    #     # C. Data Integrity Check
-    #     # Allow small float diffs (epsilon)
-    #     assert abs(strategy.active_trade.price - entry_price) < 0.001, \
-    #         f"Price Mismatch: Expected {entry_price}, got {strategy.active_trade.price}"
-    #
-    #     assert strategy.active_trade.direction.name == "LONG"
-    #     assert strategy.active_trade.metadata.get("zone_id") == "RECOVERED"
-    #
-    #     logger.info("✅ SUCCESS: Strategy successfully recovered state from IBKR!")
-    #
-    # finally:
-    #     # --- 6. Cleanup ---
-    #     logger.info("Cleaning up test orders...")
-    #     await client.cancel_all_orders(order_ref=target_ref)
-    #     client.disconnect()
-    #     await asyncio.sleep(1)

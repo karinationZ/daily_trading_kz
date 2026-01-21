@@ -3,22 +3,22 @@ from typing import List
 from zoneinfo import ZoneInfo
 
 from daily_trading.bots.smc_bot.bots.BaseBot import SMCBotBase
+from daily_trading.bots.smc_bot.strategy.BosOrderBlock import BosOrderBlockStrategy
 from daily_trading.bots.smc_bot.strategy.StrategyBase import TradeStatus
-from daily_trading.bots.smc_bot.strategy.BosFvgStrategy import BosFvgStrategy
 from daily_trading.settings import logger, TELEGRAM_MAIN_CHANNEL_CHAT_ID
 
 # Define your configuration here
 CONFIG = {}
 
 
-class SupplyDemandTapBot(SMCBotBase):
+class BosOrderBlockBot(SMCBotBase):
     def __init__(self, telegram_chat_id=TELEGRAM_MAIN_CHANNEL_CHAT_ID, risk=250, ib_client=None):
         super().__init__(symbols=[], main_tf="5m", telegram_chat_id=telegram_chat_id, ib_client=ib_client)
-        self.strategies: List[BosFvgStrategy] = []
+        self.strategies: List[BosOrderBlockStrategy] = []
         self.active_symbols = []
         self.risk = risk
         self._initialize_strategies()
-        logger.info(f"🤖 BOS FVG Bot Manager Ready: {len(self.strategies)} strategies.")
+        logger.info(f"🤖 BOS 1H OB Bot Manager Ready: {len(self.strategies)} strategies.")
 
     def _initialize_strategies(self):
         unique_symbols = set()
@@ -30,20 +30,14 @@ class SupplyDemandTapBot(SMCBotBase):
             else:
                 tz = ZoneInfo("Asia/Tokyo")
             try:
-                strategy = SupplyDemandZoneTapStrategy(
-                    symbol=symbol,
-                    timezone=tz,
-                    risk=self.risk,
-                    tp_multiple=cfg["rr"],
-                    fvg_based_only=True,
-                    swing_length=cfg["sw"],
-                    internal_length=cfg["int"],
-                    fvg_offset=cfg["off"],
-                    zone_precision_factor=cfg["atr"],
-                    fvg_threshold=cfg["thr"],
-                    sl_atr_multiplier=cfg["sl_atr"],
-                    eb_mult=cfg["eb_mult"]
-                )
+                strategy = BosOrderBlockStrategy(symbol=symbol,
+                                                 timezone=tz,
+                                                 main_tf="1h",
+                                                 risk=self.risk,
+                                                 tp_multiple=cfg["rr"],
+                                                 entry_depth=cfg["entry_depth"],
+                                                 sl_buffer_mult=cfg["sl_buffer_mult"],
+                                                 )
                 self.strategies.append(strategy)
                 unique_symbols.add(symbol)
             except Exception as e:

@@ -17,17 +17,14 @@ class MasterBot:
 
         # 2. Init Bots with Shared Client
         self.orb_bot = ORBBot(ib_client=self.ib_client)
-        self.sd_bot = SupplyDemandTapBot(ib_client=self.ib_client)
         self.bos_ob_bot = BosOrderBlockBot(ib_client=self.ib_client)
 
         # 3. Categorize Symbols for Fetching
-        # ORB, SD & BOS needs 5m
+        # ORB & BOS needs 5m
         self.symbols_5m = set(self.orb_bot.active_symbols +
-                              self.sd_bot.active_symbols +
                               self.bos_ob_bot.active_symbols)
-        # SD & BOS need 1h
-        self.symbols_1h = set(self.sd_bot.active_symbols +
-                              self.bos_ob_bot.active_symbols)
+        # BOS need 1h
+        self.symbols_1h = set(self.bos_ob_bot.active_symbols)
 
     async def get_account_state(self):
         """
@@ -228,7 +225,6 @@ class MasterBot:
                     await asyncio.gather(
                         # self.bos_ob_bot.execute_cycle(market_data, blocked, positions, orders),
                         self.orb_bot.execute_cycle(market_data, blocked, positions, orders),
-                        self.sd_bot.execute_cycle(market_data, blocked, positions, orders)
                     )
 
                     # --- C. Wait for Next Candle ---

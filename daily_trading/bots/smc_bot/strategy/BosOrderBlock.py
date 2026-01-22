@@ -7,7 +7,8 @@ import pandas as pd
 from daily_trading.bots.smc_bot.detectors.BosChochDetector import BosChochDetector
 from daily_trading.bots.smc_bot.detectors.DetectorsBase import BIAS
 from daily_trading.bots.smc_bot.detectors.SupplyDemandZonesDetector import SupplyDemandZonesDetector
-from daily_trading.bots.smc_bot.strategy.StrategyBase import SESSION_MAP, SignalSummary, StrategyBase, TradeAction, \
+from daily_trading.bots.smc_bot.strategy.StrategyBase import ExitType, SESSION_MAP, SignalSummary, StrategyBase, \
+    TradeAction, \
     TradeSignal, \
     TradeStatus
 from daily_trading.settings import logger
@@ -33,12 +34,12 @@ class BosOrderBlockStrategy(StrategyBase):
                  tp_multiple: float = 1.5,
                  entry_depth: float = 0.5,  # 0.5 = 50% into zone
                  sl_buffer_mult: float = 0.1,
-                 swing_length: int = 50,
+                 swing_length: int = 45,
                  internal_length: int = 5,
-                 zone_precision_factor: float = 1.8,
-                 fvg_based_only: bool = True,
-                 fvg_offset: int = 5,
-                 fvg_threshold=0.15,
+                 # zone_precision_factor: float = 1.8,
+                 # fvg_based_only: bool = True,
+                 # fvg_offset: int = 5,
+                 # fvg_threshold=0.15,
                  bos_left_bars: int = 5,
                  bos_right_bars: int = 5,
                  bos_volume_thresh: float = 0):
@@ -72,12 +73,12 @@ class BosOrderBlockStrategy(StrategyBase):
         )
 
         self.sd_detector = SupplyDemandZonesDetector(
-            fvg_based_only=fvg_based_only,
+            fvg_based_only=False,
             swing_length=swing_length,
             internal_length=internal_length,
-            zone_precision_factor=zone_precision_factor,
-            fvg_offset=fvg_offset,
-            fvg_threshold=fvg_threshold,
+            # zone_precision_factor=zone_precision_factor,
+            # fvg_offset=fvg_offset,
+            # fvg_threshold=fvg_threshold,
             wick_ratio=0.1
         )
 
@@ -107,7 +108,10 @@ class BosOrderBlockStrategy(StrategyBase):
         Calculates Limit Entry and Hard SL based on Zone boundaries + Depth.
         """
         atr = self.sd_detector.get_current_atr(ohlc, atr_length_buffer=14)
-        sl_buffer_val = atr * self.sl_buffer_mult
+        if self.sl_buffer_mult > 0:
+            sl_buffer_val = atr * self.sl_buffer_mult
+        else:
+            sl_buffer_val = self.TICK_SIZES[self.symbol]
 
         top = zone['top']
         bottom = zone['bottom']
@@ -230,9 +234,6 @@ class BosOrderBlockStrategy(StrategyBase):
                     metadata={"zone_id": zone_id, "type": zone_type, "bos_ts": bos_time}
                 )
                 closest_dist = dist
-
-        if best_signal:
-            self.processed_zone_ids.add(best_signal.metadata['zone_id'])
 
         return best_signal
 
@@ -361,10 +362,10 @@ class BosOrderBlockStrategy(StrategyBase):
                 # CRITICAL: Tell Execution Handler how to behave
                 if exit_reason == "CUTOFF":
                     # Time exit: Bot MUST cancel brackets and dump position at market
-                    sig.metadata["exit_type"] = "FORCE_MARKET"
+                    sig.metadata["exit_type"] = ExitType.MARKET_FORCE
                 else:
                     # SL/TP hit: Bot assumes IBKR Bracket triggered; just monitors
-                    sig.metadata["exit_type"] = "PASSIVE_MONITOR"
+                    sig.metadata["exit_type"] = ExitType.SL_TP_HIT
 
                 self.log.info(f"🎯 TRADE EXIT ({exit_type}) {self.symbol} | Reason: {exit_reason}")
                 return SignalSummary(direction="EXIT", trade_signal=sig)

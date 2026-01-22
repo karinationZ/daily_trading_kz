@@ -1,3 +1,4 @@
+from collections import defaultdict
 from datetime import timedelta
 from typing import Dict, List, Optional, Set
 from zoneinfo import ZoneInfo
@@ -6,7 +7,8 @@ import pandas as pd
 
 from daily_trading.bots.smc_bot.detectors.DetectorsBase import BIAS
 from daily_trading.bots.smc_bot.detectors.SupplyDemandZonesDetector import SupplyDemandZonesDetector
-from daily_trading.bots.smc_bot.strategy.StrategyBase import SESSION_MAP, SignalSummary, StrategyBase, TradeAction, \
+from daily_trading.bots.smc_bot.strategy.StrategyBase import ExitType, SESSION_MAP, SignalSummary, StrategyBase, \
+    TradeAction, \
     TradeSignal, \
     TradeStatus
 from daily_trading.settings import logger
@@ -19,19 +21,14 @@ class SupplyDemandZoneTapStrategy(StrategyBase):
     Logic Hierarchy:
         - Trigger: Monitors 5m TF for a 'Tap' (Touch) of the 1H Zone.
         - Confirmation: 5m candle must show 'Absorption' (wick) and not be a 'Falling Knife'.
-        - Execution: Limit order placed at the 1H zone edge. (???fix it) sl?
+        - Execution: Limit order placed at the 1H zone edge.
          - Safety: Hard cutoff at session end and automatic mitigation of zones after one trade.
     """
 
     def __init__(self, symbol: str, timezone: ZoneInfo, main_tf="5m", risk: float = 150.0,
                  tp_multiple: float = 1.5,
-                 wick_ratio: float = 0.10,
-                 swing_length: int = 8,
-                 internal_length: int = 2,
-                 zone_precision_factor: float = 2.0,
-                 fvg_based_only: bool = True,
-                 fvg_offset: int = 3,
-                 fvg_threshold=0.15,
+                 swing_length: int = 45,
+                 internal_length: int = 5,
                  sl_atr_multiplier=2.0,
                  eb_mult=2.0):
         super().__init__(main_tf)
@@ -47,20 +44,17 @@ class SupplyDemandZoneTapStrategy(StrategyBase):
         self.sl_atr_multiplier = sl_atr_multiplier
         self.eb_mult = eb_mult
         self.enter_buffer = self.ENTRY_BUFFER[symbol]
-        self.wick_ratio = wick_ratio
 
         # Detectors
-        self.sd_detector_1h = SupplyDemandZonesDetector(fvg_based_only=fvg_based_only,
+        self.sd_detector_1h = SupplyDemandZonesDetector(fvg_based_only=False,
                                                         swing_length=swing_length,
-                                                        internal_length=internal_length,
-                                                        zone_precision_factor=zone_precision_factor,
-                                                        fvg_offset=fvg_offset,
-                                                        fvg_threshold=fvg_threshold)
+                                                        internal_length=internal_length)
 
         # State Management
         self.active_trade: Optional[TradeSignal] = None
         self.trade_status: TradeStatus = TradeStatus.NONE
         self.processed_zone_ids: Set[pd.Timestamp] = set()
+        self.zone_usage_counts: Dict[pd.Timestamp, int] = defaultdict(int)
 
         # Caching
         self.cached_zones_1h: List[Dict] = []
@@ -79,30 +73,45 @@ class SupplyDemandZoneTapStrategy(StrategyBase):
         logger.info(f"{self.symbol} | New Session: Resetting Strategy State and Cache.")
         self.active_trade = None
         self.trade_status = TradeStatus.NONE
-        self.processed_zone_ids.clear()
+        self.zone_usage_counts.clear()
         self.cached_zones_1h = []
         self.last_processed_hour = -1
 
     def validate_zone_reaction(self, ohlc: pd.DataFrame, direction: BIAS, zone: Dict) -> bool:
-        """Trigger Logic: Restored to 'Striking Distance' (+ buffer for Longs)."""
+        """
+        Refactored Trigger Logic:
+        1. Fixes buffer math (allows entry at edge + buffer).
+        2. Checks for falling knife.
+        """
         atr = self.sd_detector_1h.get_current_atr(ohlc)
+        # Adjusted buffer (Striking distance)
         entry_buffer = self.enter_buffer * self.eb_mult
 
         curr = ohlc.iloc[-1]
+
+        # CHANGE 2: Fix Buffer Math
+        # Previous code forced price DEEP into zone (Top - Buffer).
+        # Correct logic is (Top + Buffer) to catch it as it arrives.
         if direction == BIAS.LONG:
-            touched = curr['low'] <= (zone['top'] - entry_buffer)
+            # Low must drop BELOW the (Zone Top + Buffer)
+            trigger_price = zone['top'] + entry_buffer
+            touched = curr['low'] <= trigger_price
         else:
-            touched = curr['high'] >= (zone['bottom'] + entry_buffer)
+            # High must rise ABOVE the (Zone Bottom - Buffer)
+            trigger_price = zone['bottom'] - entry_buffer
+            touched = curr['high'] >= trigger_price
 
         if not touched:
             return False
+
+        # Check for Falling Knife (Velocity/Momentum check)
         is_falling_knf = self.sd_detector_1h.is_falling_knife(curr, direction, atr)
 
         if is_falling_knf:
-            self.log.info(f"Detected Falling knife. | {curr.name}")
+            self.log.info(f"🔪 Falling Knife Detected | {curr.name} | Skipping Trigger.")
             return False
-        else:
-            return True
+
+        return True
 
     @staticmethod
     def is_zone_already_mitigated(ohlc_5m: pd.DataFrame, zone: Dict, threshold: float = 0.5) -> bool:
@@ -299,6 +308,7 @@ class SupplyDemandZoneTapStrategy(StrategyBase):
 
                 # PASS THE EXIT PRICE HERE
                 signal = self.create_signal(TradeAction.EXIT, df_ltf.index[-1], custom_price=exit_price)
+                signal.metadata["exit_type"] = ExitType.SL_TP_HIT
                 if hit_sl:
                     signal.trade_result = "LOSS"
                 elif hit_tp:
@@ -309,11 +319,12 @@ class SupplyDemandZoneTapStrategy(StrategyBase):
                 # Exit at current market close
                 exit_price = curr['close']
                 self.log.info(f"⏰ SESSION CUTOFF EXIT | Closing at {exit_price:.2f}")
+                signal = self.create_signal(TradeAction.EXIT, df_ltf.index[-1], custom_price=exit_price)
+                signal.metadata["exit_type"] = ExitType.MARKET_FORCE
 
                 # PASS THE MARKET CLOSE PRICE HERE
                 return SignalSummary(direction="EXIT",
-                                     trade_signal=self.create_signal(TradeAction.EXIT, df_ltf.index[-1],
-                                                                     custom_price=exit_price))
+                                     trade_signal=signal)
 
             return SignalSummary(direction="FILLED" if filled else "IN_TRADE")
 
@@ -343,14 +354,16 @@ class SupplyDemandZoneTapStrategy(StrategyBase):
             for zone in self.cached_zones_1h:
                 z_id = zone['start_time']
 
-                if z_id in self.processed_zone_ids:
+                # Check usage count < 2
+                current_usage = self.zone_usage_counts[z_id]
+                if current_usage >= 2:
                     continue
 
                 # Check Historical Mitigation (Robust / Restart Safe)
                 # If price went > 50% into the zone in the past, kill it.
-                if self.is_zone_already_mitigated(df_ltf, zone, threshold=0.5):
+                if self.is_zone_already_mitigated(df_ltf, zone, threshold=0.8):
                     # We add to processed so we don't re-calculate this heavy check every tick
-                    self.processed_zone_ids.add(z_id)
+                    self.zone_usage_counts[z_id] = 99
                     continue
 
                 if self.validate_zone_reaction(df_ltf, zone['bias'], zone):
@@ -359,25 +372,25 @@ class SupplyDemandZoneTapStrategy(StrategyBase):
                     # Reject invalid math immediately
                     if params['entry'] <= 0 or params['sl'] <= 0 or params['size'] <= 0:
                         self.log.warning(f"⚠️ SKIPPING INVALID SETUP: {params}")
-                        # Optionally mark processed so we don't retry same bad math
-                        self.processed_zone_ids.add(z_id)
                         continue
 
                     # Basic sanity check (Don't enter if price is already past TP)
                     if (zone['bias'] == BIAS.LONG and curr['close'] >= params['tp']) or \
                             (zone['bias'] == BIAS.SHORT and curr['close'] <= params['tp']):
-                        self.processed_zone_ids.add(z_id)
                         continue
 
                     trade = TradeSignal(
                         action=TradeAction.ENTER, symbol=self.symbol, direction=zone['bias'],
                         price=params['entry'], sl=params['sl'], tp=params['tp'],
-                        size=params['size'], timestamp=curr.name, metadata={'zone_id': z_id,
-                                                                            "sl_atr": self.sl_atr_multiplier,
-                                                                            "eb_mult": self.eb_mult}
+                        size=params['size'], timestamp=curr.name,
+                        metadata={'zone_id': z_id, "usage_count": current_usage + 1}
                     )
                     self.active_trade, self.trade_status = trade, TradeStatus.PENDING
-                    self.processed_zone_ids.add(z_id)
+
+                    # We increment immediately on Signal Generation.
+                    self.zone_usage_counts[z_id] += 1
+                    self.log.info(f"🚀 Signal Generated from Zone {z_id} (Usage: {self.zone_usage_counts[z_id]}/2)")
+
                     return SignalSummary(direction=trade.direction.name, trade_signal=trade)
 
         return SignalSummary(direction="NEUTRAL")

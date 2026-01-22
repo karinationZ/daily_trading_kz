@@ -7,7 +7,8 @@ import pandas as pd
 from daily_trading.bots.smc_bot.detectors.DetectorsBase import BIAS
 from daily_trading.bots.smc_bot.detectors.ORBDetector import ORBDetector
 from daily_trading.bots.smc_bot.detectors.SupplyDemandZonesDetector import SupplyDemandZonesDetector
-from daily_trading.bots.smc_bot.strategy.StrategyBase import SESSION_MAP, SignalSummary, StrategyBase, TradeAction, \
+from daily_trading.bots.smc_bot.strategy.StrategyBase import ExitType, SESSION_MAP, SignalSummary, StrategyBase, \
+    TradeAction, \
     TradeSignal, \
     TradeStatus
 from daily_trading.settings import logger
@@ -426,6 +427,7 @@ class ORBStrategy(StrategyBase):
                     f"Close: {curr['close']:.2f} | Target: {exit_price:.2f}")
 
                 signal = self.create_signal(TradeAction.EXIT, ohlc.index[-1], custom_price=exit_price)
+                signal.metadata["exit_type"] = ExitType.SL_TP_HIT
                 if hit_sl:
                     signal.trade_result = "LOSS"
                 elif hit_tp:
@@ -442,6 +444,7 @@ class ORBStrategy(StrategyBase):
 
                 res = "WIN" if pnl > 0 else "LOSS"
                 sig = self.create_signal(TradeAction.EXIT, curr.name, custom_price=exit_price)
+                sig.metadata["exit_type"] = ExitType.MARKET_FORCE
                 sig.trade_result = res
                 return SignalSummary(direction="EXIT", trade_signal=sig)
 

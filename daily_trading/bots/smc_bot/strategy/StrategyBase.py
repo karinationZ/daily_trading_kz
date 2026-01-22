@@ -25,6 +25,11 @@ SESSION_MAP = {
 }
 
 
+class ExitType(Enum):
+    SL_TP_HIT = "SL_TP_HIT"  # Passive: Bracket order handle it
+    MARKET_FORCE = "MARKET_FORCE"  # Active: Bot must cancel and close
+
+
 class TradeStatus(Enum):
     NONE = "NONE"  # Scanning for ORB breakout
     PENDING = "PENDING"  # Limit order sent, waiting for price to hit zone

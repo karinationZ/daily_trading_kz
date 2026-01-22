@@ -42,21 +42,6 @@ ORB_CONFIG = {
         "tick_buffer_mult": 0.05
     },
 
-    # MNQ ASIA: The Hyper Scalper
-    # Stats: PnL $1,423 | WR 55.8% | RR 1.0
-    # Status: Settings confirmed. PnL reflects current data snapshot.
-    ("MNQ", "ASIA"): {
-        "swing_length": 5,
-        "internal_length": 5,
-        "fvg_offset": 5,
-        "fvg_threshold": 0.15,
-        "zone_precision_factor": 2.0,
-        "tp_multiple": 1.0,
-        "entry_buffer_mult": 0.05,
-        "sl_buffer_mult": 0.15,
-        "tick_buffer_mult": 0.05
-    },
-
     # ==========================================================================
     # GROUP 2: MGC (GOLD) (THE CASH MACHINE)
     # ==========================================================================
@@ -90,21 +75,6 @@ ORB_CONFIG = {
         "sl_buffer_mult": 0.12,
         "tick_buffer_mult": 0.05
     },
-
-    # MGC ASIA: The Steady Earner
-    # Stats: PnL $2,366 | WR 51.7% | RR 1.4
-    # Status: Unchanged.
-    ("MGC", "ASIA"): {
-        "swing_length": 24,
-        "internal_length": 4,
-        "fvg_offset": 3,
-        "fvg_threshold": 0.1,
-        "zone_precision_factor": 2.0,
-        "tp_multiple": 1.4,
-        "entry_buffer_mult": 0.02,
-        "sl_buffer_mult": 0.1,
-        "tick_buffer_mult": 0.05
-    }
 }
 
 

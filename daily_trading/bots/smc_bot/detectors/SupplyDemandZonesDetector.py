@@ -14,7 +14,7 @@ class SupplyDemandZonesDetector(DetectorsBase):
 
     def __init__(self, main_tf="5m", swing_length: int = 50, internal_length: int = 5, atr_length: int = 200,
                  zone_precision_factor: float = 2.0, volatility_filter: str = "atr", max_display_zones: int = 5,
-                 plot_tail: int = 200, fvg_based_only: bool = True, fvg_offset: int = 3, fvg_threshold=0.15, wick_ratio: float = 0.10):
+                 plot_tail: int = 300, fvg_based_only: bool = True, fvg_offset: int = 3, fvg_threshold=0.15, wick_ratio: float = 0.10):
         super().__init__(main_tf, plot_tail, wick_ratio=wick_ratio)
         self.swing_length = swing_length
         self.internal_length = internal_length

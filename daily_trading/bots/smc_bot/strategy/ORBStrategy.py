@@ -199,10 +199,6 @@ class ORBStrategy(StrategyBase):
                 entry = current_close - entry_buffer
                 structural_sl = zone["top"] + sl_buffer
 
-        # 3. --- THE FIX: ENFORCE MINIMUM ATR DISTANCE ---
-
-        current_dist = abs(entry - structural_sl)
-
         # Calculate the "Safety SL" based on volatility
         if direction == BIAS.LONG:
             volatility_sl = entry - min_atr_dist
@@ -219,26 +215,94 @@ class ORBStrategy(StrategyBase):
 
         return entry, final_sl
 
+    # def trade_setup(self, entry, sl, direction: BIAS, current_close, min_dist, zone_id, zone_type, ts):
+    #     # Sanity Check Inputs ---
+    #     if entry <= 0 or sl <= 0:
+    #         self.log.warning(f"⚠️ SKIPPING INVALID SETUP: Entry {entry} or SL {sl} is invalid (Zero/Negative). "
+    #                          f"Zone: {zone_id}")
+    #         return None, min_dist
+    #     try:
+    #         pos = self.calculate_trade_position(entry, sl, direction)
+    #         if (direction == BIAS.LONG and current_close >= pos["tp"]) or \
+    #                 (direction == BIAS.SHORT and current_close <= pos["tp"]):
+    #             return None, min_dist
+    #
+    #         dist = abs(entry - current_close)
+    #         if dist < min_dist:
+    #             signal = TradeSignal(
+    #                 action=TradeAction.ENTER, symbol=self.symbol, direction=direction,
+    #                 price=entry, sl=pos["sl"], tp=pos["tp"], size=pos["size"],
+    #                 timestamp=ts, metadata={"zone_id": zone_id, "type": zone_type}
+    #             )
+    #             return signal, dist
+    #     except ValueError:
+    #         pass
+    #     return None, min_dist
+
     def trade_setup(self, entry, sl, direction: BIAS, current_close, min_dist, zone_id, zone_type, ts):
         # Sanity Check Inputs ---
         if entry <= 0 or sl <= 0:
-            self.log.warning(f"⚠️ SKIPPING INVALID SETUP: Entry {entry} or SL {sl} is invalid (Zero/Negative). "
-                             f"Zone: {zone_id}")
             return None, min_dist
+
         try:
+            # 1. Calculate Standard Position (Limit)
             pos = self.calculate_trade_position(entry, sl, direction)
-            if (direction == BIAS.LONG and current_close >= pos["tp"]) or \
-                    (direction == BIAS.SHORT and current_close <= pos["tp"]):
+
+            # 2. CHECK: "Tap and Rip" Logic (Did we miss the Limit?)
+            # If price is already running away (Current Close > Entry),
+            # we check if it's still safe to enter at Market.
+
+            use_market_entry = False
+            final_entry = entry
+
+            # --- LONG LOGIC ---
+            if direction == BIAS.LONG:
+                if current_close > entry:
+                    # We missed the limit.
+                    # Check Risk Tolerance: Allow up to 20% more risk than planned
+                    original_risk = entry - pos['sl']
+                    new_risk = current_close - pos['sl']
+
+                    if new_risk <= (original_risk * 1.2):
+                        use_market_entry = True
+                        final_entry = current_close
+
+            # --- SHORT LOGIC ---
+            else:
+                if current_close < entry:
+                    # We missed the limit.
+                    original_risk = pos['sl'] - entry
+                    new_risk = pos['sl'] - current_close
+
+                    if new_risk <= (original_risk * 1.2):
+                        use_market_entry = True
+                        final_entry = current_close
+
+            # 3. Recalculate Size if entering at Market (Maintain $ Risk)
+            if use_market_entry:
+                pos = self.calculate_trade_position(final_entry, sl, direction)
+                self.log.info(f"⚡ TAP & RIP: Switching to Market Entry @ {final_entry:.2f} (Missed {entry:.2f})")
+
+            # 4. Filter: Don't enter if TP is already passed (Late Entry)
+            if (direction == BIAS.LONG and final_entry >= pos["tp"]) or \
+                    (direction == BIAS.SHORT and final_entry <= pos["tp"]):
                 return None, min_dist
 
-            dist = abs(entry - current_close)
-            if dist < min_dist:
-                signal = TradeSignal(
-                    action=TradeAction.ENTER, symbol=self.symbol, direction=direction,
-                    price=entry, sl=pos["sl"], tp=pos["tp"], size=pos["size"],
-                    timestamp=ts, metadata={"zone_id": zone_id, "type": zone_type}
-                )
-                return signal, dist
+            # 5. Generate Signal
+            signal = TradeSignal(
+                action=TradeAction.ENTER,
+                symbol=self.symbol,
+                direction=direction,
+                price=final_entry,  # <--- Updated Price
+                sl=pos["sl"],
+                tp=pos["tp"],
+                size=pos["size"],
+                timestamp=ts,
+                metadata={"zone_id": zone_id, "type": zone_type,
+                          "entry_type": "MARKET" if use_market_entry else "LIMIT"}
+            )
+            return signal, 0  # Distance is 0 because we are filling NOW
+
         except ValueError:
             pass
         return None, min_dist
@@ -324,17 +388,18 @@ class ORBStrategy(StrategyBase):
 
         return {"sl": sl, "tp": tp, "size": size}
 
-    def check_pending_validity(self, ohlc: pd.DataFrame, internal_zones: List[Dict], swing_zones: List[Dict]) -> \
-            Optional[TradeSignal]:
+    def check_pending_validity(self, ohlc: pd.DataFrame):
         if not self.active_trade:
             return None
+
         curr = ohlc.iloc[-1]
-        zone_id = self.active_trade.metadata.get('zone_id')
-        if not any(z['start_time'] == zone_id for z in (internal_zones + swing_zones)):
-            return self.create_signal(TradeAction.CANCEL, ohlc.index[-1])
+        # Check: Target Reached Early (Missed the bus)
+        # If price hits TP before filling our Entry, we cancel to avoid chasing.
         if (self.active_trade.direction == BIAS.LONG and curr['high'] >= self.active_trade.tp) or \
                 (self.active_trade.direction == BIAS.SHORT and curr['low'] <= self.active_trade.tp):
+            self.log.info(f"🚫 Cancelling Pending: Price hit TP before Entry.")
             return self.create_signal(TradeAction.CANCEL, ohlc.index[-1])
+
         return None
 
     def create_signal(self, action: TradeAction, timestamp, custom_price: float = None) -> TradeSignal:
@@ -458,7 +523,7 @@ class ORBStrategy(StrategyBase):
                                      trade_signal=self.create_signal(TradeAction.CANCEL, ohlc.index[-1]))
 
             # Check zone validity
-            cancel_sig = self.check_pending_validity(ohlc, internal_zones, swing_zones)
+            cancel_sig = self.check_pending_validity(ohlc)
             if cancel_sig:
                 self.log.info(f"⚠️ CANCELLING PENDING (Zone Invalidated or TP Hit) {self.symbol}")
                 return SignalSummary(direction="CANCELLED", trade_signal=cancel_sig)

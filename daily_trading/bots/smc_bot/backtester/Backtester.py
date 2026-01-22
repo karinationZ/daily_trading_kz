@@ -228,7 +228,8 @@ class Backtester:
         """
         if trade_idx >= len(self.trades): return None
         trade = self.trades[trade_idx]
-        if trade["status"] == "CANCELLED": return None
+        if trade["status"] == "CANCELLED":
+            return None
 
         # 1. Window Indices
         start_5m, signal_5m = trade["window_indices_5m"]

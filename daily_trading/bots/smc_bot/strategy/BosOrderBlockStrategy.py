@@ -91,12 +91,14 @@ class BosOrderBlockStrategy(StrategyBase):
         self.point_value = self.POINT_VALUE.get(symbol, 1.0)
         self.sl_buffer_mult = sl_buffer_mult
         self.zones = None
+        self.last_processed_hour: int = -1
 
     def reset_session_state(self):
         """Resets daily state."""
         self.active_trade = None
         self.trade_status = TradeStatus.NONE
         self.processed_zone_ids.clear()
+        self.last_processed_hour = -1
 
     # -------------------------------------------------------------------------
     # CALCULATION LOGIC
@@ -276,6 +278,10 @@ class BosOrderBlockStrategy(StrategyBase):
 
         swing_zones, internal_zones = self.sd_detector.calculate(df_htf)
         self.zones = swing_zones + internal_zones
+
+        if ts_now.hour != self.last_processed_hour:
+            self.last_processed_hour = ts_now.hour
+            self.log.info(f"1H Zones: {self.zones}")
 
         just_filled = False
 

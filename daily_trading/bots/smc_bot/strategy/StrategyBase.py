@@ -11,15 +11,29 @@ import plotly.graph_objects as go
 
 from daily_trading.bots.smc_bot.bots.TelegramBot import TelegramBot
 from daily_trading.bots.smc_bot.detectors.BosChochDetector import BosChochDetector
-from daily_trading.bots.smc_bot.detectors.DetectorsBase import BIAS, DetectorsBase, Trend
+from daily_trading.bots.smc_bot.detectors.DetectorsBase import (
+    BIAS,
+    DetectorsBase,
+    Trend,
+)
 from daily_trading.bots.smc_bot.detectors.HighLowDetector import HighLowDetector
 from daily_trading.settings import logger
 
 SESSION_MAP = {
     # NY: 9:30 AM - 4:00 PM EST
-    "America/New_York": {"start_hour": 9, "start_minute": 30, "end_hour": 16, "end_minute": 0},
+    "America/New_York": {
+        "start_hour": 9,
+        "start_minute": 30,
+        "end_hour": 16,
+        "end_minute": 0,
+    },
     # LONDON: 8:00 AM - 2:30 PM London Time (Captures the Euro open + Pre-NY)
-    "Europe/London": {"start_hour": 8, "start_minute": 0, "end_hour": 14, "end_minute": 30},
+    "Europe/London": {
+        "start_hour": 8,
+        "start_minute": 0,
+        "end_hour": 14,
+        "end_minute": 30,
+    },
     # ASIA (Tokyo): 9:00 AM - 3:00 PM JST
     "Asia/Tokyo": {"start_hour": 9, "start_minute": 0, "end_hour": 15, "end_minute": 0},
 }
@@ -31,7 +45,7 @@ class ExitType(Enum):
 
 
 class TradeStatus(Enum):
-    NONE = "NONE"  # Scanning for ORB breakout
+    NONE = "NONE"  # Scanning
     PENDING = "PENDING"  # Limit order sent, waiting for price to hit zone
     FILLED = "FILLED"  # In the market, monitoring SL/TP
 
@@ -76,6 +90,7 @@ class SignalSummary:
 
 class StrategyBase(ABC):
     """Base class for trading strategies, providing reusable methods for caching, plotting, and messaging."""
+
     # Updated Configuration with MCL
     NY_END_BUFFER_MIN = 10
     POINT_VALUE = {
@@ -84,7 +99,7 @@ class StrategyBase(ABC):
         "MGC": 10.0,
         "MBT": 0.10,
         "SIL": 1000.0,
-        "MCL": 100.0
+        "MCL": 100.0,
     }
     HARD_MIN_DIST = {
         "MNQ": 10.0,  # $20 risk min effective calculation
@@ -92,7 +107,7 @@ class StrategyBase(ABC):
         "MGC": 3.0,  # $30 risk min effective calculation (Fixes your 11 contract issue)
         "MBT": 25.0,
         "SIL": 0.05,
-        "MCL": 0.15
+        "MCL": 0.15,
     }
 
     ENTRY_BUFFER = {
@@ -101,7 +116,7 @@ class StrategyBase(ABC):
         "MGC": 0.2,
         "MBT": 5.0,
         "SIL": 0.010,
-        "MCL": 0.02
+        "MCL": 0.02,
     }
 
     SL_BUFFER = {
@@ -110,7 +125,7 @@ class StrategyBase(ABC):
         "MGC": 0.5,
         "MBT": 5.0,
         "SIL": 0.025,
-        "MCL": 0.05
+        "MCL": 0.05,
     }
 
     TICK_SIZES = {
@@ -169,7 +184,7 @@ class StrategyBase(ABC):
             hour=s_info.get("start_hour", 0),
             minute=s_info.get("start_minute", 0),
             second=0,
-            microsecond=0
+            microsecond=0,
         )
 
         # 3. Calculate Pre-Session Start (e.g., 1 hour before)
@@ -181,10 +196,10 @@ class StrategyBase(ABC):
     async def manage_cache_event(self, cache_key: Tuple[str, str], event: str, current_time: datetime) -> bool:
         """Manage cache for a new event, return True if event is new."""
         if cache_key not in self.event_cache:
-            self.event_cache[cache_key] = {'events': [], 'last_updated': current_time}
-        if event not in self.event_cache[cache_key]['events']:
-            self.event_cache[cache_key]['events'].append(event)
-            self.event_cache[cache_key]['last_updated'] = current_time
+            self.event_cache[cache_key] = {"events": [], "last_updated": current_time}
+        if event not in self.event_cache[cache_key]["events"]:
+            self.event_cache[cache_key]["events"].append(event)
+            self.event_cache[cache_key]["last_updated"] = current_time
             return True
         return False
 
@@ -198,7 +213,14 @@ class StrategyBase(ABC):
             logger.info("Skipped sending telegram message. Debug Mode is Off.")
 
     # TODO: remove it
-    async def get_trend(self, ohlc_1h, symbol: str, cache_key: Tuple[str, str], current_time: datetime, fig=None):
+    async def get_trend(
+        self,
+        ohlc_1h,
+        symbol: str,
+        cache_key: Tuple[str, str],
+        current_time: datetime,
+        fig=None,
+    ):
         """Step 1: Identify Trend on 1H TF."""
         recent_smc_events = []
         trend = self.smc_base.detect_trend(ohlc_1h)
@@ -212,15 +234,20 @@ class StrategyBase(ABC):
         else:
             logger.info(f"Trend is {trend}.")
             if cache_key in self.event_cache:
-                self.event_cache[cache_key]['events'] = []
+                self.event_cache[cache_key]["events"] = []
             await self.send_telegram_message(f"{symbol} | Step 1: Neutral trend detected.", fig)
 
         return trend, recent_smc_events
 
     # TODO: remove it
-    async def confirm_trend(self, detector: HighLowDetector, ohlc: pd.DataFrame, symbol: str,
-                            cache_key: Tuple[str, str],
-                            current_time: datetime):
+    async def confirm_trend(
+        self,
+        detector: HighLowDetector,
+        ohlc: pd.DataFrame,
+        symbol: str,
+        cache_key: Tuple[str, str],
+        current_time: datetime,
+    ):
         """Step 1: Determine Market Trend on 1H (last 24 candles)."""
         swing_1h = detector.calculate_high_low_swings(ohlc, plot=True)
         fig = swing_1h["fig"]
@@ -228,8 +255,7 @@ class StrategyBase(ABC):
         return trend, recent_smc_events, fig
 
     # TODO: remove it
-    async def detect_bos_choch(self, detector: BosChochDetector, ohlc: pd.DataFrame, trend: str, symbol: str) -> \
-            List[str]:
+    async def detect_bos_choch(self, detector: BosChochDetector, ohlc: pd.DataFrame, trend: str, symbol: str) -> List[str]:
         """Step 2: Identify the most recent and valid BOS level in the trend direction."""
         recent_smc_events = []
         results = detector.calculate_bos_choch(ohlc, plot=True)
@@ -252,7 +278,7 @@ class StrategyBase(ABC):
             return recent_smc_events
 
         expected_bias = Trend.BULLISH.value if trend == Trend.BULLISH.name else Trend.BEARISH.value
-        expected_bos_signals = [s for s in bos_choch_signals if s['type'] == 'BOS' and s['bias'] == expected_bias]
+        expected_bos_signals = [s for s in bos_choch_signals if s["type"] == "BOS" and s["bias"] == expected_bias]
         if not expected_bos_signals:
             event = f"No BOS signals detected for {trend} trend."
             recent_smc_events.append(event)

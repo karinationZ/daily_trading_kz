@@ -6,11 +6,18 @@ import pandas as pd
 
 from daily_trading.bots.smc_bot.detectors.DetectorsBase import BIAS
 from daily_trading.bots.smc_bot.detectors.ORBDetector import ORBDetector
-from daily_trading.bots.smc_bot.detectors.SupplyDemandZonesDetector import SupplyDemandZonesDetector
-from daily_trading.bots.smc_bot.strategy.StrategyBase import ExitType, SESSION_MAP, SignalSummary, StrategyBase, \
-    TradeAction, \
-    TradeSignal, \
-    TradeStatus
+from daily_trading.bots.smc_bot.detectors.SupplyDemandZonesDetector import (
+    SupplyDemandZonesDetector,
+)
+from daily_trading.bots.smc_bot.strategy.StrategyBase import (
+    ExitType,
+    SESSION_MAP,
+    SignalSummary,
+    StrategyBase,
+    TradeAction,
+    TradeSignal,
+    TradeStatus,
+)
 from daily_trading.settings import logger
 
 
@@ -65,22 +72,25 @@ class ORBStrategy(StrategyBase):
       Trade Signal generation. One Zone = One Opportunity.
     """
 
-    def __init__(self, symbol: str,
-                 timezone: ZoneInfo,
-                 main_tf="5m",
-                 risk: float = 150.0,
-                 tp_multiple: float = 1.5,
-                 wick_ratio: float = 0.10,
-                 atr_length=200,
-                 swing_length: int = 50,
-                 internal_length: int = 5,
-                 zone_precision_factor: float = 2.0,
-                 fvg_based_only: bool = True,
-                 fvg_offset: int = 3,
-                 fvg_threshold=0.15,
-                 entry_buffer_mult: float = 0.05,
-                 sl_buffer_mult: float = 0.1,
-                 tick_buffer_mult: float = 0.05):
+    def __init__(
+        self,
+        symbol: str,
+        timezone: ZoneInfo,
+        main_tf="5m",
+        risk: float = 150.0,
+        tp_multiple: float = 1.5,
+        wick_ratio: float = 0.10,
+        atr_length=200,
+        swing_length: int = 50,
+        internal_length: int = 5,
+        zone_precision_factor: float = 2.0,
+        fvg_based_only: bool = True,
+        fvg_offset: int = 3,
+        fvg_threshold=0.15,
+        entry_buffer_mult: float = 0.05,
+        sl_buffer_mult: float = 0.1,
+        tick_buffer_mult: float = 0.05,
+    ):
         super().__init__(main_tf)
         self.orb_results = None
         self.symbol = symbol
@@ -100,13 +110,16 @@ class ORBStrategy(StrategyBase):
         else:
             self.end_buffer_minutes = 0
         self.orb_detector = ORBDetector(main_tf="5m", orb_minutes=15, timezone=timezone, wick_ratio=wick_ratio)
-        self.sd_detector = SupplyDemandZonesDetector(atr_length=atr_length,
-                                                     fvg_based_only=fvg_based_only,
-                                                     swing_length=swing_length,
-                                                     internal_length=internal_length,
-                                                     zone_precision_factor=zone_precision_factor,
-                                                     fvg_offset=fvg_offset,
-                                                     fvg_threshold=fvg_threshold, wick_ratio=wick_ratio)
+        self.sd_detector = SupplyDemandZonesDetector(
+            atr_length=atr_length,
+            fvg_based_only=fvg_based_only,
+            swing_length=swing_length,
+            internal_length=internal_length,
+            zone_precision_factor=zone_precision_factor,
+            fvg_offset=fvg_offset,
+            fvg_threshold=fvg_threshold,
+            wick_ratio=wick_ratio,
+        )
         # self.bos_detector = BosChochDetector(main_tf=main_tf, left_bars=5, right_bars=2,
         #                                      wick_ratio=wick_ratio, volume_thresh=5)
 
@@ -141,11 +154,11 @@ class ORBStrategy(StrategyBase):
         curr = ohlc.iloc[-1]
         if direction == BIAS.LONG:
             # Calculate Striking Distance for Longs
-            touched = curr['low'] <= (zone['top'] + tick_buffer)
+            touched = curr["low"] <= (zone["top"] + tick_buffer)
 
         else:
             # Calculate Striking Distance for Shorts
-            touched = curr['high'] >= (zone['bottom'] - tick_buffer)
+            touched = curr["high"] >= (zone["bottom"] - tick_buffer)
 
         if not touched:
             return False
@@ -173,7 +186,10 @@ class ORBStrategy(StrategyBase):
 
         # 2. Determine Base Entry/SL based on Zone Logic (London vs NY)
         # (This is your existing logic)
-        is_london_logic = self.timezone in [ZoneInfo("Europe/London"), ZoneInfo("Asia/Tokyo")]
+        is_london_logic = self.timezone in [
+            ZoneInfo("Europe/London"),
+            ZoneInfo("Asia/Tokyo"),
+        ]
 
         if is_london_logic:
             if zone_type == "SWING":
@@ -215,31 +231,17 @@ class ORBStrategy(StrategyBase):
 
         return entry, final_sl
 
-    # def trade_setup(self, entry, sl, direction: BIAS, current_close, min_dist, zone_id, zone_type, ts):
-    #     # Sanity Check Inputs ---
-    #     if entry <= 0 or sl <= 0:
-    #         self.log.warning(f"⚠️ SKIPPING INVALID SETUP: Entry {entry} or SL {sl} is invalid (Zero/Negative). "
-    #                          f"Zone: {zone_id}")
-    #         return None, min_dist
-    #     try:
-    #         pos = self.calculate_trade_position(entry, sl, direction)
-    #         if (direction == BIAS.LONG and current_close >= pos["tp"]) or \
-    #                 (direction == BIAS.SHORT and current_close <= pos["tp"]):
-    #             return None, min_dist
-    #
-    #         dist = abs(entry - current_close)
-    #         if dist < min_dist:
-    #             signal = TradeSignal(
-    #                 action=TradeAction.ENTER, symbol=self.symbol, direction=direction,
-    #                 price=entry, sl=pos["sl"], tp=pos["tp"], size=pos["size"],
-    #                 timestamp=ts, metadata={"zone_id": zone_id, "type": zone_type}
-    #             )
-    #             return signal, dist
-    #     except ValueError:
-    #         pass
-    #     return None, min_dist
-
-    def trade_setup(self, entry, sl, direction: BIAS, current_close, min_dist, zone_id, zone_type, ts):
+    def trade_setup(
+        self,
+        entry,
+        sl,
+        direction: BIAS,
+        current_close,
+        min_dist,
+        zone_id,
+        zone_type,
+        ts,
+    ):
         # Sanity Check Inputs ---
         if entry <= 0 or sl <= 0:
             return None, min_dist
@@ -260,8 +262,8 @@ class ORBStrategy(StrategyBase):
                 if current_close > entry:
                     # We missed the limit.
                     # Check Risk Tolerance: Allow up to 20% more risk than planned
-                    original_risk = entry - pos['sl']
-                    new_risk = current_close - pos['sl']
+                    original_risk = entry - pos["sl"]
+                    new_risk = current_close - pos["sl"]
 
                     if new_risk <= (original_risk * 1.2):
                         use_market_entry = True
@@ -271,8 +273,8 @@ class ORBStrategy(StrategyBase):
             else:
                 if current_close < entry:
                     # We missed the limit.
-                    original_risk = pos['sl'] - entry
-                    new_risk = pos['sl'] - current_close
+                    original_risk = pos["sl"] - entry
+                    new_risk = pos["sl"] - current_close
 
                     if new_risk <= (original_risk * 1.2):
                         use_market_entry = True
@@ -284,8 +286,7 @@ class ORBStrategy(StrategyBase):
                 self.log.info(f"⚡ TAP & RIP: Switching to Market Entry @ {final_entry:.2f} (Missed {entry:.2f})")
 
             # 4. Filter: Don't enter if TP is already passed (Late Entry)
-            if (direction == BIAS.LONG and final_entry >= pos["tp"]) or \
-                    (direction == BIAS.SHORT and final_entry <= pos["tp"]):
+            if (direction == BIAS.LONG and final_entry >= pos["tp"]) or (direction == BIAS.SHORT and final_entry <= pos["tp"]):
                 return None, min_dist
 
             # 5. Generate Signal
@@ -298,8 +299,11 @@ class ORBStrategy(StrategyBase):
                 tp=pos["tp"],
                 size=pos["size"],
                 timestamp=ts,
-                metadata={"zone_id": zone_id, "type": zone_type,
-                          "entry_type": "MARKET" if use_market_entry else "LIMIT"}
+                metadata={
+                    "zone_id": zone_id,
+                    "type": zone_type,
+                    "entry_type": "MARKET" if use_market_entry else "LIMIT",
+                },
             )
             return signal, 0  # Distance is 0 because we are filling NOW
 
@@ -320,18 +324,21 @@ class ORBStrategy(StrategyBase):
 
         last_local = ohlc.index[-1].tz_convert(self.timezone)
         s_info = SESSION_MAP[self.timezone.key]
-        session_start = last_local.replace(hour=s_info["start_hour"], minute=s_info["start_minute"], second=0,
-                                           microsecond=0).tz_convert("UTC")
+        session_start = last_local.replace(
+            hour=s_info["start_hour"],
+            minute=s_info["start_minute"],
+            second=0,
+            microsecond=0,
+        ).tz_convert("UTC")
         lookback_start = session_start - timedelta(hours=2)
 
         current_close = ohlc.iloc[-1]["close"]
-        best_signal, min_distance = None, float('inf')
+        best_signal, min_distance = None, float("inf")
 
         all_candidates = [(z, "SWING") for z in swing_zones] + [(z, "INTERNAL") for z in internal_zones]
 
         for zone, zone_type in all_candidates:
-            zone_id = zone['start_time'].tz_convert("UTC") if zone['start_time'].tzinfo else zone[
-                'start_time'].tz_localize("UTC")
+            zone_id = zone["start_time"].tz_convert("UTC") if zone["start_time"].tzinfo else zone["start_time"].tz_localize("UTC")
             if zone["bias"] != active_direction or zone_id in self.processed_zone_ids or zone_id < lookback_start:
                 continue
 
@@ -340,16 +347,22 @@ class ORBStrategy(StrategyBase):
 
             # Execution
             entry_p, sl_p = self.get_execution_levels(ohlc, zone, zone_type, active_direction, current_close)
-            signal, updated_dist = self.trade_setup(entry_p, sl_p,
-                                                    active_direction, current_close,
-                                                    min_distance, zone_id,
-                                                    zone_type, ohlc.index[-1])
+            signal, updated_dist = self.trade_setup(
+                entry_p,
+                sl_p,
+                active_direction,
+                current_close,
+                min_distance,
+                zone_id,
+                zone_type,
+                ohlc.index[-1],
+            )
 
             if signal:
                 best_signal, min_distance = signal, updated_dist
 
         if best_signal:
-            self.processed_zone_ids.add(best_signal.metadata['zone_id'])
+            self.processed_zone_ids.add(best_signal.metadata["zone_id"])
         return best_signal
 
     def calculate_trade_position(self, entry_price: float, sl: float, direction: BIAS) -> dict:
@@ -382,9 +395,7 @@ class ORBStrategy(StrategyBase):
 
         # 6. Log Warning if Capped
         if raw_size > max_contracts:
-            self.log.warning(
-                f"⚠️ RISK CAP: Math wanted {raw_size} contracts, capped at {size}. "
-                f"(Risk per contract: ${risk_per_contract:.2f})")
+            self.log.warning(f"⚠️ RISK CAP: Math wanted {raw_size} contracts, capped at {size}. " f"(Risk per contract: ${risk_per_contract:.2f})")
 
         return {"sl": sl, "tp": tp, "size": size}
 
@@ -395,9 +406,10 @@ class ORBStrategy(StrategyBase):
         curr = ohlc.iloc[-1]
         # Check: Target Reached Early (Missed the bus)
         # If price hits TP before filling our Entry, we cancel to avoid chasing.
-        if (self.active_trade.direction == BIAS.LONG and curr['high'] >= self.active_trade.tp) or \
-                (self.active_trade.direction == BIAS.SHORT and curr['low'] <= self.active_trade.tp):
-            self.log.info(f"🚫 Cancelling Pending: Price hit TP before Entry.")
+        if (self.active_trade.direction == BIAS.LONG and curr["high"] >= self.active_trade.tp) or (
+            self.active_trade.direction == BIAS.SHORT and curr["low"] <= self.active_trade.tp
+        ):
+            self.log.info("🚫 Cancelling Pending: Price hit TP before Entry.")
             return self.create_signal(TradeAction.CANCEL, ohlc.index[-1])
 
         return None
@@ -410,19 +422,21 @@ class ORBStrategy(StrategyBase):
         # If it's an EXIT, we want the execution price, not the entry price.
         report_price = custom_price if custom_price is not None else self.active_trade.price
 
-        sig = TradeSignal(symbol=self.symbol,
-                          action=action,
-                          direction=self.active_trade.direction,
-                          price=report_price,
-                          sl=self.active_trade.sl,
-                          tp=self.active_trade.tp,
-                          size=self.active_trade.size,
-                          timestamp=timestamp)
+        sig = TradeSignal(
+            symbol=self.symbol,
+            action=action,
+            direction=self.active_trade.direction,
+            price=report_price,
+            sl=self.active_trade.sl,
+            tp=self.active_trade.tp,
+            size=self.active_trade.size,
+            timestamp=timestamp,
+        )
 
         # 2. Cleanup State
         if action in [TradeAction.CANCEL, TradeAction.EXIT]:
             if self.active_trade:
-                self.processed_zone_ids.add(self.active_trade.metadata['zone_id'])
+                self.processed_zone_ids.add(self.active_trade.metadata["zone_id"])
             # Reset state after signal creation
             self.active_trade, self.trade_status = None, TradeStatus.NONE
 
@@ -434,10 +448,12 @@ class ORBStrategy(StrategyBase):
         curr = ohlc.iloc[-1]
 
         # 1. SETUP CUTOFFS
-        session_end = ts_now.replace(hour=s_info.get("end_hour", 16),
-                                     minute=s_info.get("end_minute", 0),
-                                     second=0,
-                                     microsecond=0)
+        session_end = ts_now.replace(
+            hour=s_info.get("end_hour", 16),
+            minute=s_info.get("end_minute", 0),
+            second=0,
+            microsecond=0,
+        )
         pending_cutoff = session_end - timedelta(minutes=self.end_buffer_minutes)
         if self.tz_short == "NY":
             final_bar_for_entry_cutoff = session_end - timedelta(hours=2)
@@ -462,8 +478,8 @@ class ORBStrategy(StrategyBase):
             if filled:
                 self.trade_status = TradeStatus.FILLED
                 self.log.info(
-                    f"⚡ ORDER FILLED | {self.symbol}: {self.active_trade.direction.name} "
-                    f"@ {self.active_trade.price:.2f} | Time: {curr.name}")
+                    f"⚡ ORDER FILLED | {self.symbol}: {self.active_trade.direction.name} " f"@ {self.active_trade.price:.2f} | Time: {curr.name}"
+                )
 
         # 4. SESSION EXIT LOGIC (Evaluate both Active and Just-Filled trades)
         if self.trade_status == TradeStatus.FILLED:
@@ -471,11 +487,9 @@ class ORBStrategy(StrategyBase):
             is_long = self.active_trade.direction == BIAS.LONG
 
             # Detailed check to see WHICH one was hit
-            hit_sl = (is_long and curr["low"] <= self.active_trade.sl) or \
-                     (not is_long and curr["high"] >= self.active_trade.sl)
+            hit_sl = (is_long and curr["low"] <= self.active_trade.sl) or (not is_long and curr["high"] >= self.active_trade.sl)
 
-            hit_tp = (is_long and curr["high"] >= self.active_trade.tp) or \
-                     (not is_long and curr["low"] <= self.active_trade.tp)
+            hit_tp = (is_long and curr["high"] >= self.active_trade.tp) or (not is_long and curr["low"] <= self.active_trade.tp)
 
             hit_sl_tp = hit_sl or hit_tp
 
@@ -488,8 +502,8 @@ class ORBStrategy(StrategyBase):
                 exit_price = self.active_trade.sl if hit_sl else self.active_trade.tp
 
                 self.log.info(
-                    f"🎯 TRADE EXIT (HIT {'SL' if hit_sl else 'TP'}) | {self.symbol}: "
-                    f"Close: {curr['close']:.2f} | Target: {exit_price:.2f}")
+                    f"🎯 TRADE EXIT (HIT {'SL' if hit_sl else 'TP'}) | {self.symbol}: " f"Close: {curr['close']:.2f} | Target: {exit_price:.2f}"
+                )
 
                 signal = self.create_signal(TradeAction.EXIT, ohlc.index[-1], custom_price=exit_price)
                 signal.metadata["exit_type"] = ExitType.SL_TP_HIT
@@ -500,10 +514,10 @@ class ORBStrategy(StrategyBase):
                 return SignalSummary(direction="EXIT", trade_signal=signal)
 
             elif is_cutoff_time:
-                self.log.info(f"⏰ SESSION CUTOFF EXIT")
-                exit_price = curr['close']
+                self.log.info("⏰ SESSION CUTOFF EXIT")
+                exit_price = curr["close"]
                 # DETERMINE RESULT BASED ON PNL
-                pnl = (exit_price - self.active_trade.price)
+                pnl = exit_price - self.active_trade.price
                 if self.active_trade.direction == BIAS.SHORT:
                     pnl = -pnl
 
@@ -519,8 +533,10 @@ class ORBStrategy(StrategyBase):
         if self.trade_status == TradeStatus.PENDING:
             if ts_now >= pending_cutoff:
                 self.log.info(f"🚫 CANCELLING PENDING (Session End) {self.symbol}")
-                return SignalSummary(direction="CANCELLED",
-                                     trade_signal=self.create_signal(TradeAction.CANCEL, ohlc.index[-1]))
+                return SignalSummary(
+                    direction="CANCELLED",
+                    trade_signal=self.create_signal(TradeAction.CANCEL, ohlc.index[-1]),
+                )
 
             # Check zone validity
             cancel_sig = self.check_pending_validity(ohlc)
@@ -534,10 +550,14 @@ class ORBStrategy(StrategyBase):
             if ts_now < final_bar_for_entry_cutoff:  # Don't start new trades after cutoff
                 new_trade = self.check_zone_retrace(ohlc, swing_zones, internal_zones)
                 if new_trade:
-                    self.active_trade, self.trade_status = new_trade, TradeStatus.PENDING
+                    self.active_trade, self.trade_status = (
+                        new_trade,
+                        TradeStatus.PENDING,
+                    )
                     self.log.info(
                         f"🚀 NEW SIGNAL {self.symbol}: {new_trade.direction.name} "
-                        f"@ {new_trade.price:.2f} | SL: {new_trade.sl:.2f} | TP: {new_trade.tp:.2f} | {curr.name}")
+                        f"@ {new_trade.price:.2f} | SL: {new_trade.sl:.2f} | TP: {new_trade.tp:.2f} | {curr.name}"
+                    )
                     return SignalSummary(direction=new_trade.direction.name, trade_signal=new_trade)
 
         self.log.info(f"No Signals | Zones: {self.zones}")

@@ -50,7 +50,7 @@ class HighLowDetector(DetectorsBase):
             "HH": [p for p in pivot_high_points if p["type"] == "HH"],
             "LH": [p for p in pivot_high_points if p["type"] == "LH"],
             "HL": [p for p in pivot_low_points if p["type"] == "HL"],
-            "LL": [p for p in pivot_low_points if p["type"] == "LL"]
+            "LL": [p for p in pivot_low_points if p["type"] == "LL"],
         }
 
         results = {
@@ -84,66 +84,79 @@ class HighLowDetector(DetectorsBase):
         ohlc = ohlc.tail(self.plot_tail)
 
         # Filter pivots to ensure timestamps are within ohlc.index
-        pivot_high_points = [p for p in pivot_high_points if p['time'] in ohlc.index]
-        pivot_low_points = [p for p in pivot_low_points if p['time'] in ohlc.index]
-        symbol = ohlc['symbol'].iloc[0] if 'symbol' in ohlc.columns else 'Unknown'
+        pivot_high_points = [p for p in pivot_high_points if p["time"] in ohlc.index]
+        pivot_low_points = [p for p in pivot_low_points if p["time"] in ohlc.index]
+        symbol = ohlc["symbol"].iloc[0] if "symbol" in ohlc.columns else "Unknown"
 
         # Create Plotly figure
         fig = make_subplots(rows=1, cols=1, subplot_titles=[f"{symbol} | Price Chart with HH/HL/LH/LL"])
 
         # Plot candlesticks
-        fig.add_trace(go.Candlestick(
-            x=ohlc.index,
-            open=ohlc['open'],
-            high=ohlc['high'],
-            low=ohlc['low'],
-            close=ohlc['close'],
-            name="OHLC"
-        ), row=1, col=1)
+        fig.add_trace(
+            go.Candlestick(
+                x=ohlc.index,
+                open=ohlc["open"],
+                high=ohlc["high"],
+                low=ohlc["low"],
+                close=ohlc["close"],
+                name="OHLC",
+            ),
+            row=1,
+            col=1,
+        )
 
         # Plot pivot highs
         for pivot in pivot_high_points:
-            fig.add_trace(go.Scatter(
-                x=[pivot['time']],
-                y=[pivot['level'] * 1.001],
-                mode='markers+text',
-                text=[pivot['type']],
-                textposition='top center',
-                marker=dict(symbol='triangle-down', size=8, color='red'),
-                name=pivot['type'],
-                showlegend=False
-            ), row=1, col=1)
+            fig.add_trace(
+                go.Scatter(
+                    x=[pivot["time"]],
+                    y=[pivot["level"] * 1.001],
+                    mode="markers+text",
+                    text=[pivot["type"]],
+                    textposition="top center",
+                    marker=dict(symbol="triangle-down", size=8, color="red"),
+                    name=pivot["type"],
+                    showlegend=False,
+                ),
+                row=1,
+                col=1,
+            )
 
         # Plot pivot lows
         for pivot in pivot_low_points:
-            fig.add_trace(go.Scatter(
-                x=[pivot['time']],
-                y=[pivot['level'] * 0.999],
-                mode='markers+text',
-                text=[pivot['type']],
-                textposition='bottom center',
-                marker=dict(symbol='triangle-up', size=8, color='green'),
-                name=pivot['type'],
-                showlegend=False
-            ), row=1, col=1)
+            fig.add_trace(
+                go.Scatter(
+                    x=[pivot["time"]],
+                    y=[pivot["level"] * 0.999],
+                    mode="markers+text",
+                    text=[pivot["type"]],
+                    textposition="bottom center",
+                    marker=dict(symbol="triangle-up", size=8, color="green"),
+                    name=pivot["type"],
+                    showlegend=False,
+                ),
+                row=1,
+                col=1,
+            )
 
         # Update layout
-        last_candle = ohlc.index.max().tz_convert('US/Pacific').strftime('%Y-%m-%d %H:%M')
+        last_candle = ohlc.index.max().tz_convert("US/Pacific").strftime("%Y-%m-%d %H:%M")
         candle_time_str = f"Last Candle: {last_candle} (PT)"
         fig.update_layout(
             title=f"{symbol} | HH, HL, LH, LL | {candle_time_str} | TF: {self.main_tf}",
             xaxis_rangeslider_visible=False,
             showlegend=True,
-            yaxis=dict(title="Price")
+            yaxis=dict(title="Price"),
         )
         fig.update_xaxes(
             title_text="Time",
-            type='date',  # Ensure datetime handling
+            type="date",  # Ensure datetime handling
             tickformat="%H:%M",  # Show only time (HH:MM)
             ticklabelmode="period",  # Align ticks with period start
             dtick=7200000,  # 2-hour intervals
             tickangle=45,  # Rotate for readability
-            row=1, col=1
+            row=1,
+            col=1,
         )
         logger.debug("Plotly figure generated successfully")
         return fig

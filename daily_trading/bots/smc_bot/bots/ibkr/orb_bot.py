@@ -11,7 +11,6 @@ ORB_CONFIG = {
     # ==========================================================================
     # GROUP 1: MNQ (THE MOMENTUM ENGINE)
     # ==========================================================================
-
     # MNQ NY: The "5R" Sniper
     # Stats: PnL $2,181 | WR 40% | RR 5.0
     # Change: RR increased to 5.0. SL Buffer increased to 0.15 to accommodate volatility.
@@ -24,9 +23,8 @@ ORB_CONFIG = {
         "tp_multiple": 5.0,  # <--- UPGRADED from 4.25
         "entry_buffer_mult": 0.0,
         "sl_buffer_mult": 0.15,  # <--- INCREASED from 0.10 for stability
-        "tick_buffer_mult": 0.05
+        "tick_buffer_mult": 0.05,
     },
-
     # MNQ LONDON: The 62% Scalper
     # Stats: PnL $1,821 | WR 62% | RR 1.0
     # Status: Unchanged. Leaderboard confirms these exact settings.
@@ -39,13 +37,11 @@ ORB_CONFIG = {
         "tp_multiple": 1.0,
         "entry_buffer_mult": 0.05,
         "sl_buffer_mult": 0.15,
-        "tick_buffer_mult": 0.05
+        "tick_buffer_mult": 0.05,
     },
-
     # ==========================================================================
     # GROUP 2: MGC (GOLD) (THE CASH MACHINE)
     # ==========================================================================
-
     # MGC LONDON: The Golden King
     # Stats: PnL $3,528 | WR 51.6% | RR 1.6
     # Status: Performance updated ($3528 vs old $3417). No param changes needed.
@@ -58,9 +54,8 @@ ORB_CONFIG = {
         "tp_multiple": 1.6,
         "entry_buffer_mult": 0.02,
         "sl_buffer_mult": 0.15,
-        "tick_buffer_mult": 0.05
+        "tick_buffer_mult": 0.05,
     },
-
     # MGC NY: The Elite 2.0
     # Stats: PnL $3,056 | WR 69% | RR 2.0
     # Change: Major overhaul. RR up to 2.0. Offset tightened to 1. Threshold 0.25.
@@ -73,7 +68,7 @@ ORB_CONFIG = {
         "tp_multiple": 2.0,  # <--- UPGRADED from 1.7
         "entry_buffer_mult": 0.02,
         "sl_buffer_mult": 0.12,
-        "tick_buffer_mult": 0.05
+        "tick_buffer_mult": 0.05,
     },
 }
 
@@ -86,7 +81,12 @@ class ORBBot(SMCBotBase):
 
     def __init__(self, telegram_chat_id=TELEGRAM_MAIN_CHANNEL_CHAT_ID, risk=250, ib_client=None):
         # Pass the shared ib_client to the base
-        super().__init__(symbols=[], main_tf="5m", telegram_chat_id=telegram_chat_id, ib_client=ib_client)
+        super().__init__(
+            symbols=[],
+            main_tf="5m",
+            telegram_chat_id=telegram_chat_id,
+            ib_client=ib_client,
+        )
 
         self.strategies: List[ORBStrategy] = []
         self.active_symbols: List[str] = []
@@ -122,7 +122,8 @@ class ORBBot(SMCBotBase):
                     # Dynamic Buffers
                     entry_buffer_mult=config["entry_buffer_mult"],
                     sl_buffer_mult=config["sl_buffer_mult"],
-                    tick_buffer_mult=config["tick_buffer_mult"])
+                    tick_buffer_mult=config["tick_buffer_mult"],
+                )
                 self.strategies.append(strategy)
                 unique_symbols.add(symbol)
 
@@ -133,13 +134,13 @@ class ORBBot(SMCBotBase):
 
     async def execute_cycle(self, market_data: dict, blocked_symbols: set, current_positions, open_orders):
         """
-       The Entry Point for MasterBot.
+        The Entry Point for MasterBot.
 
-        It takes the centralized data, filters it, and triggers
-        'run_strategy_cycle' for valid strategies.
+         It takes the centralized data, filters it, and triggers
+         'run_strategy_cycle' for valid strategies.
 
-        market_data: Dict structure { "MNQ": {"5m": df, "1h": df} }
-        blocked_symbols: Set of symbols active in other bots (conflict prevention).
+         market_data: Dict structure { "MNQ": {"5m": df, "1h": df} }
+         blocked_symbols: Set of symbols active in other bots (conflict prevention).
         """
         tasks = []
         for strategy in self.strategies:

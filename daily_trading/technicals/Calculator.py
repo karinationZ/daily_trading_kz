@@ -3,6 +3,7 @@ Actual ATR calculates as:
 TrueRange = MAX(abs(High - Low), abs(High - Previous Close), abs(Low - Previous Close)) 
 TrueRange.mean()
 """
+
 import os
 import sys
 from dataclasses import dataclass
@@ -25,10 +26,19 @@ class TradingResults:
 
 
 class Calculator:
-    def __init__(self, asset: str, level_price: float, direction: Literal["long", "short"] = "long",
-                 risk_reward_ratio: int = 3, risk_amount: float = 3, perc_of_atr=None, entry_point=None,
-                 perc_of_atr_stop=None, custom_sl_point=None,
-                 data_source: Literal["yfinance", "ccxt"] = "ccxt"):
+    def __init__(
+        self,
+        asset: str,
+        level_price: float,
+        direction: Literal["long", "short"] = "long",
+        risk_reward_ratio: int = 3,
+        risk_amount: float = 3,
+        perc_of_atr=None,
+        entry_point=None,
+        perc_of_atr_stop=None,
+        custom_sl_point=None,
+        data_source: Literal["yfinance", "ccxt"] = "ccxt",
+    ):
         self.position_size = None
         self.instrument = asset.upper() + "USDT"
         self.data_source = data_source
@@ -96,15 +106,13 @@ class Calculator:
 
         # Calculate TP, TL, Position Size
         self.take_profit = self.stop * self.risk_reward_ratio
-        self.take_limit = (self.entry_point + self.take_profit) if direction == "long" else (
-                self.entry_point - self.take_profit)
+        self.take_limit = (self.entry_point + self.take_profit) if direction == "long" else (self.entry_point - self.take_profit)
 
         self.position_size = self.risk_amount / _stop
 
         # Calculate 2XTP
         take_profit_min = self.risk_amount * 2 / self.position_size
-        self.take_limit_min = (self.entry_point + take_profit_min) if direction == "long" else (
-                self.entry_point - take_profit_min)
+        self.take_limit_min = (self.entry_point + take_profit_min) if direction == "long" else (self.entry_point - take_profit_min)
 
     def get_historical_data(self, time_frame: str, time_delta_days: int = None, limit: int = 500) -> pd.DataFrame:
         """
@@ -137,7 +145,7 @@ class Calculator:
             interval=interval,
             start_time=start_time,
             end_time=end_time,
-            limit=limit
+            limit=limit,
         )
 
         # Verify mgc is available
@@ -148,26 +156,25 @@ class Calculator:
 
         # Format mgc - BitUnix returns dictionary format whereas ccxt returns arrays
         for bar in bars:
-            ohlcv_data.append([
-                int(bar["time"]),  # timestamp
-                float(bar["open"]),
-                float(bar["high"]),
-                float(bar["low"]),
-                float(bar["close"]),
-                float(bar["quoteVol"])
-            ])
+            ohlcv_data.append(
+                [
+                    int(bar["time"]),  # timestamp
+                    float(bar["open"]),
+                    float(bar["high"]),
+                    float(bar["low"]),
+                    float(bar["close"]),
+                    float(bar["quoteVol"]),
+                ]
+            )
 
         # Skip the last bar if we have more than one (it might be incomplete)
         if len(ohlcv_data) > 1:
             df = pd.DataFrame(
                 ohlcv_data[:-1],
-                columns=["time", "open", "high", "low", "close", "volume"]
+                columns=["time", "open", "high", "low", "close", "volume"],
             )
         else:
-            df = pd.DataFrame(
-                ohlcv_data,
-                columns=["time", "open", "high", "low", "close", "volume"]
-            )
+            df = pd.DataFrame(ohlcv_data, columns=["time", "open", "high", "low", "close", "volume"])
 
         # Convert timestamp to datetime
         df["time"] = pd.to_datetime(df["time"], unit="ms")
@@ -303,13 +310,12 @@ class Calculator:
 
         # Format and display selected candles
         selected_times_sorted = sorted(selected_times, reverse=True)
-        formatted_times = "\n".join(
-            [time.strftime("%Y-%m-%d") if hasattr(time, 'strftime') else str(time) for time in selected_times_sorted])
+        formatted_times = "\n".join([time.strftime("%Y-%m-%d") if hasattr(time, "strftime") else str(time) for time in selected_times_sorted])
         logger.info(f"\nSelected Candles for ATR calculation:\n{formatted_times}")
         self.selected_atr_candles = formatted_times
 
         # Format ATR value
-        formatted_atr = format(atr, '.10f')
+        formatted_atr = format(atr, ".10f")
         formatted_atr_float = float(formatted_atr)
 
         # Check if ATR is too small
@@ -377,7 +383,7 @@ class Calculator:
         return TradingResults(
             potential_profit=round(potential_profit, 2),
             potential_loss=round(potential_loss, 2),
-            position=self.position_size
+            position=self.position_size,
         )
 
     def current_daily_bar_price_movement(self):
@@ -447,18 +453,19 @@ class Calculator:
             f"\nCurrent Bar Price Movement is: {current_bar_atr_percentage}% of ATR"
             f"\nShould Enter: {should_enter}"
             f"\nSelected Candles for ATR calculation:\n{self.selected_atr_candles}"
-
         )
 
 
 if __name__ == "__main__":
-    c = Calculator(asset="haedal",
-                   direction="long",
-                   level_price=0.155623,
-                   risk_reward_ratio=3,
-                   risk_amount=7,
-                   perc_of_atr=10,
-                   perc_of_atr_stop=10,
-                   custom_sl_point=None,
-                   entry_point=None)
+    c = Calculator(
+        asset="haedal",
+        direction="long",
+        level_price=0.155623,
+        risk_reward_ratio=3,
+        risk_amount=7,
+        perc_of_atr=10,
+        perc_of_atr_stop=10,
+        custom_sl_point=None,
+        entry_point=None,
+    )
     c.print_calculations()

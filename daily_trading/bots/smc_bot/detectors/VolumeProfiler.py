@@ -27,7 +27,9 @@ class VolumeProfiler:
         self.price_bins = price_bins
         self.va_percent = va_percent
         self.plot_tail = 200
-        logger.debug(f"Initialized VolumeProfileCollector with main_tf={main_tf}, num_bars={num_bars}, price_bins={price_bins}, va_percent={va_percent}")
+        logger.debug(
+            f"Initialized VolumeProfileCollector with main_tf={main_tf}, num_bars={num_bars}, price_bins={price_bins}, va_percent={va_percent}"
+        )
 
     def calculate_volume_profile(self, ohlc, plot=True):
         """
@@ -52,8 +54,8 @@ class VolumeProfiler:
         ohlc = ohlc.tail(self.num_bars).sort_index()
 
         # Calculate price range and bins
-        price_min = ohlc['low'].min()
-        price_max = ohlc['high'].max()
+        price_min = ohlc["low"].min()
+        price_max = ohlc["high"].max()
         price_levels = np.linspace(price_min, price_max, self.price_bins + 1)
         bin_width = (price_max - price_min) / self.price_bins
 
@@ -63,22 +65,31 @@ class VolumeProfiler:
 
         def get_vol(y11, y12, y21, y22, height, vol):
             """Calculate volume for intersection of two price ranges."""
-            return max(min(max(y11, y12), max(y21, y22)) - max(min(y11, y12), min(y21, y22)), 0) * vol / height if height > 0 else 0
+            return (
+                max(
+                    min(max(y11, y12), max(y21, y22)) - max(min(y11, y12), min(y21, y22)),
+                    0,
+                )
+                * vol
+                / height
+                if height > 0
+                else 0
+            )
 
         # Distribute volume for each candle
         for _, row in ohlc.iterrows():
-            body_top = max(row['close'], row['open'])
-            body_bot = min(row['close'], row['open'])
-            is_green = row['close'] >= row['open']
-            top_wick = row['high'] - body_top
-            bottom_wick = body_bot - row['low']
+            body_top = max(row["close"], row["open"])
+            body_bot = min(row["close"], row["open"])
+            is_green = row["close"] >= row["open"]
+            top_wick = row["high"] - body_top
+            bottom_wick = body_bot - row["low"]
             body = body_top - body_bot
 
             # Calculate volume proportions
             total = 2 * top_wick + 2 * bottom_wick + body
-            body_vol = body * row['volume'] / total if total > 0 else row['volume']
-            top_wick_vol = 2 * top_wick * row['volume'] / total if total > 0 else 0
-            bottom_wick_vol = 2 * bottom_wick * row['volume'] / total if total > 0 else 0
+            body_vol = body * row["volume"] / total if total > 0 else row["volume"]
+            top_wick_vol = 2 * top_wick * row["volume"] / total if total > 0 else 0
+            bottom_wick_vol = 2 * bottom_wick * row["volume"] / total if total > 0 else 0
 
             # Distribute volumes across bins
             for x in range(self.price_bins):
@@ -87,8 +98,28 @@ class VolumeProfiler:
                 # Body volume
                 body_vol_bin = get_vol(level_low, level_high, body_bot, body_top, body, body_vol)
                 # Wick volumes (split equally between up/down)
-                top_wick_vol_bin = get_vol(level_low, level_high, body_top, row['high'], top_wick, top_wick_vol) / 2
-                bottom_wick_vol_bin = get_vol(level_low, level_high, body_bot, row['low'], bottom_wick, bottom_wick_vol) / 2
+                top_wick_vol_bin = (
+                    get_vol(
+                        level_low,
+                        level_high,
+                        body_top,
+                        row["high"],
+                        top_wick,
+                        top_wick_vol,
+                    )
+                    / 2
+                )
+                bottom_wick_vol_bin = (
+                    get_vol(
+                        level_low,
+                        level_high,
+                        body_bot,
+                        row["low"],
+                        bottom_wick,
+                        bottom_wick_vol,
+                    )
+                    / 2
+                )
                 # Assign to up or down volumes
                 up_volumes[x] += body_vol_bin if is_green else 0
                 up_volumes[x] += top_wick_vol_bin + bottom_wick_vol_bin
@@ -134,7 +165,16 @@ class VolumeProfiler:
         # Create Plotly figure if requested
         fig = None
         if plot:
-            fig = self._plot_volume_profile(ohlc, volume_profile, up_volume, down_volume, price_levels, poc_level, va_high, va_low)
+            fig = self._plot_volume_profile(
+                ohlc,
+                volume_profile,
+                up_volume,
+                down_volume,
+                price_levels,
+                poc_level,
+                va_high,
+                va_low,
+            )
 
         results = {
             "fig": fig,
@@ -144,12 +184,22 @@ class VolumeProfiler:
             "price_levels": price_levels,
             "poc_level": poc_level,
             "va_high": va_high,
-            "va_low": va_low
+            "va_low": va_low,
         }
         logger.debug(f"Completed volume profile calculation: {len(volume_profile)} price levels, POC at {poc_level}")
         return results
 
-    def _plot_volume_profile(self, ohlc, volume_profile, up_volume, down_volume, price_levels, poc_level, va_high, va_low):
+    def _plot_volume_profile(
+        self,
+        ohlc,
+        volume_profile,
+        up_volume,
+        down_volume,
+        price_levels,
+        poc_level,
+        va_high,
+        va_low,
+    ):
         """
         Plot candlesticks and volume profile with up/down volumes, POC, and Value Area.
 
@@ -168,68 +218,101 @@ class VolumeProfiler:
         """
         logger.debug("Generating Plotly figure for volume profile")
         ohlc = ohlc.sort_index().tail(self.plot_tail)
-        symbol = ohlc['symbol'].iloc[0] if 'symbol' in ohlc.columns else 'Unknown'
+        symbol = ohlc["symbol"].iloc[0] if "symbol" in ohlc.columns else "Unknown"
 
         # Create Plotly figure with two subplots
-        fig = make_subplots(rows=1, cols=2, column_widths=[0.7, 0.3],
-                           subplot_titles=[f"{symbol} | Price Chart", "Volume Profile"],
-                           shared_yaxes=True)
+        fig = make_subplots(
+            rows=1,
+            cols=2,
+            column_widths=[0.7, 0.3],
+            subplot_titles=[f"{symbol} | Price Chart", "Volume Profile"],
+            shared_yaxes=True,
+        )
 
         # Plot candlesticks
-        fig.add_trace(go.Candlestick(
-            x=ohlc.index,
-            open=ohlc['open'],
-            high=ohlc['high'],
-            low=ohlc['low'],
-            close=ohlc['close'],
-            name="OHLC"
-        ), row=1, col=1)
+        fig.add_trace(
+            go.Candlestick(
+                x=ohlc.index,
+                open=ohlc["open"],
+                high=ohlc["high"],
+                low=ohlc["low"],
+                close=ohlc["close"],
+                name="OHLC",
+            ),
+            row=1,
+            col=1,
+        )
 
         # Plot up volume (blue)
-        fig.add_trace(go.Bar(
-            y=up_volume.index,
-            x=up_volume.values,
-            orientation='h',
-            name="Up Volume",
-            marker=dict(color='rgba(0, 0, 255, 0.75)'),
-            width=0.4 * (price_levels[1] - price_levels[0])
-        ), row=1, col=2)
+        fig.add_trace(
+            go.Bar(
+                y=up_volume.index,
+                x=up_volume.values,
+                orientation="h",
+                name="Up Volume",
+                marker=dict(color="rgba(0, 0, 255, 0.75)"),
+                width=0.4 * (price_levels[1] - price_levels[0]),
+            ),
+            row=1,
+            col=2,
+        )
 
         # Plot down volume (orange, offset slightly)
-        fig.add_trace(go.Bar(
-            y=down_volume.index,
-            x=down_volume.values,
-            orientation='h',
-            name="Down Volume",
-            marker=dict(color='rgba(255, 165, 0, 0.75)'),
-            width=0.4 * (price_levels[1] - price_levels[0]),
-            base=up_volume.values
-        ), row=1, col=2)
+        fig.add_trace(
+            go.Bar(
+                y=down_volume.index,
+                x=down_volume.values,
+                orientation="h",
+                name="Down Volume",
+                marker=dict(color="rgba(255, 165, 0, 0.75)"),
+                width=0.4 * (price_levels[1] - price_levels[0]),
+                base=up_volume.values,
+            ),
+            row=1,
+            col=2,
+        )
 
         # Plot POC line
-        fig.add_hline(y=poc_level, line_color="red", line_width=2, annotation_text=f"POC: {poc_level:.6f}",
-                      annotation_position="right", row=1, col=2)
+        fig.add_hline(
+            y=poc_level,
+            line_color="red",
+            line_width=2,
+            annotation_text=f"POC: {poc_level:.6f}",
+            annotation_position="right",
+            row=1,
+            col=2,
+        )
 
         # Plot Value Area bounds
-        fig.add_hrect(y0=va_low, y1=va_high, fillcolor="blue", opacity=0.3, line_width=0,
-                      annotation_text="Value Area", annotation_position="right", row=1, col=2)
+        fig.add_hrect(
+            y0=va_low,
+            y1=va_high,
+            fillcolor="blue",
+            opacity=0.3,
+            line_width=0,
+            annotation_text="Value Area",
+            annotation_position="right",
+            row=1,
+            col=2,
+        )
 
         # Update layout
-        last_candle = ohlc.index.max().tz_convert('US/Pacific').strftime('%Y-%m-%d %H:%M')
+        last_candle = ohlc.index.max().tz_convert("US/Pacific").strftime("%Y-%m-%d %H:%M")
         fig.update_layout(
             title=f"{symbol} | Volume Profile | Last Candle: {last_candle} (PT) | TF: {self.main_tf}",
             showlegend=True,
             yaxis=dict(title="Price"),
-            xaxis2=dict(title="Normalized Volume")
+            xaxis2=dict(title="Normalized Volume"),
         )
         fig.update_xaxes(
             title_text="Time",
-            type='date',
+            type="date",
             tickformat="%H:%M",
             ticklabelmode="period",
             dtick=7200000,
             tickangle=45,
-            row=1, col=1
+            row=1,
+            col=1,
         )
         logger.debug("Plotly figure generated successfully")
         return fig

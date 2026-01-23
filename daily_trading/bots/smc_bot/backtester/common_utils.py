@@ -60,22 +60,21 @@ def parse_params_from_results_csv_filename(filename: str) -> Optional[Dict[str, 
         gd = match.groupdict()
         try:
             # FIX 3: Parse THR if it exists, otherwise Default to None (or 0.0)
-            thr_val = float(gd['thr']) if gd.get('thr') else None
+            thr_val = float(gd["thr"]) if gd.get("thr") else None
 
             return {
                 "symbol": gd["symbol"].upper(),
                 "session": gd["session"].upper(),
-                "sw": int(gd['sw']),
-                "int": int(gd['int']),
-                "off": int(gd['off']),
-                "atr": float(gd['atr']),
-                "rr": float(gd['rr']),
-                "eb_mult": float(gd['eb_mult']),
-                "sl_atr": float(gd['sl_buffer']),
+                "sw": int(gd["sw"]),
+                "int": int(gd["int"]),
+                "off": int(gd["off"]),
+                "atr": float(gd["atr"]),
+                "rr": float(gd["rr"]),
+                "eb_mult": float(gd["eb_mult"]),
+                "sl_atr": float(gd["sl_buffer"]),
                 "thr": thr_val,  # <--- Now correctly populated
                 "mit": None,
-                "description": (f"Symbol: {gd['symbol'].upper()} | {gd['session'].upper()} | "
-                                f"SW:{gd['sw']} THR:{thr_val} RR:{gd['rr']}")
+                "description": (f"Symbol: {gd['symbol'].upper()} | {gd['session'].upper()} | " f"SW:{gd['sw']} THR:{thr_val} RR:{gd['rr']}"),
             }
         except ValueError:
             pass
@@ -85,20 +84,19 @@ def parse_params_from_results_csv_filename(filename: str) -> Optional[Dict[str, 
     if match:
         gd = match.groupdict()
         try:
-            mit_val = float(gd['mit']) if gd.get('mit') else None
-            sl_val = float(gd['sl_atr']) if gd.get('sl_atr') else None
+            mit_val = float(gd["mit"]) if gd.get("mit") else None
+            sl_val = float(gd["sl_atr"]) if gd.get("sl_atr") else None
 
             return {
                 "symbol": gd["symbol"].upper(),
                 "session": gd["session"].upper(),
-                "sw": int(gd['sw']),
-                "int": int(gd['int']),
-                "rr": float(gd['rr']),
+                "sw": int(gd["sw"]),
+                "int": int(gd["int"]),
+                "rr": float(gd["rr"]),
                 "sl_atr": sl_val,
-                "eb_mult": float(gd['eb_mult']) if gd.get('eb_mult') else None,
+                "eb_mult": float(gd["eb_mult"]) if gd.get("eb_mult") else None,
                 "mit": mit_val,
-                "description": (f"Symbol: {gd['symbol'].upper()} | {gd['session'].upper()} | "
-                                f"SW:{gd['sw']} RR:{gd['rr']}")
+                "description": (f"Symbol: {gd['symbol'].upper()} | {gd['session'].upper()} | " f"SW:{gd['sw']} RR:{gd['rr']}"),
             }
         except ValueError:
             pass
@@ -111,12 +109,16 @@ def parse_params_from_results_csv_filename(filename: str) -> Optional[Dict[str, 
             return {
                 "symbol": gd["symbol"].upper(),
                 "session": gd["session"].upper(),
-                "rr": float(gd['rr']),
-                "mit": float(gd['mit']),
-                "sl_atr": float(gd['sl_atr']),
-                "sw": None, "int": None, "off": None, "atr": None, "thr": None, "eb_mult": None,
-                "description": (f"Symbol: {gd['symbol'].upper()} | {gd['session'].upper()} | "
-                                f"RR:{gd['rr']} MIT:{gd['mit']} SL:{gd['sl_atr']}")
+                "rr": float(gd["rr"]),
+                "mit": float(gd["mit"]),
+                "sl_atr": float(gd["sl_atr"]),
+                "sw": None,
+                "int": None,
+                "off": None,
+                "atr": None,
+                "thr": None,
+                "eb_mult": None,
+                "description": (f"Symbol: {gd['symbol'].upper()} | {gd['session'].upper()} | " f"RR:{gd['rr']} MIT:{gd['mit']} SL:{gd['sl_atr']}"),
             }
         except ValueError:
             return None
@@ -124,11 +126,7 @@ def parse_params_from_results_csv_filename(filename: str) -> Optional[Dict[str, 
     return None
 
 
-def monte_carlo_stress(
-        pnl_series: pd.Series,
-        runs: int = 2000,
-        initial_capital: float = 0.0
-) -> pd.DataFrame:
+def monte_carlo_stress(pnl_series: pd.Series, runs: int = 2000, initial_capital: float = 0.0) -> pd.DataFrame:
     """
     Monte Carlo stress test on realized PnL.
     Assumes independent trade outcomes.
@@ -147,10 +145,12 @@ def monte_carlo_stress(
             peak = max(peak, equity)
             max_dd = max(max_dd, peak - equity)
 
-        results.append({
-            "final_equity": equity,
-            "return": equity - initial_capital,
-            "max_drawdown": max_dd,
-        })
+        results.append(
+            {
+                "final_equity": equity,
+                "return": equity - initial_capital,
+                "max_drawdown": max_dd,
+            }
+        )
 
     return pd.DataFrame(results)

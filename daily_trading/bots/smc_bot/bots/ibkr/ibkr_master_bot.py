@@ -3,9 +3,9 @@ from datetime import datetime
 from zoneinfo import ZoneInfo
 
 from daily_trading.bots.smc_bot.bots.ibkr.bos_bot import BosOrderBlockBot
+
 # Import the Sub-Bots
 from daily_trading.bots.smc_bot.bots.ibkr.orb_bot import ORBBot
-from daily_trading.bots.smc_bot.bots.ibkr.supply_demand_tap_bot import SupplyDemandTapBot
 from daily_trading.brokers.IBKRClient import IBKRClient
 from daily_trading.settings import IBKR_PORT, logger
 
@@ -21,8 +21,7 @@ class MasterBot:
 
         # 3. Categorize Symbols for Fetching
         # ORB & BOS needs 5m
-        self.symbols_5m = set(self.orb_bot.active_symbols +
-                              self.bos_ob_bot.active_symbols)
+        self.symbols_5m = set(self.orb_bot.active_symbols + self.bos_ob_bot.active_symbols)
         # BOS need 1h
         self.symbols_1h = set(self.bos_ob_bot.active_symbols)
 
@@ -186,7 +185,8 @@ class MasterBot:
                     for sym in self.symbols_5m:
                         df = await self.ib_client.get_klines(sym, "5m")
                         if not df.empty:
-                            if sym not in market_data: market_data[sym] = {}
+                            if sym not in market_data:
+                                market_data[sym] = {}
                             market_data[sym]["5m"] = df
                         await asyncio.sleep(0.1)
 
@@ -215,8 +215,7 @@ class MasterBot:
                         await self.orb_bot.telegram_bot_debug.send_message(msg)
 
                     if orders:
-                        pretty_orders = [f"{o.order.action} {o.order.totalQuantity} {o.contract.symbol}" for o in
-                                         orders]
+                        pretty_orders = [f"{o.order.action} {o.order.totalQuantity} {o.contract.symbol}" for o in orders]
                         msg = f"⏳ Pending Orders: {pretty_orders}"
                         logger.info(msg)
                         await self.orb_bot.telegram_bot_debug.send_message(msg)

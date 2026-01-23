@@ -3,7 +3,9 @@ from typing import List
 from zoneinfo import ZoneInfo
 
 from daily_trading.bots.smc_bot.bots.BaseBot import SMCBotBase
-from daily_trading.bots.smc_bot.strategy.BosOrderBlockStrategy import BosOrderBlockStrategy
+from daily_trading.bots.smc_bot.strategy.BosOrderBlockStrategy import (
+    BosOrderBlockStrategy,
+)
 from daily_trading.bots.smc_bot.strategy.StrategyBase import TradeStatus
 from daily_trading.settings import logger, TELEGRAM_MAIN_CHANNEL_CHAT_ID
 
@@ -24,7 +26,6 @@ CONFIG = {
         "tp_multiple": 1.5,  # High Accuracy
         "sl_buffer": 0.1,
     },
-
     ("SIL", "ASIA"): {
         "swing_length": 8,
         "internal_length": 5,
@@ -32,7 +33,6 @@ CONFIG = {
         "tp_multiple": 1.2,  # High Accuracy
         "sl_buffer": 0.1,
     },
-
     # --- GOLD ---
     ("MGC", "NY"): {
         "swing_length": 24,  # Faster Structure
@@ -41,7 +41,6 @@ CONFIG = {
         "tp_multiple": 2.0,
         "sl_buffer": 0.1,
     },
-
     # --- INDICES ---
     ("MNQ", "NY"): {
         "swing_length": 50,
@@ -57,7 +56,6 @@ CONFIG = {
         "tp_multiple": 1.5,
         "sl_buffer": 0.1,
     },
-
     # --- CRYPTO ---
     ("MBT", "LONDON"): {
         "swing_length": 45,
@@ -65,13 +63,18 @@ CONFIG = {
         "entry_depth": 0.1,  # Conservative
         "tp_multiple": 1.5,
         "sl_buffer": 1.2,  # Wide Stop
-    }
+    },
 }
 
 
 class BosOrderBlockBot(SMCBotBase):
     def __init__(self, telegram_chat_id=TELEGRAM_MAIN_CHANNEL_CHAT_ID, risk=250, ib_client=None):
-        super().__init__(symbols=[], main_tf="5m", telegram_chat_id=telegram_chat_id, ib_client=ib_client)
+        super().__init__(
+            symbols=[],
+            main_tf="5m",
+            telegram_chat_id=telegram_chat_id,
+            ib_client=ib_client,
+        )
         self.strategies: List[BosOrderBlockStrategy] = []
         self.active_symbols = []
         self.risk = risk
@@ -88,16 +91,17 @@ class BosOrderBlockBot(SMCBotBase):
             else:
                 tz = ZoneInfo("Asia/Tokyo")
             try:
-                strategy = BosOrderBlockStrategy(symbol=symbol,
-                                                 timezone=tz,
-                                                 main_tf="1h",
-                                                 swing_length=cfg["swing_length"],
-                                                 internal_length=cfg["internal_length"],
-                                                 risk=self.risk,
-                                                 tp_multiple=cfg["tp_multiple"],
-                                                 entry_depth=cfg["entry_depth"],
-                                                 sl_buffer_mult=cfg["sl_buffer"],
-                                                 )
+                strategy = BosOrderBlockStrategy(
+                    symbol=symbol,
+                    timezone=tz,
+                    main_tf="1h",
+                    swing_length=cfg["swing_length"],
+                    internal_length=cfg["internal_length"],
+                    risk=self.risk,
+                    tp_multiple=cfg["tp_multiple"],
+                    entry_depth=cfg["entry_depth"],
+                    sl_buffer_mult=cfg["sl_buffer"],
+                )
                 self.strategies.append(strategy)
                 unique_symbols.add(symbol)
             except Exception as e:

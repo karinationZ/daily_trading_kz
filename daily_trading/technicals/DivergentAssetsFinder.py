@@ -22,10 +22,7 @@ class BitUnixDivergentAssetsFinder:
 
         # Batch fetch tickers
         tickers = self.client.get_tickers(all_symbols)  # Assume async
-        high_volume_symbols = [
-            (ticker["symbol"], float(ticker["quoteVol"]))
-            for ticker in tickers if float(ticker["quoteVol"]) >= threshold
-        ]
+        high_volume_symbols = [(ticker["symbol"], float(ticker["quoteVol"])) for ticker in tickers if float(ticker["quoteVol"]) >= threshold]
         high_volume_symbols.sort(key=lambda x: x[1])
         logger.debug(f"High volume symbols: {len(high_volume_symbols)}")
         return high_volume_symbols
@@ -33,9 +30,11 @@ class BitUnixDivergentAssetsFinder:
     @staticmethod
     def format_klines_to_dataframe(klines):
         """Convert kline mgc to pandas DataFrame"""
-        df = pd.DataFrame(klines, columns=["open", "high", "low", "close", "quoteVol", "baseVol", "time"])
-        df[["open", "high", "low", "close", "quoteVol", "time"]] = df[
-            ["open", "high", "low", "close", "quoteVol", "time"]].apply(pd.to_numeric)
+        df = pd.DataFrame(
+            klines,
+            columns=["open", "high", "low", "close", "quoteVol", "baseVol", "time"],
+        )
+        df[["open", "high", "low", "close", "quoteVol", "time"]] = df[["open", "high", "low", "close", "quoteVol", "time"]].apply(pd.to_numeric)
         df["time"] = pd.to_datetime(df["time"], unit="ms")
         return df.set_index("time")[["close"]]  # Only keep 'close' for correlation
 
@@ -49,7 +48,7 @@ class BitUnixDivergentAssetsFinder:
             interval=interval,
             start_time=start_time,
             end_time=end_time,
-            limit=200
+            limit=200,
         )
         return self.format_klines_to_dataframe(klines)
 
@@ -77,31 +76,28 @@ class BitUnixDivergentAssetsFinder:
         btc_df = await self.fetch_kline_data("BTCUSDT", lookback_hours=lookback_hours)
 
         # Fetch kline mgc concurrently
-        tasks = [
-            self.fetch_kline_data(symbol, lookback_hours=lookback_hours)
-            for symbol, _ in high_volume_symbols if symbol != "BTCUSDT"
-        ]
+        tasks = [self.fetch_kline_data(symbol, lookback_hours=lookback_hours) for symbol, _ in high_volume_symbols if symbol != "BTCUSDT"]
         symbol_dfs = await asyncio.gather(*tasks, return_exceptions=True)
 
         results = []
-        for (symbol, volume), symbol_df in zip(
-                [(s, v) for s, v in high_volume_symbols if s != "BTCUSDT"], symbol_dfs
-        ):
+        for (symbol, volume), symbol_df in zip([(s, v) for s, v in high_volume_symbols if s != "BTCUSDT"], symbol_dfs):
             if isinstance(symbol_df, Exception):
                 logger.error(f"Error fetching {symbol}: {symbol_df}")
                 continue
             correlation = self.calculate_correlation(btc_df, symbol_df)
             if correlation is not None:
-                results.append({
-                    "symbol": symbol,
-                    "correlation": correlation,
-                    "abs_correlation": abs(correlation),
-                    "volume": volume
-                })
+                results.append(
+                    {
+                        "symbol": symbol,
+                        "correlation": correlation,
+                        "abs_correlation": abs(correlation),
+                        "volume": volume,
+                    }
+                )
 
         non_correlated_assets = sorted(
             [r for r in results if abs(r["correlation"]) < correlation_threshold],
-            key=lambda x: x["abs_correlation"]
+            key=lambda x: x["abs_correlation"],
         )
         return non_correlated_assets
 
@@ -113,26 +109,17 @@ class BitUnixDivergentAssetsFinder:
         btc_df = await self.fetch_kline_data("BTCUSDT", lookback_hours=lookback_hours)
 
         # Fetch kline mgc concurrently
-        tasks = [
-            self.fetch_kline_data(symbol, lookback_hours=lookback_hours)
-            for symbol, _ in high_volume_symbols if symbol != "BTCUSDT"
-        ]
+        tasks = [self.fetch_kline_data(symbol, lookback_hours=lookback_hours) for symbol, _ in high_volume_symbols if symbol != "BTCUSDT"]
         symbol_dfs = await asyncio.gather(*tasks, return_exceptions=True)
 
         results = []
-        for (symbol, volume), symbol_df in zip(
-                [(s, v) for s, v in high_volume_symbols if s != "BTCUSDT"], symbol_dfs
-        ):
+        for (symbol, volume), symbol_df in zip([(s, v) for s, v in high_volume_symbols if s != "BTCUSDT"], symbol_dfs):
             if isinstance(symbol_df, Exception):
                 logger.error(f"Error fetching {symbol}: {symbol_df}")
                 continue
             correlation = self.calculate_correlation(btc_df, symbol_df)
             if correlation is not None:
-                results.append({
-                    "symbol": symbol,
-                    "correlation": correlation,
-                    "volume": volume
-                })
+                results.append({"symbol": symbol, "correlation": correlation, "volume": volume})
 
         results.sort(key=lambda x: x["correlation"])
         non_correlated = [r for r in results if abs(r["correlation"]) < 0.2]
@@ -141,7 +128,7 @@ class BitUnixDivergentAssetsFinder:
         output = {
             "non_correlated": non_correlated,
             "inverse_correlated": inverse_correlated,
-            "all_results": results
+            "all_results": results,
         }
 
         if save_results:
@@ -158,7 +145,13 @@ class BitUnixDivergentAssetsFinder:
             for asset in results["non_correlated"]:
                 writer.writerow([asset["symbol"], f"{asset['correlation']:.4f}", asset["volume"]])
             for asset in results["inverse_correlated"]:
-                writer.writerow([asset["symbol"], f"{asset['correlation']:.4f}", "inverse_correlated"])
+                writer.writerow(
+                    [
+                        asset["symbol"],
+                        f"{asset['correlation']:.4f}",
+                        "inverse_correlated",
+                    ]
+                )
         logger.debug(f"Results saved to {full_path}")
         return full_path
 
@@ -168,10 +161,7 @@ if __name__ == "__main__":
     finder = BitUnixDivergentAssetsFinder()
 
     # Run async method
-    results = asyncio.run(finder.find_divergent_assets(
-        volume_threshold=10000000,
-        lookback_hours=3
-    ))
+    results = asyncio.run(finder.find_divergent_assets(volume_threshold=10000000, lookback_hours=3))
 
     # Log results
     logger.info("\nNon-correlated assets (correlation between -0.2 and 0.2):")

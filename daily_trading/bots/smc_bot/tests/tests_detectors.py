@@ -191,7 +191,7 @@ async def test_ai():
         fig_1.show()
     summary = SignalSummary(direction="NEUTRAL", trend_signal=["Blah bla"], fig=fig, trend="Bullish")
 
-    # await bot.generate_signal(symbol, summary, ohlc_4h=ohlc_4h, ohlc_1h=ohlc_1h, ohlc_15m=ohlc_15m)
+    await bot.generate_signal(symbol, summary, ohlc_4h=ohlc_4h, ohlc_1h=ohlc_1h, ohlc_15m=ohlc_15m)
 
 
 @pytest.mark.asyncio
@@ -205,12 +205,12 @@ async def test_merge_ob_and_bos():
     ob_detector = OrderBlocksDetectorOld(main_tf)
     results = ob_detector.calculate_order_blocks(ohlc_15m, plot=True)
     ob_signals = results["order_blocks"]
-    ob_fig = results["fig"]
+    results["fig"]
 
     detector = BosChochDetector(main_tf, show_bull=True, show_bear=True)
     results = detector.calculate_bos_choch(ohlc_1h, plot=True)
     bos_signals = results["signals"]
-    bos_fig = results["fig"]
+    results["fig"]
 
     fig = ob_detector.merge_bos_ob_plots(ohlc_15m, bos_signals, ob_signals=ob_signals)
     fig.show()
@@ -294,11 +294,11 @@ async def test_order_blocks_old():
 
 @pytest.mark.asyncio
 async def test_supply_demand_zones():
-    symbol = "MNQ"
+    pass
     # bot = SMCBotBase(symbols=[symbol], main_tf="1h", market_type="futures")
     # ohlc = await bot.fetch_ibkr_ohlc_data(symbol, "1h", num_candles=200)
 
-    pathlib = f"/project/daily_trading/bots/smc_bot/tests/ohlc_data/mnq_1h.csv"
+    pathlib = "/project/daily_trading/bots/smc_bot/tests/ohlc_data/mnq_1h.csv"
     ohlc = load_data(
         pathlib,
         start_ts="2025-02-01 00:30:00+00:00",
@@ -325,11 +325,11 @@ async def test_supply_demand_zones():
 
 @pytest.mark.asyncio
 async def test_bos_detector():
-    symbol = "MNQ"
+    pass
     # bot = SMCBotBase(symbols=[symbol], main_tf="1h", market_type="futures")
     # ohlc = await bot.fetch_ibkr_ohlc_data(symbol, "1h", num_candles=200)
 
-    pathlib = f"/project/daily_trading/bots/smc_bot/tests/ohlc_data/mnq_1h.csv"
+    pathlib = "/project/daily_trading/bots/smc_bot/tests/ohlc_data/mnq_1h.csv"
     ohlc = load_data(
         pathlib,
         start_ts="2025-02-07 13:30:00+00:00",
@@ -358,7 +358,7 @@ def test_dashboard():
         "/daily_trading/bots/smc_bot/tests/orb_results_standard/ELITE_SETUPS/MNQ/NY/R1_FAST_REACTIVITY_MNQ_NY_SW12_I4/MNQ_NY_sw12_int4_off1_atr2.2_thr0.35_rr1.2_results.csv")
 
     html_path = Path(
-        "/daily_trading/bots/smc_bot/tests/orb_results_standard") / f"Dashboard_MNQR1_FAST_REACTIVITY_MNQ_NY_SW12_I4.html"
+        "/daily_trading/bots/smc_bot/tests/orb_results_standard") / "Dashboard_MNQR1_FAST_REACTIVITY_MNQ_NY_SW12_I4.html"
     viewer = BacktestResultsViewer(html_path=html_path)
     viewer.generate_dashboard(f)
 
@@ -467,7 +467,9 @@ async def test_ibkr():
     """
     client = IBKRClient(host=HOST, port=PORT, client_id=CLIENT_ID)
     await client.connect()
-    msg = await client.get_daily_summary()
-    logger.info(msg)
+    # msg = await client.get_daily_summary()
+    # logger.info(msg)
 
-    # ohlc = await client.get_klines("MES", "5m")
+    for s in ["MNQ", "MES", "MGC", "MBT", "SIL"]:
+        ohlc = await client.get_klines(s, "5m")
+        print(f"{s} OHLC:\n{ohlc.tail(2)}")

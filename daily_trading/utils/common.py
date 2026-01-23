@@ -16,25 +16,25 @@ def load_data(file_path, start_ts=None, end_ts=None):
         df.rename(columns={"Volume": "volume"}, inplace=True)
 
     # Convert Unix 'time' column to datetime in UTC
-    df['datetime'] = pd.to_datetime(df['time'], unit='s', utc=True)
-    df.set_index('datetime', inplace=True)
+    df["datetime"] = pd.to_datetime(df["time"], unit="s", utc=True)
+    df.set_index("datetime", inplace=True)
 
     # Keep relevant columns
-    keep_cols = ['open', 'high', 'low', 'close', 'volume']
-    if 'EMA' in df.columns:
-        keep_cols.append('EMA')
+    keep_cols = ["open", "high", "low", "close", "volume"]
+    if "EMA" in df.columns:
+        keep_cols.append("EMA")
     df = df[keep_cols]
 
     # Ensure numeric
-    df = df.apply(pd.to_numeric, errors='coerce')
-    df.dropna(subset=['open', 'high', 'low', 'close'], inplace=True)
+    df = df.apply(pd.to_numeric, errors="coerce")
+    df.dropna(subset=["open", "high", "low", "close"], inplace=True)
 
     # Filter by timeframe if provided
     if start_ts is not None:
-        start_ts = pd.Timestamp(start_ts, tz='UTC') if not isinstance(start_ts, pd.Timestamp) else start_ts
+        start_ts = pd.Timestamp(start_ts, tz="UTC") if not isinstance(start_ts, pd.Timestamp) else start_ts
         df = df[df.index >= start_ts]
     if end_ts is not None:
-        end_ts = pd.Timestamp(end_ts, tz='UTC') if not isinstance(end_ts, pd.Timestamp) else end_ts
+        end_ts = pd.Timestamp(end_ts, tz="UTC") if not isinstance(end_ts, pd.Timestamp) else end_ts
         df = df[df.index < end_ts]
 
     logger.info(f"Loaded {len(df)} candles.")
@@ -42,13 +42,7 @@ def load_data(file_path, start_ts=None, end_ts=None):
     return df
 
 
-
-def save_ohlc_to_csv(
-        df: pd.DataFrame,
-        symbol: str,
-        timeframe: str = "5m",
-        out_dir: str = "mgc"
-):
+def save_ohlc_to_csv(df: pd.DataFrame, symbol: str, timeframe: str = "5m", out_dir: str = "mgc"):
     """
     Save OHLC dataframe to CSV for backtesting.
 
@@ -73,11 +67,7 @@ def save_ohlc_to_csv(
     export_df = df.copy()
     export_df["timestamp"] = export_df.index
 
-    export_df.to_csv(
-        file_path,
-        index=False,
-        float_format="%.5f"
-    )
+    export_df.to_csv(file_path, index=False, float_format="%.5f")
 
     print(f"Saved {len(df)} candles to {file_path}")
 

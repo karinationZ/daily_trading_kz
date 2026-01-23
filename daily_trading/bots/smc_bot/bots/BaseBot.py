@@ -8,16 +8,34 @@ import pandas as pd
 import pytz
 
 from daily_trading.bots.smc_bot.bots.TelegramBot import TelegramBot
-from daily_trading.bots.smc_bot.detectors.DetectorsBase import BIAS, GET_READY_ALERT, Trend
+from daily_trading.bots.smc_bot.detectors.DetectorsBase import (
+    BIAS,
+    GET_READY_ALERT,
+    Trend,
+)
 from daily_trading.bots.smc_bot.strategy.BosFvgFillStrategy_old import SignalSummary
-from daily_trading.bots.smc_bot.strategy.StrategyBase import ExitType, SESSION_MAP, TradeAction, TradeSignal, \
-    TradeStatus
+from daily_trading.bots.smc_bot.strategy.StrategyBase import (
+    ExitType,
+    SESSION_MAP,
+    TradeAction,
+    TradeSignal,
+    TradeStatus,
+)
 from daily_trading.brokers.BitUnixClient import BitUnixClient
 from daily_trading.brokers.IBKRClient import IBKRClient
-# from daily_trading.brokers.YFinance import YFinanceClient
-from daily_trading.settings import IBKR_PORT, logger, TELEGRAM_DEBUG_CHANNEL_ID, TELEGRAM_MAIN_CHANNEL_CHAT_ID, \
-    TELEGRAM_MY_DEBUG_BOT_ID, USE_AI
-from daily_trading.technicals.AITradeAssistants.GeminiTradeAssistant import GEMINI_PRO, GeminiTradeAssistant, Ohlc
+from daily_trading.settings import (
+    IBKR_PORT,
+    logger,
+    TELEGRAM_DEBUG_CHANNEL_ID,
+    TELEGRAM_MAIN_CHANNEL_CHAT_ID,
+    TELEGRAM_MY_DEBUG_BOT_ID,
+    USE_AI,
+)
+from daily_trading.technicals.AITradeAssistants.GeminiTradeAssistant import (
+    GEMINI_PRO,
+    GeminiTradeAssistant,
+    Ohlc,
+)
 from daily_trading.technicals.DivergentAssetsFinder import BitUnixDivergentAssetsFinder
 
 
@@ -39,12 +57,21 @@ class SMCBotBase:
     1H HH/HL or LH/LL, and FVG-based entries.
     """
 
-    def __init__(self, symbols, main_tf: str = '1h',
-                 symbol_volume_threshold: float = 30000000,
-                 lookback_days: int = 1,
-                 telegram_chat_id=TELEGRAM_MAIN_CHANNEL_CHAT_ID,
-                 market_type: str = "crypto",
-                 ib_client=None):
+    # [FIX] Static Lock Manager to prevent Multiple Strategies (ORB vs BOS 1H)
+    # fighting over the same symbol simultaneously.
+    # Format: { 'MNQ': 'ORB_STRATEGY_TAG', 'SIL': '1H_BOS_TAG' }
+    ACTIVE_SYMBOL_LOCKS = {}
+
+    def __init__(
+        self,
+        symbols,
+        main_tf: str = "1h",
+        symbol_volume_threshold: float = 30000000,
+        lookback_days: int = 1,
+        telegram_chat_id=TELEGRAM_MAIN_CHANNEL_CHAT_ID,
+        market_type: str = "crypto",
+        ib_client=None,
+    ):
         """
         Initialize SMCTradingBot.
 
@@ -78,8 +105,17 @@ class SMCBotBase:
         self.timezone = pytz.UTC
         self.symbols_update_timestamp = None
         self.candle_duration = {
-            "1m": 1, "3m": 3, "5m": 5, "15m": 15, "30m": 30,
-            "1h": 60, "2h": 120, "4h": 240, "6h": 360, "12h": 720, "1d": 1440
+            "1m": 1,
+            "3m": 3,
+            "5m": 5,
+            "15m": 15,
+            "30m": 30,
+            "1h": 60,
+            "2h": 120,
+            "4h": 240,
+            "6h": 360,
+            "12h": 720,
+            "1d": 1440,
         }
         self.lookback_candles = self.lookback_days_converter(lookback_days)
         logger.info(f"SMCTradingBot initialized with {len(symbols)} symbols, {main_tf} TF.")
@@ -95,16 +131,24 @@ class SMCBotBase:
             dict: Lookback candles for lower_tf, higher_tf, and 15m.
         """
         timeframe_minutes = {
-            "1m": 1, "3m": 3, "5m": 5, "15m": 15, "30m": 30, "1h": 60, "2h": 120,
-            "4h": 240, "6h": 360, "12h": 720, "1d": 1440
+            "1m": 1,
+            "3m": 3,
+            "5m": 5,
+            "15m": 15,
+            "30m": 30,
+            "1h": 60,
+            "2h": 120,
+            "4h": 240,
+            "6h": 360,
+            "12h": 720,
+            "1d": 1440,
         }
         lower_minutes = timeframe_minutes.get(self.main_tf, 60)
         lookback = {
             self.main_tf: int(num_days * 24 * 60 / lower_minutes),
-            "15m": int(num_days * 24 * 60 / 15)  # Added for 15m timeframe
+            "15m": int(num_days * 24 * 60 / 15),  # Added for 15m timeframe
         }
-        logger.info(f"Lookback: {self.main_tf}={lookback[self.main_tf]} candles, "
-                    f"15m={lookback['15m']} candles")
+        logger.info(f"Lookback: {self.main_tf}={lookback[self.main_tf]} candles, " f"15m={lookback['15m']} candles")
         return lookback
 
     @staticmethod
@@ -116,10 +160,23 @@ class SMCBotBase:
         if strategy.trade_status != TradeStatus.NONE:
             return
 
+        # 1. Filter orders strictly belonging to THIS strategy
+        my_orders = [o for o in open_orders if o.order.orderRef == strategy.ext_tag]
+
         # 2. Check for ACTIVE POSITIONS
-        my_pos = next((p for p in current_positions if p.contract.symbol == strategy.symbol and p.position != 0), None)
+        my_pos = next(
+            (p for p in current_positions if p.contract.symbol == strategy.symbol and p.position != 0),
+            None,
+        )
 
         if my_pos:
+            # We found a position on the symbol. Is it ours?
+            # We assume it is ours ONLY if we have matching SL/TP orders with our tag.
+            if not my_orders:
+                # We have a position, but NO orders with our tag.
+                # This belongs to another strategy (e.g., ORB vs BOS 1H) or is a manual trade.
+                # Do NOT adopt it.
+                return
             # We have a live trade. Reconstruct it.
             direction = BIAS.LONG if my_pos.position > 0 else BIAS.SHORT
             size = abs(int(my_pos.position))
@@ -158,9 +215,13 @@ class SMCBotBase:
                 tp=tp_price,
                 size=size,
                 timestamp=pd.Timestamp.now(tz=strategy.timezone),
-                metadata={"zone_id": "RECOVERED"}  # We lose the original Zone ID, but that's acceptable
+                metadata={"zone_id": "RECOVERED"},  # We lose the original Zone ID, but that's acceptable
             )
             strategy.trade_status = TradeStatus.FILLED
+
+            # Re-acquire Lock on recovery
+            SMCBotBase.ACTIVE_SYMBOL_LOCKS[strategy.symbol] = strategy.ext_tag
+
             strategy.log.info(f"♻️ RESTORED STATE: FILLED {direction.name} @ {avg_price} (SL:{sl_price} TP:{tp_price})")
             return
 
@@ -169,10 +230,13 @@ class SMCBotBase:
 
         # Find the Parent Entry Order (Limit order with no parentId usually)
         # Note: In a bracket, the parent has parentId=0 (or empty)
-        parent = next((t for t in my_orders if t.order.parentId == 0 and t.order.orderType in ['LMT', 'STP LMT']), None)
+        parent = next(
+            (t for t in my_orders if t.order.parentId == 0 and t.order.orderType in ["LMT", "STP LMT"]),
+            None,
+        )
 
         if parent:
-            direction = BIAS.LONG if parent.order.action == 'BUY' else BIAS.SHORT
+            direction = BIAS.LONG if parent.order.action == "BUY" else BIAS.SHORT
             entry_price = parent.order.lmtPrice
             size = int(parent.order.totalQuantity)
 
@@ -202,13 +266,23 @@ class SMCBotBase:
                 tp=tp_price,
                 size=size,
                 timestamp=pd.Timestamp.now(tz=strategy.timezone),
-                metadata={"zone_id": "RECOVERED"}
+                metadata={"zone_id": "RECOVERED"},
             )
             strategy.trade_status = TradeStatus.PENDING
+            # Re-acquire Lock on recovery
+            SMCBotBase.ACTIVE_SYMBOL_LOCKS[strategy.symbol] = strategy.ext_tag
             strategy.log.info(f"♻️ RESTORED STATE: PENDING {direction.name} @ {entry_price}")
 
     async def run_strategy_cycle(self, strategy, *args, **kwargs):
         try:
+            symbol = strategy.symbol
+            # Check Locking to prevent collisions
+            current_lock = self.ACTIVE_SYMBOL_LOCKS.get(symbol)
+            if current_lock and current_lock != strategy.ext_tag:
+                # Symbol is busy with another strategy (e.g., ORB has it, BOS 1H can't touch it)
+                # Fail silently or log debug to avoid spam
+                logger.info(f"Skipping {symbol}, busy with {current_lock}")
+                return
             # -----------------------------------------------------------------
             # 1. ANALYSIS & SIGNAL GENERATION
             # -----------------------------------------------------------------
@@ -223,7 +297,23 @@ class SMCBotBase:
             # -----------------------------------------------------------------
             # 2. EXECUTION (The "Doer")
             # -----------------------------------------------------------------
-            await self.handle_execution(strategy, analysis)
+            execution_success = False
+            try:
+                # This will raise Exception if order placement fails (e.g. Insufficient Funds)
+                execution_success = await self.handle_execution(strategy, analysis)
+                if not execution_success:
+                    return
+
+                # Manage Locks based on action
+                if sig.action == TradeAction.ENTER:
+                    self.ACTIVE_SYMBOL_LOCKS[symbol] = strategy.ext_tag
+                elif sig.action in [TradeAction.EXIT, TradeAction.CANCEL]:
+                    self.ACTIVE_SYMBOL_LOCKS.pop(symbol, None)
+
+            except Exception as exe_err:
+                strategy.log.error(f"Execution Aborted: {exe_err}")
+                # Do NOT proceed to reporting if execution failed
+                return
 
             # -----------------------------------------------------------------
             # 3. POST-EXECUTION WAIT & MONITOR (The "Safety Net")
@@ -235,31 +325,36 @@ class SMCBotBase:
 
                 if exit_type == ExitType.SL_TP_HIT:
                     # Passive Exit: Wait long for IBKR API to update Position
-                    await asyncio.sleep(10.0)
+                    await asyncio.sleep(15.0)
                 else:
                     # Force Exit: Wait short for Market Order fill
-                    await asyncio.sleep(3.0)
+                    await asyncio.sleep(5.0)
 
                 # --- B. CHECK FLATNESS (Pass 1) ---
                 is_flat, pos_size = await self.ib_client.check_flatness(sig.symbol)
 
                 # --- C. RETRY LOGIC (Pass 2) ---
                 # If not flat and it was a Passive exit, force refresh and try again
-                if not is_flat and exit_type == ExitType.SL_TP_HIT:
-                    await self.ib_client.get_active_positions()  # Request update from Server
-                    await asyncio.sleep(2.0)
-                    is_flat, pos_size = await self.ib_client.check_flatness(sig.symbol)
+                for _ in range(3):
+                    if not is_flat and exit_type == ExitType.SL_TP_HIT:
+                        logger.warning(f"⚠️ Exit (SL_TP_HIT) - Flatness Check Failed for {sig.symbol}. Retrying...")
+                        await asyncio.sleep(3.0)
+                        await self.ib_client.get_active_positions()  # Request update from Server
+                        is_flat, pos_size = await self.ib_client.check_flatness(sig.symbol)
+                        if is_flat:
+                            break
 
                 # --- D. FINAL DECISION ---
                 if not is_flat:
-                    # 🚨 PANIC: Still holding position after wait + retry
-                    warn_msg = f"🚨 <b>CRITICAL FAILURE:</b> Position {pos_size} stuck after EXIT signal. Force Closing."
-                    logger.error(warn_msg)
-                    await self.telegram_bot.send_message(warn_msg)
-
-                    # Kill everything
-                    await self.ib_client.cancel_all_orders(order_ref=strategy.ext_tag)
-                    await self.ib_client.close_positions_smartly(sig.symbol)
+                    if abs(pos_size) > 0:
+                        warn_msg = f"🚨 <b>CRITICAL FAILURE:</b> Position {pos_size} " f"stuck after EXIT signal. Force Closing."
+                        logger.error(warn_msg)
+                        await self.telegram_bot.send_message(warn_msg)
+                        await self.ib_client.cancel_all_orders(order_ref=strategy.ext_tag)
+                        await self.ib_client.close_positions_smartly(sig.symbol)
+                    else:
+                        # False alarm
+                        await self.ib_client.cancel_all_orders(order_ref=strategy.ext_tag)
 
                 else:
                     # ✅ SUCCESS: We are flat (either on Pass 1 or Pass 2).
@@ -273,7 +368,13 @@ class SMCBotBase:
             # -----------------------------------------------------------------
             # 4. REPORTING (Telemetry)
             # -----------------------------------------------------------------
-            if sig.action not in [TradeAction.ENTER, TradeAction.EXIT, TradeAction.CANCEL]:
+
+            # ADD HERE TELEGRAM LOG that TRADE has been filled: if strategy.trade_status = TradeStatus.FILLED
+            if sig.action not in [
+                TradeAction.ENTER,
+                TradeAction.EXIT,
+                TradeAction.CANCEL,
+            ]:
                 return
 
             real_fill_price = 0.0
@@ -286,7 +387,7 @@ class SMCBotBase:
 
                 # Check for Slippage (Difference between Signal Price and Actual Fill)
                 # Note: sig.price might be the TP target, but real_fill_price includes slippage.
-                entry_ref = sig.metadata.get("entry_price", 0)
+                sig.metadata.get("entry_price", 0)
                 target_ref = sig.price
 
                 # Only calc slippage if we have valid numbers and it wasn't a huge jump (data error)
@@ -299,16 +400,18 @@ class SMCBotBase:
             # --- B. ENTRY REPORTING (Restored) ---
             elif sig.action == TradeAction.ENTER:
                 # Verify that the Broker actually created the Bracket Orders correctly
-                bracket = await self.ib_client.get_active_bracket_levels(
-                    sig.symbol, strategy.ext_tag, sig.direction.name
-                )
+                bracket = await self.ib_client.get_active_bracket_levels(sig.symbol, strategy.ext_tag, sig.direction.name)
 
-                if not bracket['found']:
-                    # This means the order might have failed or hasn't appeared yet
-                    debug_note = "\n⚠️ <b>Warning:</b> Bracket orders not seen in API yet."
+                if not bracket["found"]:
+                    # Retry once after short wait
+                    await asyncio.sleep(3.0)
+                    bracket = await self.ib_client.get_active_bracket_levels(sig.symbol, strategy.ext_tag, sig.direction.name)
+                    if not bracket["found"]:
+                        # This means the order might have failed or hasn't appeared yet
+                        debug_note = "\n⚠️ <b>Warning:</b> Bracket orders not seen in API yet."
                 else:
                     # Verify SL matches strategy logic
-                    if abs(bracket['sl'] - sig.sl) > 0.5:  # Allow small float diff
+                    if abs(bracket["sl"] - sig.sl) > 0.5:  # Allow small float diff
                         debug_note = f"\n⚠️ <b>SL Divergence:</b> Strat {sig.sl} vs Broker {bracket['sl']}"
 
             # --- C. BUILD TELEGRAM MESSAGE ---
@@ -316,13 +419,13 @@ class SMCBotBase:
             # Title Generation
             title = sig.action.name
             if sig.action == TradeAction.EXIT:
-                res = getattr(sig, 'trade_result', 'N/A')
+                res = getattr(sig, "trade_result", "N/A")
                 icon = "🟢" if res == "WIN" else "🔴"
                 title = f"{icon} EXIT ({res})"
             elif sig.action == TradeAction.ENTER:
-                title = f"🚀 ENTER"
+                title = "🚀 ENTER"
             elif sig.action == TradeAction.CANCEL:
-                title = f"🗑️ CANCEL"
+                title = "🗑️ CANCEL"
 
             # Price Display (Use Real Fill for Exits if available)
             display_price = real_fill_price if (sig.action == TradeAction.EXIT and real_fill_price > 0) else sig.price
@@ -362,12 +465,12 @@ class SMCBotBase:
             if debug_note:
                 lines.append(debug_note)
 
-            time_str = sig.timestamp.strftime('%H:%M:%S')
+            time_str = sig.timestamp.strftime("%H:%M:%S")
             lines.append(f"<i>{time_str} UTC</i>")
 
             # Send Message
             # Note: getattr(sig, 'fig', None) checks if a chart image was generated
-            await self.telegram_bot.send_message("\n".join(lines), getattr(sig, 'fig', None))
+            await self.telegram_bot.send_message("\n".join(lines), getattr(sig, "fig", None))
 
             # -----------------------------------------------------------------
             # 5. DAILY SUMMARY (Optional)
@@ -382,11 +485,14 @@ class SMCBotBase:
                 except Exception:
                     pass
 
-        except Exception as e:
+        except Exception:
             logger.error(f"Strategy Cycle Error: {traceback.format_exc()}")
 
-    async def handle_execution(self, strategy, analysis: SignalSummary):
-        if not analysis or not analysis.trade_signal: return
+    async def handle_execution(self, strategy, analysis: SignalSummary) -> bool:
+
+        if not analysis or not analysis.trade_signal:
+            return False
+
         sig = analysis.trade_signal
         symbol = strategy.symbol
 
@@ -400,9 +506,30 @@ class SMCBotBase:
                 direction = "LONG" if sig.direction == BIAS.LONG else "SHORT"
                 # Place Parent + Bracket (OCA)
                 await self.ib_client.place_bracket_order(
-                    symbol=symbol, quantity=sig.size, entry=sig.price,
-                    sl=sig.sl, tp=sig.tp, direction=direction, order_ref=strategy.ext_tag
+                    symbol=symbol,
+                    quantity=sig.size,
+                    entry=sig.price,
+                    sl=sig.sl,
+                    tp=sig.tp,
+                    direction=direction,
+                    order_ref=strategy.ext_tag,
                 )
+                # Verification Step:
+                # Wait briefly to confirm the order wasn't rejected immediately (e.g. Insufficient Funds)
+                await asyncio.sleep(2.0)
+
+                # We check active orders for this specific tag
+                orders = await self.ib_client.get_open_orders()
+                my_active_orders = [o for o in orders if o.order.orderRef == strategy.ext_tag]
+
+                if not my_active_orders:
+                    # CRITICAL: Order placed but not found 2 seconds later.
+                    # It was likely rejected/cancelled immediately.
+                    # IBKRClient usually logs errors, but we must stop the flow here.
+                    err_msg = f" Order placed for {symbol} but not found in Active list. Likely Rejected."
+                    strategy.log.error(err_msg)
+                    await self.telegram_bot.send_message(f"⚠️ <b>ORDER FAILED</b> | {strategy.log_tag}" f"\nReason: {err_msg}")
+                    return False
 
             # --- EXIT ---
             elif sig.action == TradeAction.EXIT:
@@ -410,7 +537,7 @@ class SMCBotBase:
                 if exit_type == ExitType.MARKET_FORCE:
                     # CASE A: TIME CUTOFF
                     # 1. Cancel everything (Limit/SL/TP) so they don't trigger while we market close
-                    strategy.log.warning(f"⏰ TIME CUTOFF - FORCING EXIT")
+                    strategy.log.warning("⏰ TIME CUTOFF - FORCING EXIT")
                     await self.ib_client.cancel_all_orders(order_ref=strategy.ext_tag)
                     # 2. Dump position at Market
                     await self.ib_client.close_positions_smartly(symbol)
@@ -420,15 +547,18 @@ class SMCBotBase:
                     # DO NOTHING. Trust the IBKR Bracket to execute.
                     # If we interfere, we might create orphan orders.
                     strategy.log.info(f"👀 PASSIVE EXIT DETECTED ({sig.trade_result}). Monitor Only.")
-                    pass
 
             # --- CANCEL (Pending Entry) ---
             elif sig.action == TradeAction.CANCEL:
-                strategy.log.info(f"🚫 CANCEL PENDING ENTRY")
+                strategy.log.info("🚫 CANCEL PENDING ENTRY")
                 await self.ib_client.cancel_all_orders(order_ref=strategy.ext_tag)
+
+            return True
 
         except Exception as e:
             strategy.log.error(f"EXECUTION FAILURE: {e}")
+            await self.telegram_bot.send_message(f"🚨 <b>EXECUTION ERROR</b> | {strategy.log_tag}\n{str(e)}")
+            return False
 
     @staticmethod
     async def sleep_until_next_interval(interval_minutes: int = 5):
@@ -463,12 +593,14 @@ class SMCBotBase:
         start_time = now.replace(
             hour=s_info.get("start_hour", 9),
             minute=s_info.get("start_minute", 0),
-            second=0, microsecond=0
+            second=0,
+            microsecond=0,
         )
         end_time = now.replace(
             hour=s_info.get("end_hour", 16),
             minute=s_info.get("end_minute", 0),
-            second=0, microsecond=0
+            second=0,
+            microsecond=0,
         )
 
         # 4. Apply Buffers
@@ -489,19 +621,15 @@ class SMCBotBase:
         # Time to sleep (in seconds)
         sleep_duration = (next_candle - now).total_seconds()
 
-        logger.info(
-            f"Sleeping for {int(sleep_duration)} seconds ({sleep_duration / 60:.2f} minutes) until {next_candle}")
+        logger.info(f"Sleeping for {int(sleep_duration)} seconds ({sleep_duration / 60:.2f} minutes) until {next_candle}")
         await asyncio.sleep(sleep_duration)
 
     async def send_final_message(self, analysis: SignalSummary, current_candle_time, symbol, title):
         events = [e for e in analysis.recent_smc_events if e is not None]
-        events_str = '\n• '.join([event[0] if isinstance(event, list) else event for event in events])
+        events_str = "\n• ".join([event[0] if isinstance(event, list) else event for event in events])
 
         action = f"Go {analysis.direction}." if analysis.direction != Trend.NEUTRAL.name else "Сидим в засаде"
-        msg = (f"{title} - {symbol} {current_candle_time}\n"
-               f"Action: {action}\n"
-               f"Trend: {analysis.trend}\n"
-               f"SMC Events:\n• {events_str}")
+        msg = f"{title} - {symbol} {current_candle_time}\n" f"Action: {action}\n" f"Trend: {analysis.trend}\n" f"SMC Events:\n• {events_str}"
         logger.info(msg)
         is_success = await self.telegram_bot.send_message(msg, analysis.fig)
 
@@ -546,7 +674,7 @@ class SMCBotBase:
                     start_time=start_time,
                     end_time=current_end,
                     limit=fetch_limit,
-                    kline_type="LAST_PRICE"
+                    kline_type="LAST_PRICE",
                 )
 
                 api_calls += 1
@@ -596,13 +724,13 @@ class SMCBotBase:
         kline_data = kline_data[num_candles:]
         if not kline_data.empty:
             # 1. Drop Duplicates based on Index
-            kline_data = kline_data[~kline_data.index.duplicated(keep='last')]
+            kline_data = kline_data[~kline_data.index.duplicated(keep="last")]
 
             # 2. Sort by Index (Chronological)
             kline_data.sort_index(inplace=True)
 
             # 3. Add 'time' column from Index
-            kline_data['time'] = kline_data.index
+            kline_data["time"] = kline_data.index
         else:
             logger.error("IBKR returned empty OHLC data!")
         return kline_data
@@ -623,10 +751,7 @@ class SMCBotBase:
         """
         logger.info("Updating high-volume symbols")
         try:
-            results = await self.asset_finder.find_divergent_assets(
-                volume_threshold=7000000,
-                lookback_hours=3
-            )
+            results = await self.asset_finder.find_divergent_assets(volume_threshold=7000000, lookback_hours=3)
             self.symbols = [asset["symbol"] for asset in results["non_correlated"]]
             self.symbols.extend(self.default_symbols)
 
@@ -641,27 +766,29 @@ class SMCBotBase:
             logger.error(f"Failed to update symbols: {e}")
             raise RuntimeError(f"Failed to update symbols: {e}")
 
-    async def generate_signal(self, symbol: str, analysis: SignalSummary,
-                              ohlc_1d: pd.DataFrame,
-                              ohlc_4h: pd.DataFrame,
-                              ohlc_1h: pd.DataFrame,
-                              ohlc_15m: pd.DataFrame, send_non_signal=True):
+    async def generate_signal(
+        self,
+        symbol: str,
+        analysis: SignalSummary,
+        ohlc_1d: pd.DataFrame,
+        ohlc_4h: pd.DataFrame,
+        ohlc_1h: pd.DataFrame,
+        ohlc_15m: pd.DataFrame,
+        send_non_signal=True,
+    ):
         """Generate SMC signals."""
         try:
-            last_candle = ohlc_15m.index.max().tz_convert('US/Pacific').strftime('%Y-%m-%d %H:%M')
+            last_candle = ohlc_15m.index.max().tz_convert("US/Pacific").strftime("%Y-%m-%d %H:%M")
 
             if analysis.direction in [BIAS.LONG.value, BIAS.SHORT.value]:
                 # AI Request
                 ohlc = Ohlc(ohlc_1d, ohlc_4h, ohlc_1h, ohlc_15m)
-                ai_agent = GeminiTradeAssistant(symbol=symbol,
-                                                model=GEMINI_PRO,
-                                                ohlc=ohlc,
-                                                debug=False)
+                ai_agent = GeminiTradeAssistant(symbol=symbol, model=GEMINI_PRO, ohlc=ohlc, debug=False)
                 within_ai_hours = ai_agent.within_ai_request_hours(start_hour=8, end_hour=21)
                 formatted_ai_message = None
                 if within_ai_hours and USE_AI.lower() == "true":
                     formatted_ai_message, raw_message = await ai_agent.analyze_asset_trade_data()
-                    if raw_message['entry']:
+                    if raw_message["entry"]:
                         fig = ai_agent.update_plot_with_entry_data(analysis.fig, raw_message)
                         analysis.fig = fig
                 is_success = await self.send_final_message(analysis, last_candle, symbol, title=analysis.title)
@@ -674,11 +801,8 @@ class SMCBotBase:
 
             else:
                 events = [e for e in analysis.recent_smc_events if e is not None]
-                events_str = '\n • '.join([event[0] if isinstance(event, list) else event for event in events])
-                msg = f"{symbol}\n{self.strategy_name}\n" \
-                      f"Action: Сидим в засаде\n" \
-                      f"Trend: {analysis.trend}\n" \
-                      f"SMC Events:\n • {events_str}\n"
+                events_str = "\n • ".join([event[0] if isinstance(event, list) else event for event in events])
+                msg = f"{symbol}\n{self.strategy_name}\n" f"Action: Сидим в засаде\n" f"Trend: {analysis.trend}\n" f"SMC Events:\n • {events_str}\n"
                 logger.info(msg)
                 if send_non_signal:
                     await self.telegram_bot_debug.send_message(msg, analysis.fig)

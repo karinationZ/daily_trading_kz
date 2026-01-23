@@ -453,14 +453,30 @@ import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 
 # Import your constants
-from daily_trading.bots.smc_bot.detectors.DetectorsBase import BEARISH, BULLISH, DetectorsBase
+from daily_trading.bots.smc_bot.detectors.DetectorsBase import (
+    BEARISH,
+    BULLISH,
+    DetectorsBase,
+)
 from daily_trading.settings import logger
 
 
 class FvgDetector(DetectorsBase):
-    def __init__(self, main_tf, pivot_period=5, left_bars=5, right_bars=1, show_bull=True, show_bear=True,
-                 volume_thresh=10, fvg_threshold=0.5, mode='Present', back=180,
-                 show_labels=False, show_fulfilled=True):
+    def __init__(
+        self,
+        main_tf,
+        pivot_period=5,
+        left_bars=5,
+        right_bars=1,
+        show_bull=True,
+        show_bear=True,
+        volume_thresh=10,
+        fvg_threshold=0.5,
+        mode="Present",
+        back=180,
+        show_labels=False,
+        show_fulfilled=True,
+    ):
         super().__init__(main_tf=main_tf, left_bars=left_bars, right_bars=right_bars)
         self.pivot_period = pivot_period
         self.show_bull = show_bull
@@ -479,16 +495,16 @@ class FvgDetector(DetectorsBase):
             return {"fig": None, "signals": [], "alert_conditions": {}}
 
         # Ensure index is datetime for plotting/logic
-        if ohlc.index.dtype == 'int64':  # Handling numeric index if necessary
+        if ohlc.index.dtype == "int64":  # Handling numeric index if necessary
             times = ohlc.index
         else:
             times = ohlc.index
 
         # 1. PRE-CALCULATE COLUMNS (Vectorized)
-        high = ohlc['high'].values
-        low = ohlc['low'].values
-        close = ohlc['close'].values
-        volume = ohlc['volume'].values
+        high = ohlc["high"].values
+        low = ohlc["low"].values
+        close = ohlc["close"].values
+        volume = ohlc["volume"].values
 
         # Calculate ATR (Range) for threshold - vectorized
         # Simple Approx ATR: High - Low
@@ -538,7 +554,7 @@ class FvgDetector(DetectorsBase):
 
                 # Check Mitigation (Numpy Slicing - Fast)
                 # Look at all lows AFTER this candle
-                future_lows = low[real_idx + 1:]
+                future_lows = low[real_idx + 1 :]
 
                 # Find if any future low <= bottom
                 # np.argmax returns index of first True, or 0 if none
@@ -554,17 +570,19 @@ class FvgDetector(DetectorsBase):
                     abs_mit_idx = real_idx + 1 + first_mit_idx
                     mit_time = times[abs_mit_idx]
 
-                signals.append({
-                    "type": "Major Bullish FVG",
-                    "bias": BULLISH,
-                    "top": top,
-                    "bottom": bottom,
-                    "time": curr_time[idx],
-                    "index": real_idx,
-                    "volume": curr_vol[idx],
-                    "mitigated": mitigated,
-                    "mitigated_time": mit_time
-                })
+                signals.append(
+                    {
+                        "type": "Major Bullish FVG",
+                        "bias": BULLISH,
+                        "top": top,
+                        "bottom": bottom,
+                        "time": curr_time[idx],
+                        "index": real_idx,
+                        "volume": curr_vol[idx],
+                        "mitigated": mitigated,
+                        "mitigated_time": mit_time,
+                    }
+                )
 
         # --- BEARISH LOGIC ---
         if self.show_bear:
@@ -585,7 +603,7 @@ class FvgDetector(DetectorsBase):
 
                 # Check Mitigation
                 # Look at all highs AFTER this candle
-                future_highs = high[real_idx + 1:]
+                future_highs = high[real_idx + 1 :]
 
                 mitigation_mask = future_highs >= top
                 mitigated = False
@@ -597,27 +615,29 @@ class FvgDetector(DetectorsBase):
                     abs_mit_idx = real_idx + 1 + first_mit_idx
                     mit_time = times[abs_mit_idx]
 
-                signals.append({
-                    "type": "Major Bearish FVG",
-                    "bias": BEARISH,
-                    "top": top,
-                    "bottom": bottom,
-                    "time": curr_time[idx],
-                    "index": real_idx,
-                    "volume": curr_vol[idx],
-                    "mitigated": mitigated,
-                    "mitigated_time": mit_time
-                })
+                signals.append(
+                    {
+                        "type": "Major Bearish FVG",
+                        "bias": BEARISH,
+                        "top": top,
+                        "bottom": bottom,
+                        "time": curr_time[idx],
+                        "index": real_idx,
+                        "volume": curr_vol[idx],
+                        "mitigated": mitigated,
+                        "mitigated_time": mit_time,
+                    }
+                )
 
         # Sort signals by time
-        signals.sort(key=lambda x: x['time'], reverse=True)
+        signals.sort(key=lambda x: x["time"], reverse=True)
 
         # --- ALERTS & PLOTTING ---
         alert_conditions = {
             "BULLISH_FVG": [s for s in signals if s["type"] == "Major Bullish FVG" and not s["mitigated"]],
             "BEARISH_FVG": [s for s in signals if s["type"] == "Major Bearish FVG" and not s["mitigated"]],
             "BULLISH_FVG_FULFILLED": [s for s in signals if s["type"] == "Major Bullish FVG" and s["mitigated"]],
-            "BEARISH_FVG_FULFILLED": [s for s in signals if s["type"] == "Major Bearish FVG" and s["mitigated"]]
+            "BEARISH_FVG_FULFILLED": [s for s in signals if s["type"] == "Major Bearish FVG" and s["mitigated"]],
         }
 
         fig = None
@@ -651,62 +671,78 @@ class FvgDetector(DetectorsBase):
         ohlc = ohlc.tail(self.plot_tail)
 
         # Filter pivots to ensure timestamps are within ohlc.index
-        pivot_high_points = [p for p in pivot_high_points if p['time'] in ohlc.index]
-        pivot_low_points = [p for p in pivot_low_points if p['time'] in ohlc.index]
-        symbol = ohlc['symbol'].iloc[0] if 'symbol' in ohlc.columns else 'Unknown'
+        pivot_high_points = [p for p in pivot_high_points if p["time"] in ohlc.index]
+        pivot_low_points = [p for p in pivot_low_points if p["time"] in ohlc.index]
+        symbol = ohlc["symbol"].iloc[0] if "symbol" in ohlc.columns else "Unknown"
 
-        fig = make_subplots(rows=1, cols=1, subplot_titles=[f"{symbol} | Price Chart with Liquidity Voids (FVG)"])
+        fig = make_subplots(
+            rows=1,
+            cols=1,
+            subplot_titles=[f"{symbol} | Price Chart with Liquidity Voids (FVG)"],
+        )
 
         # Plot candlesticks
-        fig.add_trace(go.Candlestick(
-            x=ohlc.index,
-            open=ohlc['open'],
-            high=ohlc['high'],
-            low=ohlc['low'],
-            close=ohlc['close'],
-            name="OHLC"
-        ), row=1, col=1)
+        fig.add_trace(
+            go.Candlestick(
+                x=ohlc.index,
+                open=ohlc["open"],
+                high=ohlc["high"],
+                low=ohlc["low"],
+                close=ohlc["close"],
+                name="OHLC",
+            ),
+            row=1,
+            col=1,
+        )
 
         # Plot pivot highs
         for pivot in pivot_high_points:
-            fig.add_trace(go.Scatter(
-                x=[pivot['time']],
-                y=[pivot['level'] * 1.001],
-                mode='markers+text',
-                text=[pivot['type']],
-                textposition='top center',
-                marker=dict(symbol='triangle-down', size=8, color='#8E2043'),
-                name=pivot['type'],
-                showlegend=False
-            ), row=1, col=1)
+            fig.add_trace(
+                go.Scatter(
+                    x=[pivot["time"]],
+                    y=[pivot["level"] * 1.001],
+                    mode="markers+text",
+                    text=[pivot["type"]],
+                    textposition="top center",
+                    marker=dict(symbol="triangle-down", size=8, color="#8E2043"),
+                    name=pivot["type"],
+                    showlegend=False,
+                ),
+                row=1,
+                col=1,
+            )
 
         # Plot pivot lows
         for pivot in pivot_low_points:
-            fig.add_trace(go.Scatter(
-                x=[pivot['time']],
-                y=[pivot['level'] * 0.999],
-                mode='markers+text',
-                text=[pivot['type']],
-                textposition='bottom center',
-                marker=dict(symbol='triangle-up', size=8, color='#027C5E'),
-                name=pivot['type'],
-                showlegend=False
-            ), row=1, col=1)
+            fig.add_trace(
+                go.Scatter(
+                    x=[pivot["time"]],
+                    y=[pivot["level"] * 0.999],
+                    mode="markers+text",
+                    text=[pivot["type"]],
+                    textposition="bottom center",
+                    marker=dict(symbol="triangle-up", size=8, color="#027C5E"),
+                    name=pivot["type"],
+                    showlegend=False,
+                ),
+                row=1,
+                col=1,
+            )
 
         # Plot FVG rectangles
         for signal in signals:
             if (signal["bias"] == BULLISH and self.show_bull) or (signal["bias"] == BEARISH and self.show_bear):
                 if not signal["mitigated"] or self.show_fulfilled:
-                    color = 'rgba(0, 255, 0, 0.5)' if signal["bias"] == BULLISH else 'rgba(255, 0, 0, 0.5)'
+                    color = "rgba(0, 255, 0, 0.5)" if signal["bias"] == BULLISH else "rgba(255, 0, 0, 0.5)"
                     if signal["mitigated"]:
-                        color = 'rgba(169, 169, 169, 0.6)'
+                        color = "rgba(169, 169, 169, 0.6)"
                     end_time = signal["mitigated_time"] if signal["mitigated"] else ohlc.index[-1]
                     if signal["mitigated"] and end_time not in ohlc.index:
-                        end_time = ohlc.index[ohlc.index.get_indexer([end_time], method='nearest')[0]]
-                        logger.debug(
-                            f"Adjusted end_time to nearest OHLC index: {end_time} for FVG at {signal['time']}")
+                        end_time = ohlc.index[ohlc.index.get_indexer([end_time], method="nearest")[0]]
+                        logger.debug(f"Adjusted end_time to nearest OHLC index: {end_time} for FVG at {signal['time']}")
                     logger.debug(
-                        f"Adding FVG rectangle: x0={signal['time']}, x1={end_time}, y0={signal['bottom']:.6f}, y1={signal['top']:.6f}, color={color}")
+                        f"Adding FVG rectangle: x0={signal['time']}, x1={end_time}, y0={signal['bottom']:.6f}, y1={signal['top']:.6f}, color={color}"
+                    )
                     fig.add_shape(
                         type="rect",
                         x0=signal["time"],
@@ -714,42 +750,51 @@ class FvgDetector(DetectorsBase):
                         y0=signal["bottom"],
                         y1=signal["top"],
                         fillcolor=color,
-                        line=dict(width=1, color=color.replace('0.5', '0.8').replace('0.6', '0.8')),
+                        line=dict(
+                            width=1,
+                            color=color.replace("0.5", "0.8").replace("0.6", "0.8"),
+                        ),
                         layer="below",
                         opacity=0.5 if not signal["mitigated"] else 0.6,
-                        name=signal["type"]
+                        name=signal["type"],
                     )
                     if self.show_labels:
-                        text_position = 'bottom center' if signal["bias"] == BULLISH else 'top center'
-                        fig.add_trace(go.Scatter(
-                            x=[signal["time"]],
-                            y=[(signal["top"] + signal["bottom"]) / 2],
-                            mode='text',
-                            text=["Liquidity Void"],
-                            textposition=text_position,
-                            textfont=dict(color=color.replace('0.5', '1.0').replace('0.6', '1.0'), size=12),
-                            showlegend=False
-                        ))
+                        text_position = "bottom center" if signal["bias"] == BULLISH else "top center"
+                        fig.add_trace(
+                            go.Scatter(
+                                x=[signal["time"]],
+                                y=[(signal["top"] + signal["bottom"]) / 2],
+                                mode="text",
+                                text=["Liquidity Void"],
+                                textposition=text_position,
+                                textfont=dict(
+                                    color=color.replace("0.5", "1.0").replace("0.6", "1.0"),
+                                    size=12,
+                                ),
+                                showlegend=False,
+                            )
+                        )
 
         # Update layout
-        last_candle = ohlc.index.max().tz_convert('US/Pacific').strftime('%Y-%m-%d %H:%M')
+        last_candle = ohlc.index.max().tz_convert("US/Pacific").strftime("%Y-%m-%d %H:%M")
         candle_time_str = f"Last Candle: {last_candle} (PT)"
         fig.update_layout(
             title=f"{symbol} | FVG | {candle_time_str}",
             xaxis_rangeslider_visible=False,
             showlegend=True,
             yaxis=dict(title="Price"),
-            xaxis=dict(range=[ohlc.index[0], ohlc.index[-1] + pd.Timedelta(minutes=60)])
+            xaxis=dict(range=[ohlc.index[0], ohlc.index[-1] + pd.Timedelta(minutes=60)]),
             # Extend range by 15 minutes
         )
         fig.update_xaxes(
             title_text="Time",
-            type='date',  # Ensure datetime handling
+            type="date",  # Ensure datetime handling
             tickformat="%H:%M",  # Show only time (HH:MM)
-            tickmode='linear',  # Enforce strict dtick intervals
+            tickmode="linear",  # Enforce strict dtick intervals
             dtick=7200000,  # 2-hour intervals
             tickangle=45,  # Rotate for readability
-            row=1, col=1
+            row=1,
+            col=1,
         )
         logger.debug("Plotly figure generated successfully")
         return fig

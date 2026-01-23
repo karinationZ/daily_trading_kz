@@ -5,9 +5,14 @@ import pandas as pd
 
 from daily_trading.bots.smc_bot.detectors.BosChochDetector import BosChochDetector
 from daily_trading.bots.smc_bot.detectors.HighLowDetector import HighLowDetector
-from daily_trading.bots.smc_bot.detectors.OrderBlocksDetectorOld import OrderBlocksDetectorOld
+from daily_trading.bots.smc_bot.detectors.OrderBlocksDetectorOld import (
+    OrderBlocksDetectorOld,
+)
 from daily_trading.bots.smc_bot.detectors.DetectorsBase import BIAS, Trend
-from daily_trading.bots.smc_bot.strategy.StrategyBase import SignalSummary, DetectorsBase
+from daily_trading.bots.smc_bot.strategy.StrategyBase import (
+    SignalSummary,
+    DetectorsBase,
+)
 from daily_trading.settings import logger
 
 
@@ -23,7 +28,7 @@ class BosOrderBlockTapStrategy(DetectorsBase):
     Executed every 15 minutes.
     """
 
-    def __init__(self, main_tf: str = '1h', debug: bool = False, telegram_chat_id=None):
+    def __init__(self, main_tf: str = "1h", debug: bool = False, telegram_chat_id=None):
         """
         Initialize strategy with detectors for trend, BOS, and OB.
 
@@ -34,9 +39,9 @@ class BosOrderBlockTapStrategy(DetectorsBase):
         """
         super().__init__(main_tf, debug, telegram_chat_id=telegram_chat_id)
         self.detectors = {
-            'swing_1h': HighLowDetector(main_tf),  # Detects HH/HL/LL/LH on 1H
-            'bos_1h': BosChochDetector(main_tf),  # Detects BOS/CHOCH on 1H
-            'ob_15m': OrderBlocksDetectorOld('15m')  # Detects OBs on 15m
+            "swing_1h": HighLowDetector(main_tf),  # Detects HH/HL/LL/LH on 1H
+            "bos_1h": BosChochDetector(main_tf),  # Detects BOS/CHOCH on 1H
+            "ob_15m": OrderBlocksDetectorOld("15m"),  # Detects OBs on 15m
         }
         self.ob_fig = None
         self.ob_tap_cache = {}  # Cache: {symbol: tap_ob_timestamp}
@@ -45,11 +50,13 @@ class BosOrderBlockTapStrategy(DetectorsBase):
     async def find_nearest_ob(self, ohlc_15m: pd.DataFrame, trend: str, symbol: str, current_price: float):
         """Step 3: Find the nearest unmitigated 15m OB in the trend direction relative to BOS."""
         recent_smc_events = []
-        ob_result = self.detectors['ob_15m'].calculate_order_blocks(ohlc_15m, plot=True)
-        self.ob_fig = self.detectors['ob_15m'].merge_bos_ob_plots(ohlc_15m=ohlc_15m,
-                                                                  bos_signals=self.bos_signals,
-                                                                  ob_signals=ob_result['order_blocks'])
-        ob_signals = [ob for ob in ob_result['order_blocks'] if not ob['breaker']]
+        ob_result = self.detectors["ob_15m"].calculate_order_blocks(ohlc_15m, plot=True)
+        self.ob_fig = self.detectors["ob_15m"].merge_bos_ob_plots(
+            ohlc_15m=ohlc_15m,
+            bos_signals=self.bos_signals,
+            ob_signals=ob_result["order_blocks"],
+        )
+        ob_signals = [ob for ob in ob_result["order_blocks"] if not ob["breaker"]]
 
         if not ob_signals:
             event = "No unmitigated 15m OBs detected."
@@ -59,7 +66,7 @@ class BosOrderBlockTapStrategy(DetectorsBase):
             return None, recent_smc_events
 
         expected_bias = Trend.BULLISH.name if trend == Trend.BULLISH.name else Trend.BEARISH.name
-        relevant_obs = [ob for ob in ob_signals if ob['type'].upper() == expected_bias]
+        relevant_obs = [ob for ob in ob_signals if ob["type"].upper() == expected_bias]
         if not relevant_obs:
             event = f"No {expected_bias} OBs detected on 15m."
             recent_smc_events.append(event)
@@ -69,13 +76,13 @@ class BosOrderBlockTapStrategy(DetectorsBase):
 
         bos_level = self.recent_bos_signal["level"]
         nearest_ob = None
-        for ob in sorted(relevant_obs, key=lambda x: x['time'], reverse=True):
+        for ob in sorted(relevant_obs, key=lambda x: x["time"], reverse=True):
             if trend == Trend.BULLISH.name:
-                if ob['top'] > bos_level and ob['top'] < current_price:
+                if ob["top"] > bos_level and ob["top"] < current_price:
                     nearest_ob = ob
                     break
             else:  # BEARISH
-                if ob['bottom'] < bos_level and ob['bottom'] > current_price:
+                if ob["bottom"] < bos_level and ob["bottom"] > current_price:
                     nearest_ob = ob
                     break
 
@@ -92,8 +99,14 @@ class BosOrderBlockTapStrategy(DetectorsBase):
         await self.send_telegram_message(f"{symbol} | Step 3: {event}.", self.ob_fig)
         return nearest_ob, recent_smc_events
 
-    async def confirm_ob_tap(self, ohlc_15m: pd.DataFrame, trend: str, symbol: str, nearest_ob: Dict,
-                             current_time: datetime):
+    async def confirm_ob_tap(
+        self,
+        ohlc_15m: pd.DataFrame,
+        trend: str,
+        symbol: str,
+        nearest_ob: Dict,
+        current_time: datetime,
+    ):
         """Step 4: Confirm price taps the nearest 15m OB, formed at least 5 candles ago, after exiting."""
         recent_smc_events = []
 
@@ -105,7 +118,7 @@ class BosOrderBlockTapStrategy(DetectorsBase):
             return recent_smc_events
 
         # Check if OB was formed at least 5 candles ago
-        candles_since_ob = (current_time - nearest_ob['time']).total_seconds() / (15 * 60)
+        candles_since_ob = (current_time - nearest_ob["time"]).total_seconds() / (15 * 60)
         if candles_since_ob < 1:
             event = f"No valid {trend} OB found (formed at least 5 candles ago)."
             self.ob_tap_cache.update({symbol: None})
@@ -119,12 +132,12 @@ class BosOrderBlockTapStrategy(DetectorsBase):
         exited_ob = False
         if trend == Trend.BULLISH.name:
             for _, candle in recent_candles.iterrows():
-                if candle['low'] > nearest_ob['top'] or candle['high'] < nearest_ob['bottom']:
+                if candle["low"] > nearest_ob["top"] or candle["high"] < nearest_ob["bottom"]:
                     exited_ob = True
                     break
         else:  # BEARISH
             for _, candle in recent_candles.iterrows():
-                if candle['high'] < nearest_ob['bottom'] or candle['low'] > nearest_ob['top']:
+                if candle["high"] < nearest_ob["bottom"] or candle["low"] > nearest_ob["top"]:
                     exited_ob = True
                     break
 
@@ -140,10 +153,10 @@ class BosOrderBlockTapStrategy(DetectorsBase):
         current_candle = ohlc_15m.iloc[-1]
         tap_timestamp = None
         if trend == Trend.BULLISH.name:
-            if current_candle['low'] <= nearest_ob['top'] and current_candle['high'] >= nearest_ob['bottom']:
+            if current_candle["low"] <= nearest_ob["top"] and current_candle["high"] >= nearest_ob["bottom"]:
                 tap_timestamp = current_time
         else:  # BEARISH
-            if current_candle['high'] >= nearest_ob['bottom'] and current_candle['low'] <= nearest_ob['top']:
+            if current_candle["high"] >= nearest_ob["bottom"] and current_candle["low"] <= nearest_ob["top"]:
                 tap_timestamp = current_time
 
         if not tap_timestamp:
@@ -166,26 +179,25 @@ class BosOrderBlockTapStrategy(DetectorsBase):
         Analyze OHLC mgc for continuation signals based on BOS and 15m OB taps.
         """
         current_time = max(ohlc_1h.index.max(), ohlc_15m.index.max())
-        current_price = ohlc_15m['close'].iloc[-1]
+        current_price = ohlc_15m["close"].iloc[-1]
         cache_key = (symbol, self.main_tf)
         recent_smc_events = []
 
         # Step 1: Confirm trend
-        trend, step1_events, trend_fig = await self.confirm_trend(self.detectors['swing_1h'], ohlc_1h, symbol,
-                                                                  cache_key, current_time)
+        trend, step1_events, trend_fig = await self.confirm_trend(self.detectors["swing_1h"], ohlc_1h, symbol, cache_key, current_time)
         recent_smc_events.extend(step1_events)
         signal_summary = SignalSummary(
             direction=Trend.NEUTRAL.name,
             trend=trend,
             recent_smc_events=recent_smc_events,
-            fig=trend_fig
+            fig=trend_fig,
         )
         if trend == Trend.NEUTRAL.name:
             logger.info(f"{symbol} | Step 1: Neutral trend detected, stopping analysis.")
             return signal_summary
 
         # Step 2: Detect BOS
-        step2_events = await self.detect_bos_choch(self.detectors['bos_1h'], ohlc_1h, trend, symbol)
+        step2_events = await self.detect_bos_choch(self.detectors["bos_1h"], ohlc_1h, trend, symbol)
         recent_smc_events.extend(step2_events)
         signal_summary.recent_smc_events = recent_smc_events
         signal_summary.fig = self.bos_choch_fig

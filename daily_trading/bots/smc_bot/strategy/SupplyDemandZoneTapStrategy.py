@@ -6,11 +6,18 @@ from zoneinfo import ZoneInfo
 import pandas as pd
 
 from daily_trading.bots.smc_bot.detectors.DetectorsBase import BIAS
-from daily_trading.bots.smc_bot.detectors.SupplyDemandZonesDetector import SupplyDemandZonesDetector
-from daily_trading.bots.smc_bot.strategy.StrategyBase import ExitType, SESSION_MAP, SignalSummary, StrategyBase, \
-    TradeAction, \
-    TradeSignal, \
-    TradeStatus
+from daily_trading.bots.smc_bot.detectors.SupplyDemandZonesDetector import (
+    SupplyDemandZonesDetector,
+)
+from daily_trading.bots.smc_bot.strategy.StrategyBase import (
+    ExitType,
+    SESSION_MAP,
+    SignalSummary,
+    StrategyBase,
+    TradeAction,
+    TradeSignal,
+    TradeStatus,
+)
 from daily_trading.settings import logger
 
 
@@ -25,12 +32,18 @@ class SupplyDemandZoneTapStrategy(StrategyBase):
          - Safety: Hard cutoff at session end and automatic mitigation of zones after one trade.
     """
 
-    def __init__(self, symbol: str, timezone: ZoneInfo, main_tf="5m", risk: float = 150.0,
-                 tp_multiple: float = 1.5,
-                 swing_length: int = 45,
-                 internal_length: int = 5,
-                 sl_atr_multiplier=2.0,
-                 eb_mult=2.0):
+    def __init__(
+        self,
+        symbol: str,
+        timezone: ZoneInfo,
+        main_tf="5m",
+        risk: float = 150.0,
+        tp_multiple: float = 1.5,
+        swing_length: int = 45,
+        internal_length: int = 5,
+        sl_atr_multiplier=2.0,
+        eb_mult=2.0,
+    ):
         super().__init__(main_tf)
         self.symbol = symbol
         self.timezone = timezone
@@ -46,9 +59,11 @@ class SupplyDemandZoneTapStrategy(StrategyBase):
         self.enter_buffer = self.ENTRY_BUFFER[symbol]
 
         # Detectors
-        self.sd_detector_1h = SupplyDemandZonesDetector(fvg_based_only=False,
-                                                        swing_length=swing_length,
-                                                        internal_length=internal_length)
+        self.sd_detector_1h = SupplyDemandZonesDetector(
+            fvg_based_only=False,
+            swing_length=swing_length,
+            internal_length=internal_length,
+        )
 
         # State Management
         self.active_trade: Optional[TradeSignal] = None
@@ -94,12 +109,12 @@ class SupplyDemandZoneTapStrategy(StrategyBase):
         # Correct logic is (Top + Buffer) to catch it as it arrives.
         if direction == BIAS.LONG:
             # Low must drop BELOW the (Zone Top + Buffer)
-            trigger_price = zone['top'] + entry_buffer
-            touched = curr['low'] <= trigger_price
+            trigger_price = zone["top"] + entry_buffer
+            touched = curr["low"] <= trigger_price
         else:
             # High must rise ABOVE the (Zone Bottom - Buffer)
-            trigger_price = zone['bottom'] - entry_buffer
-            touched = curr['high'] >= trigger_price
+            trigger_price = zone["bottom"] - entry_buffer
+            touched = curr["high"] >= trigger_price
 
         if not touched:
             return False
@@ -122,7 +137,7 @@ class SupplyDemandZoneTapStrategy(StrategyBase):
         Args:
             threshold: 0.5 means 50% of the zone depth.
         """
-        zone_start = zone['start_time']
+        zone_start = zone["start_time"]
 
         # 1. Timezone Alignment (Robust)
         try:
@@ -147,18 +162,18 @@ class SupplyDemandZoneTapStrategy(StrategyBase):
             return False  # No history exists, so it can't be mitigated
 
         # 3. Calculate Logic
-        top = zone['top']
-        bottom = zone['bottom']
+        top = zone["top"]
+        bottom = zone["bottom"]
         height = top - bottom
 
         # 4. Check for Penetration
-        if zone['bias'] == BIAS.LONG:
+        if zone["bias"] == BIAS.LONG:
             # Demand Zone: Entry is at TOP.
             # We check if Price went LOWER than (Top - 50% Height)
             limit_price = top - (height * threshold)
 
             # Use 'low' for Demand (deepest point of candle)
-            deepest_dip = history['low'].min()
+            deepest_dip = history["low"].min()
 
             if deepest_dip <= limit_price:
                 # self.log.info(f"🚫 Zone {zone_start} mitigated! Low {deepest_dip:.2f} < Limit {limit_price:.2f}")
@@ -170,7 +185,7 @@ class SupplyDemandZoneTapStrategy(StrategyBase):
             limit_price = bottom + (height * threshold)
 
             # Use 'high' for Supply (highest point of candle)
-            highest_peak = history['high'].max()
+            highest_peak = history["high"].max()
 
             if highest_peak >= limit_price:
                 # self.log.info(f"🚫 Zone {zone_start} mitigated! High {highest_peak:.2f} > Limit {limit_price:.2f}")
@@ -184,18 +199,22 @@ class SupplyDemandZoneTapStrategy(StrategyBase):
         adjusted_buffer = self.enter_buffer * self.eb_mult
         if direction == BIAS.LONG:
             entry_price = curr_candle["low"] - adjusted_buffer
-            sl = self.sd_detector_1h.calculate_atr_stop_loss(ohlc,
-                                                             entry_price,
-                                                             direction=direction,
-                                                             atr_multiplier=self.sl_atr_multiplier)
+            sl = self.sd_detector_1h.calculate_atr_stop_loss(
+                ohlc,
+                entry_price,
+                direction=direction,
+                atr_multiplier=self.sl_atr_multiplier,
+            )
             r = entry_price - sl
             tp = entry_price + (r * self.tp_multiple)
         else:
             entry_price = curr_candle["high"] + adjusted_buffer
-            sl = self.sd_detector_1h.calculate_atr_stop_loss(ohlc,
-                                                             entry_price,
-                                                             direction=direction,
-                                                             atr_multiplier=self.sl_atr_multiplier)
+            sl = self.sd_detector_1h.calculate_atr_stop_loss(
+                ohlc,
+                entry_price,
+                direction=direction,
+                atr_multiplier=self.sl_atr_multiplier,
+            )
 
             r = sl - entry_price
             tp = entry_price - (r * self.tp_multiple)
@@ -216,9 +235,7 @@ class SupplyDemandZoneTapStrategy(StrategyBase):
         size = max(1, min(raw_size, max_contracts))
 
         if raw_size > max_contracts:
-            self.log.warning(
-                f"⚠️ RISK CAP: Math wanted {raw_size} contracts, capped at {size}. "
-                f"(Risk per contract: ${risk_per_contract:.2f})")
+            self.log.warning(f"⚠️ RISK CAP: Math wanted {raw_size} contracts, capped at {size}. " f"(Risk per contract: ${risk_per_contract:.2f})")
 
         return {"entry": entry_price, "sl": sl, "tp": tp, "size": size}
 
@@ -230,14 +247,16 @@ class SupplyDemandZoneTapStrategy(StrategyBase):
         # If it's an EXIT, we want the execution price, not the entry price.
         report_price = custom_price if custom_price is not None else self.active_trade.price
 
-        sig = TradeSignal(symbol=self.symbol,
-                          action=action,
-                          direction=self.active_trade.direction,
-                          price=report_price,
-                          sl=self.active_trade.sl,
-                          tp=self.active_trade.tp,
-                          size=self.active_trade.size,
-                          timestamp=timestamp)
+        sig = TradeSignal(
+            symbol=self.symbol,
+            action=action,
+            direction=self.active_trade.direction,
+            price=report_price,
+            sl=self.active_trade.sl,
+            tp=self.active_trade.tp,
+            size=self.active_trade.size,
+            timestamp=timestamp,
+        )
         if action in [TradeAction.CANCEL, TradeAction.EXIT]:
             self.active_trade = None
             self.trade_status = TradeStatus.NONE
@@ -273,8 +292,8 @@ class SupplyDemandZoneTapStrategy(StrategyBase):
             if filled:
                 self.trade_status = TradeStatus.FILLED
                 self.log.info(
-                    f"⚡ ORDER FILLED | {self.symbol}: {self.active_trade.direction.name} "
-                    f"@ {self.active_trade.price:.2f} | Time: {curr.name}")
+                    f"⚡ ORDER FILLED | {self.symbol}: {self.active_trade.direction.name} " f"@ {self.active_trade.price:.2f} | Time: {curr.name}"
+                )
 
         # 4. SESSION EXIT LOGIC (Evaluate both Active and Just-Filled trades)
         if self.trade_status == TradeStatus.FILLED:
@@ -290,11 +309,9 @@ class SupplyDemandZoneTapStrategy(StrategyBase):
             is_long = self.active_trade.direction == BIAS.LONG
 
             # Detailed check to see WHICH one was hit
-            hit_sl = (is_long and curr["low"] <= self.active_trade.sl) or \
-                     (not is_long and curr["high"] >= self.active_trade.sl)
+            hit_sl = (is_long and curr["low"] <= self.active_trade.sl) or (not is_long and curr["high"] >= self.active_trade.sl)
 
-            hit_tp = (is_long and curr["high"] >= self.active_trade.tp) or \
-                     (not is_long and curr["low"] <= self.active_trade.tp)
+            hit_tp = (is_long and curr["high"] >= self.active_trade.tp) or (not is_long and curr["low"] <= self.active_trade.tp)
 
             hit_sl_tp = hit_sl or hit_tp
 
@@ -317,14 +334,13 @@ class SupplyDemandZoneTapStrategy(StrategyBase):
 
             elif is_cutoff_time:
                 # Exit at current market close
-                exit_price = curr['close']
+                exit_price = curr["close"]
                 self.log.info(f"⏰ SESSION CUTOFF EXIT | Closing at {exit_price:.2f}")
                 signal = self.create_signal(TradeAction.EXIT, df_ltf.index[-1], custom_price=exit_price)
                 signal.metadata["exit_type"] = ExitType.MARKET_FORCE
 
                 # PASS THE MARKET CLOSE PRICE HERE
-                return SignalSummary(direction="EXIT",
-                                     trade_signal=signal)
+                return SignalSummary(direction="EXIT", trade_signal=signal)
 
             return SignalSummary(direction="FILLED" if filled else "IN_TRADE")
 
@@ -334,25 +350,28 @@ class SupplyDemandZoneTapStrategy(StrategyBase):
 
             # A. Time Cutoff Cancel
             if ts_now >= cutoff_ts:
-                return SignalSummary(direction="CANCELLED",
-                                     trade_signal=self.create_signal(TradeAction.CANCEL, curr.name))
+                return SignalSummary(
+                    direction="CANCELLED",
+                    trade_signal=self.create_signal(TradeAction.CANCEL, curr.name),
+                )
 
             # B. Target Reached Early Cancel (Invalidation)
             trade = self.active_trade
             is_long = trade.direction == BIAS.LONG
-            hit_target_early = (is_long and curr['high'] >= trade.tp) or \
-                               (not is_long and curr['low'] <= trade.tp)
+            hit_target_early = (is_long and curr["high"] >= trade.tp) or (not is_long and curr["low"] <= trade.tp)
 
             if hit_target_early:
-                return SignalSummary(direction="CANCELLED",
-                                     trade_signal=self.create_signal(TradeAction.CANCEL, curr.name))
+                return SignalSummary(
+                    direction="CANCELLED",
+                    trade_signal=self.create_signal(TradeAction.CANCEL, curr.name),
+                )
 
             return SignalSummary(direction="PENDING")
 
         # 6. Scan for NEW Taps (Only if session is active)
         if self.trade_status == TradeStatus.NONE and ts_now < cutoff_ts:
             for zone in self.cached_zones_1h:
-                z_id = zone['start_time']
+                z_id = zone["start_time"]
 
                 # Check usage count < 2
                 current_usage = self.zone_usage_counts[z_id]
@@ -366,24 +385,30 @@ class SupplyDemandZoneTapStrategy(StrategyBase):
                     self.zone_usage_counts[z_id] = 99
                     continue
 
-                if self.validate_zone_reaction(df_ltf, zone['bias'], zone):
-                    params = self.calculate_trade_params(df_ltf, zone, zone['bias'])
+                if self.validate_zone_reaction(df_ltf, zone["bias"], zone):
+                    params = self.calculate_trade_params(df_ltf, zone, zone["bias"])
 
                     # Reject invalid math immediately
-                    if params['entry'] <= 0 or params['sl'] <= 0 or params['size'] <= 0:
+                    if params["entry"] <= 0 or params["sl"] <= 0 or params["size"] <= 0:
                         self.log.warning(f"⚠️ SKIPPING INVALID SETUP: {params}")
                         continue
 
                     # Basic sanity check (Don't enter if price is already past TP)
-                    if (zone['bias'] == BIAS.LONG and curr['close'] >= params['tp']) or \
-                            (zone['bias'] == BIAS.SHORT and curr['close'] <= params['tp']):
+                    if (zone["bias"] == BIAS.LONG and curr["close"] >= params["tp"]) or (
+                        zone["bias"] == BIAS.SHORT and curr["close"] <= params["tp"]
+                    ):
                         continue
 
                     trade = TradeSignal(
-                        action=TradeAction.ENTER, symbol=self.symbol, direction=zone['bias'],
-                        price=params['entry'], sl=params['sl'], tp=params['tp'],
-                        size=params['size'], timestamp=curr.name,
-                        metadata={'zone_id': z_id, "usage_count": current_usage + 1}
+                        action=TradeAction.ENTER,
+                        symbol=self.symbol,
+                        direction=zone["bias"],
+                        price=params["entry"],
+                        sl=params["sl"],
+                        tp=params["tp"],
+                        size=params["size"],
+                        timestamp=curr.name,
+                        metadata={"zone_id": z_id, "usage_count": current_usage + 1},
                     )
                     self.active_trade, self.trade_status = trade, TradeStatus.PENDING
 

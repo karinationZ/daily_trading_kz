@@ -1,15 +1,26 @@
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
-import pandas as pd
-import numpy as np
 
-from daily_trading.bots.smc_bot.detectors.DetectorsBase import BEARISH, BULLISH, DetectorsBase
+from daily_trading.bots.smc_bot.detectors.DetectorsBase import (
+    BEARISH,
+    BULLISH,
+    DetectorsBase,
+)
 from daily_trading.settings import logger
 
 
 class LiquidityGrabDetector(DetectorsBase):
-    def __init__(self, main_tf, pivot_length=25, wick_body_ratio=0.5, liq_zone_count=5, cooldown=3, volume_threshold=10,
-                 left_bars=25, right_bars=25):
+    def __init__(
+        self,
+        main_tf,
+        pivot_length=25,
+        wick_body_ratio=0.5,
+        liq_zone_count=5,
+        cooldown=3,
+        volume_threshold=10,
+        left_bars=25,
+        right_bars=25,
+    ):
         """
         Liquidity Grab Detector
         Definition: Detects liquidity grabs based on rejection candles (hanging man, shooting star, hammer, inverted hammer)
@@ -36,9 +47,11 @@ class LiquidityGrabDetector(DetectorsBase):
         self.sellside_liqs = []
         self.last_buyside_grab = -cooldown - 1
         self.last_sellside_grab = -cooldown - 1
-        logger.debug(f"Initialized LiquidityGrabDetector with main_tf={main_tf}, pivot_length={pivot_length}, "
-                     f"wick_body_ratio={wick_body_ratio}, liq_zone_count={liq_zone_count}, cooldown={cooldown}, "
-                     f"volume_threshold={volume_threshold}, left_bars={left_bars}, right_bars={right_bars}")
+        logger.debug(
+            f"Initialized LiquidityGrabDetector with main_tf={main_tf}, pivot_length={pivot_length}, "
+            f"wick_body_ratio={wick_body_ratio}, liq_zone_count={liq_zone_count}, cooldown={cooldown}, "
+            f"volume_threshold={volume_threshold}, left_bars={left_bars}, right_bars={right_bars}"
+        )
 
     def calculate_pivots(self, ohlc, length=None):
         """Override to ensure pivot calculation matches Pine Script with equal left and right bars."""
@@ -46,22 +59,24 @@ class LiquidityGrabDetector(DetectorsBase):
         pivot_high_points = []
         pivot_low_points = []
         for i in range(length, len(ohlc) - length):
-            is_high = all(ohlc['high'].iloc[i] > ohlc['high'].iloc[i - j] for j in range(1, length + 1)) and \
-                      all(ohlc['high'].iloc[i] >= ohlc['high'].iloc[i + j] for j in range(1, length + 1))
-            is_low = all(ohlc['low'].iloc[i] < ohlc['low'].iloc[i - j] for j in range(1, length + 1)) and \
-                     all(ohlc['low'].iloc[i] <= ohlc['low'].iloc[i + j] for j in range(1, length + 1))
+            is_high = all(ohlc["high"].iloc[i] > ohlc["high"].iloc[i - j] for j in range(1, length + 1)) and all(
+                ohlc["high"].iloc[i] >= ohlc["high"].iloc[i + j] for j in range(1, length + 1)
+            )
+            is_low = all(ohlc["low"].iloc[i] < ohlc["low"].iloc[i - j] for j in range(1, length + 1)) and all(
+                ohlc["low"].iloc[i] <= ohlc["low"].iloc[i + j] for j in range(1, length + 1)
+            )
             if is_high:
-                pivot_high_points.append({"index": i, "level": ohlc['high'].iloc[i], "time": ohlc.index[i]})
+                pivot_high_points.append({"index": i, "level": ohlc["high"].iloc[i], "time": ohlc.index[i]})
             if is_low:
-                pivot_low_points.append({"index": i, "level": ohlc['low'].iloc[i], "time": ohlc.index[i]})
+                pivot_low_points.append({"index": i, "level": ohlc["low"].iloc[i], "time": ohlc.index[i]})
         return pivot_high_points, pivot_low_points
 
     def get_invalidation_point(self, ohlc, idx, is_top, is_close):
         """Calculate invalidation point for liquidity grab detection."""
-        open_price = ohlc['open'].iloc[idx]
-        close_price = ohlc['close'].iloc[idx]
-        high_price = ohlc['high'].iloc[idx]
-        low_price = ohlc['low'].iloc[idx]
+        open_price = ohlc["open"].iloc[idx]
+        close_price = ohlc["close"].iloc[idx]
+        high_price = ohlc["high"].iloc[idx]
+        low_price = ohlc["low"].iloc[idx]
 
         if is_top and is_close:
             return min(close_price, open_price)
@@ -93,26 +108,28 @@ class LiquidityGrabDetector(DetectorsBase):
 
         # Check for buyside liquidity grab
         for cur_liq in self.buyside_liqs:
-            if (self.get_invalidation_point(ohlc, i, True, False) > cur_liq and
-                    self.get_invalidation_point(ohlc, i, True, True) < cur_liq):
-                body_size = abs(ohlc['close'].iloc[i] - ohlc['open'].iloc[i]) + 1e-6  # Avoid division by zero
-                wick_size = ohlc['high'].iloc[i] - max(ohlc['close'].iloc[i], ohlc['open'].iloc[i])
+            if self.get_invalidation_point(ohlc, i, True, False) > cur_liq and self.get_invalidation_point(ohlc, i, True, True) < cur_liq:
+                body_size = abs(ohlc["close"].iloc[i] - ohlc["open"].iloc[i]) + 1e-6  # Avoid division by zero
+                wick_size = ohlc["high"].iloc[i] - max(ohlc["close"].iloc[i], ohlc["open"].iloc[i])
                 cur_wbr = wick_size / body_size
-                if cur_wbr >= self.wick_body_ratio and ohlc['volume'].iloc[i] > self.volume_threshold:
+                if cur_wbr >= self.wick_body_ratio and ohlc["volume"].iloc[i] > self.volume_threshold:
                     grab_found = True
                     grab_size = min(int(cur_wbr / self.wick_body_ratio), 3)
                     if (i - self.last_buyside_grab) > self.cooldown:
-                        signals.append({
-                            "type": "LiquidityGrab",
-                            "bias": BULLISH,
-                            "time": ohlc.index[i],
-                            "level": cur_liq,
-                            "volume": ohlc['volume'].iloc[i],
-                            "size": grab_size
-                        })
+                        signals.append(
+                            {
+                                "type": "LiquidityGrab",
+                                "bias": BULLISH,
+                                "time": ohlc.index[i],
+                                "level": cur_liq,
+                                "volume": ohlc["volume"].iloc[i],
+                                "size": grab_size,
+                            }
+                        )
                         self.last_buyside_grab = i
                         logger.debug(
-                            f"Bullish Liquidity Grab detected: level={cur_liq:.6f}, time={ohlc.index[i]}, volume={ohlc['volume'].iloc[i]:.2f}, size={grab_size}")
+                            f"Bullish Liquidity Grab detected: level={cur_liq:.6f}, time={ohlc.index[i]}, volume={ohlc['volume'].iloc[i]:.2f}, size={grab_size}"
+                        )
                     liqs_to_remove.append(cur_liq)
                     break
             # Removed invalidation by close alone
@@ -123,25 +140,27 @@ class LiquidityGrabDetector(DetectorsBase):
         # Check for sellside liquidity grab if no buyside grab found
         if not grab_found:
             for cur_liq in self.sellside_liqs:
-                if (self.get_invalidation_point(ohlc, i, False, False) < cur_liq and
-                        self.get_invalidation_point(ohlc, i, False, True) > cur_liq):
-                    body_size = abs(ohlc['close'].iloc[i] - ohlc['open'].iloc[i]) + 1e-6  # Avoid division by zero
-                    wick_size = min(ohlc['close'].iloc[i], ohlc['open'].iloc[i]) - ohlc['low'].iloc[i]
+                if self.get_invalidation_point(ohlc, i, False, False) < cur_liq and self.get_invalidation_point(ohlc, i, False, True) > cur_liq:
+                    body_size = abs(ohlc["close"].iloc[i] - ohlc["open"].iloc[i]) + 1e-6  # Avoid division by zero
+                    wick_size = min(ohlc["close"].iloc[i], ohlc["open"].iloc[i]) - ohlc["low"].iloc[i]
                     cur_wbr = wick_size / body_size
-                    if cur_wbr >= self.wick_body_ratio and ohlc['volume'].iloc[i] > self.volume_threshold:
+                    if cur_wbr >= self.wick_body_ratio and ohlc["volume"].iloc[i] > self.volume_threshold:
                         grab_size = min(int(cur_wbr / self.wick_body_ratio), 3)
                         if (i - self.last_sellside_grab) > self.cooldown:
-                            signals.append({
-                                "type": "LiquidityGrab",
-                                "bias": BEARISH,
-                                "time": ohlc.index[i],
-                                "level": cur_liq,
-                                "volume": ohlc['volume'].iloc[i],
-                                "size": grab_size
-                            })
+                            signals.append(
+                                {
+                                    "type": "LiquidityGrab",
+                                    "bias": BEARISH,
+                                    "time": ohlc.index[i],
+                                    "level": cur_liq,
+                                    "volume": ohlc["volume"].iloc[i],
+                                    "size": grab_size,
+                                }
+                            )
                             self.last_sellside_grab = i
                             logger.debug(
-                                f"Bearish Liquidity Grab detected: level={cur_liq:.6f}, time={ohlc.index[i]}, volume={ohlc['volume'].iloc[i]:.2f}, size={grab_size}")
+                                f"Bearish Liquidity Grab detected: level={cur_liq:.6f}, time={ohlc.index[i]}, volume={ohlc['volume'].iloc[i]:.2f}, size={grab_size}"
+                            )
                         liqs_to_remove.append(cur_liq)
                         break
                 # Removed invalidation by close alone
@@ -171,8 +190,10 @@ class LiquidityGrabDetector(DetectorsBase):
             - fig (go.Figure): Plotly figure with candlesticks and grab signals (if plot=True).
             - signals (list): List of detected liquidity grab signals.
         """
-        logger.debug(f"Starting liquidity grab calculation with pivot_length={self.pivot_length}, "
-                     f"wick_body_ratio={self.wick_body_ratio}, liq_zone_count={self.liq_zone_count}, cooldown={self.cooldown}")
+        logger.debug(
+            f"Starting liquidity grab calculation with pivot_length={self.pivot_length}, "
+            f"wick_body_ratio={self.wick_body_ratio}, liq_zone_count={self.liq_zone_count}, cooldown={self.cooldown}"
+        )
         if len(ohlc) < self.pivot_length * 2 + 1:
             logger.error(f"OHLC data too short ({len(ohlc)} rows) for pivot_length={self.pivot_length}")
             return {"fig": None, "signals": []}
@@ -191,7 +212,8 @@ class LiquidityGrabDetector(DetectorsBase):
 
         logger.debug(
             f"Detected {len(signals)} liquidity grabs: {sum(1 for s in signals if s['bias'] == BULLISH)} bullish, "
-            f"{sum(1 for s in signals if s['bias'] == BEARISH)} bearish")
+            f"{sum(1 for s in signals if s['bias'] == BEARISH)} bearish"
+        )
         return {"fig": fig, "signals": signals}
 
     def _plot_grabs(self, ohlc, signals):
@@ -207,53 +229,72 @@ class LiquidityGrabDetector(DetectorsBase):
         """
         ohlc = ohlc.sort_index()
         ohlc = ohlc.tail(self.plot_tail)
-        symbol = ohlc['symbol'].iloc[0] if 'symbol' in ohlc.columns else 'Unknown'
+        symbol = ohlc["symbol"].iloc[0] if "symbol" in ohlc.columns else "Unknown"
 
         logger.debug("Generating Plotly figure for liquidity grabs")
         ohlc = self.validate_data(ohlc)
-        fig = make_subplots(rows=1, cols=1, subplot_titles=[f"{symbol} | Price Chart with Liquidity Grabs"])
+        fig = make_subplots(
+            rows=1,
+            cols=1,
+            subplot_titles=[f"{symbol} | Price Chart with Liquidity Grabs"],
+        )
 
         # Plot candlesticks
-        fig.add_trace(go.Candlestick(
-            x=ohlc.index,
-            open=ohlc['open'],
-            high=ohlc['high'],
-            low=ohlc['low'],
-            close=ohlc['close'],
-            name="OHLC"
-        ), row=1, col=1)
+        fig.add_trace(
+            go.Candlestick(
+                x=ohlc.index,
+                open=ohlc["open"],
+                high=ohlc["high"],
+                low=ohlc["low"],
+                close=ohlc["close"],
+                name="OHLC",
+            ),
+            row=1,
+            col=1,
+        )
 
         # Plot grab signals with circles at the top of the rejection candle
         for signal in signals:
-            marker_color = '#1E90FF' if signal['bias'] == BULLISH else '#DC143C'
-            marker_size = 8 + 4 * signal['size']
-            end_time = ohlc.index[min(ohlc.index.get_loc(signal['time']) + 5, len(ohlc) - 1)]
-            signal_idx = ohlc.index.get_loc(signal['time'])
-            fig.add_trace(go.Scatter(
-                x=[signal['time']],
-                y=[ohlc['high'].iloc[signal_idx]],  # Place at the high of the rejection candle
-                mode='markers',
-                marker=dict(symbol='circle', size=marker_size, color=marker_color, line=dict(width=2, color='black')),
-                name=f"{'Bull' if signal['bias'] == BULLISH else 'Bear'} Grab (Size {signal['size']})",
-                showlegend=True
-            ), row=1, col=1)
+            marker_color = "#1E90FF" if signal["bias"] == BULLISH else "#DC143C"
+            marker_size = 8 + 4 * signal["size"]
+            end_time = ohlc.index[min(ohlc.index.get_loc(signal["time"]) + 5, len(ohlc) - 1)]
+            signal_idx = ohlc.index.get_loc(signal["time"])
+            fig.add_trace(
+                go.Scatter(
+                    x=[signal["time"]],
+                    y=[ohlc["high"].iloc[signal_idx]],  # Place at the high of the rejection candle
+                    mode="markers",
+                    marker=dict(
+                        symbol="circle",
+                        size=marker_size,
+                        color=marker_color,
+                        line=dict(width=2, color="black"),
+                    ),
+                    name=f"{'Bull' if signal['bias'] == BULLISH else 'Bear'} Grab (Size {signal['size']})",
+                    showlegend=True,
+                ),
+                row=1,
+                col=1,
+            )
             fig.add_shape(
                 type="line",
-                x0=signal['time'], x1=end_time,
-                y0=signal['level'], y1=signal['level'],
+                x0=signal["time"],
+                x1=end_time,
+                y0=signal["level"],
+                y1=signal["level"],
                 line=dict(color=marker_color, width=2, dash="dot"),
-                opacity=0.7
+                opacity=0.7,
             )
 
-        last_candle = ohlc.index.max().tz_convert('US/Pacific').strftime('%Y-%m-%d %H:%M')
+        last_candle = ohlc.index.max().tz_convert("US/Pacific").strftime("%Y-%m-%d %H:%M")
         candle_time_str = f"Last Candle: {last_candle} (PT)"
         fig.update_layout(
             title=f"{symbol} | Liquidity Grabs | {candle_time_str} | TF: {self.main_tf}",
             xaxis_rangeslider_visible=False,
             showlegend=True,
-            xaxis=dict(type='date', tickformat='%Y-%m-%d %H:%M', showticklabels=True),
+            xaxis=dict(type="date", tickformat="%Y-%m-%d %H:%M", showticklabels=True),
             yaxis=dict(title="Price"),
-            margin=dict(t=100, b=100, l=50, r=50)
+            margin=dict(t=100, b=100, l=50, r=50),
         )
         fig.update_xaxes(title_text="Time", row=1, col=1)
         logger.debug("Plotly figure generated successfully")

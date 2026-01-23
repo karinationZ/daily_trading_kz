@@ -3,7 +3,10 @@ import pandas as pd
 from daily_trading.bots.smc_bot.detectors.HighLowDetector import HighLowDetector
 from daily_trading.bots.smc_bot.detectors.LevelsDetector import LevelsDetector
 from daily_trading.bots.smc_bot.detectors.DetectorsBase import GET_READY_ALERT, Trend
-from daily_trading.bots.smc_bot.strategy.StrategyBase import SignalSummary, DetectorsBase
+from daily_trading.bots.smc_bot.strategy.StrategyBase import (
+    SignalSummary,
+    DetectorsBase,
+)
 
 
 class SupportResistanceStrategy(DetectorsBase):
@@ -21,8 +24,8 @@ class SupportResistanceStrategy(DetectorsBase):
         super().__init__(main_tf, debug, telegram_chat_id=telegram_chat_id)
         self.strength = 4
         self.detectors = {
-            'swing_1h': HighLowDetector(main_tf),  # Detects HH/HL/LL/LH on 1H
-            'levels_detector': LevelsDetector(main_tf=main_tf, pivot_length=3, strength=self.strength)
+            "swing_1h": HighLowDetector(main_tf),  # Detects HH/HL/LL/LH on 1H
+            "levels_detector": LevelsDetector(main_tf=main_tf, pivot_length=3, strength=self.strength),
         }
         self.sr_signals = None
         self.recent_sr_signal = None
@@ -47,15 +50,15 @@ class SupportResistanceStrategy(DetectorsBase):
             recent_smc_events.append(event)
             return None, recent_smc_events
 
-        current_price = ohlc_15m.iloc[-1]['close']
+        current_price = ohlc_15m.iloc[-1]["close"]
         nearest_level = None
-        min_distance = float('inf')
+        min_distance = float("inf")
         # is_bullish_trend = trend == Trend.BULLISH.name
 
         for level in support_levels + resistance_levels:
-            if level['strength'] < self.strength or level.get('tested', False):
+            if level["strength"] < self.strength or level.get("tested", False):
                 continue
-            distance = abs(level['price'] - current_price)
+            distance = abs(level["price"] - current_price)
             if distance < min_distance:
                 nearest_level = level
                 min_distance = distance
@@ -72,10 +75,10 @@ class SupportResistanceStrategy(DetectorsBase):
     async def confirm_level_interaction(self, symbol, ohlc_15m: pd.DataFrame, level_signal: dict):
         """Step 4: Confirm price interacts with the level (within 0.5% of level)."""
         recent_smc_events = []
-        level_price = level_signal['price']
-        level_type = level_signal['type']
+        level_price = level_signal["price"]
+        level_type = level_signal["type"]
         current_candle = ohlc_15m.iloc[-1]
-        current_price = current_candle['close']
+        current_price = current_candle["close"]
         threshold = self.detectors["levels_detector"].calculate_atr(ohlc_15m, period=14).iloc[-1] / 2
 
         if symbol not in self.last_tested_level_map or self.last_tested_level_map[symbol] != id(level_signal):
@@ -84,7 +87,7 @@ class SupportResistanceStrategy(DetectorsBase):
         if abs(current_price - level_price) <= threshold:
             event = f"Price near {level_type} level at {level_price} (within {threshold:.4f})."
             recent_smc_events.append(event)
-            level_signal['tested'] = True
+            level_signal["tested"] = True
             self.last_tested_level_map[symbol] = id(level_signal)
             return True, recent_smc_events
         else:
@@ -92,39 +95,50 @@ class SupportResistanceStrategy(DetectorsBase):
             recent_smc_events.append(event)
             return False, recent_smc_events
 
-    async def analyze_smc(self, symbol: str, ohlc_htf: pd.DataFrame, ohlc_for_trend_detection: pd.DataFrame,
-                          ohlc_ltf: pd.DataFrame) -> SignalSummary:
+    async def analyze_smc(
+        self,
+        symbol: str,
+        ohlc_htf: pd.DataFrame,
+        ohlc_for_trend_detection: pd.DataFrame,
+        ohlc_ltf: pd.DataFrame,
+    ) -> SignalSummary:
         """Analyze OHLC mgc for continuation signals based on Support/Resistance levels."""
         cache_key = (symbol, self.main_tf)
         current_time = max(ohlc_ltf.index.max(), ohlc_htf.index.max())
         recent_smc_events = []
 
         # Step 1: Identify market trend
-        trend, trend_event, fig = await self.confirm_trend(self.detectors['swing_1h'], ohlc_for_trend_detection, symbol,
-                                                           cache_key,
-                                                           current_time)
+        trend, trend_event, fig = await self.confirm_trend(
+            self.detectors["swing_1h"],
+            ohlc_for_trend_detection,
+            symbol,
+            cache_key,
+            current_time,
+        )
         recent_smc_events.extend(trend_event)
 
         # Step 2: Detect Support/Resistance levels
         sr_result = self.detectors["levels_detector"].calculate_support_resistance_levels(ohlc_htf, plot=True)
         self.sr_signals = sr_result
         self.sr_fig = sr_result["fig"]
-        self.recent_sr_signal = (sr_result["support_levels"] + sr_result["resistance_levels"])[-1] if (
-                sr_result["support_levels"] or sr_result["resistance_levels"]) else None
-        recent_smc_events.append(
-            f"Detected {len(sr_result['support_levels'])} support and {len(sr_result['resistance_levels'])} resistance levels.")
+        self.recent_sr_signal = (
+            (sr_result["support_levels"] + sr_result["resistance_levels"])[-1]
+            if (sr_result["support_levels"] or sr_result["resistance_levels"])
+            else None
+        )
+        recent_smc_events.append(f"Detected {len(sr_result['support_levels'])} support and {len(sr_result['resistance_levels'])} resistance levels.")
 
         signal_summary = SignalSummary(
             direction=Trend.NEUTRAL.name,
             trend=trend,
             recent_smc_events=recent_smc_events,
             recent_bos_signal=self.recent_sr_signal,
-            fig=self.sr_fig
+            fig=self.sr_fig,
         )
         if not self.recent_sr_signal:
             return signal_summary
 
-        self.last_level_time = self.recent_sr_signal.get('start_time')
+        self.last_level_time = self.recent_sr_signal.get("start_time")
 
         # Step 3: Find nearest level
         nearest_level, step_3_events = await self.get_nearest_level(ohlc_ltf, trend)

@@ -6,9 +6,16 @@ from pathlib import Path
 import pandas as pd
 import pytest
 
-from daily_trading.bots.smc_bot.backtester.BacktestResultsViewer import BacktestResultsViewer
-from daily_trading.bots.smc_bot.backtester.common_utils import parse_params_from_results_csv_filename
-from daily_trading.bots.smc_bot.backtester.MasterLeaderboardViewer import LeadershipBy, MasterLeaderboardViewer
+from daily_trading.bots.smc_bot.backtester.BacktestResultsViewer import (
+    BacktestResultsViewer,
+)
+from daily_trading.bots.smc_bot.backtester.common_utils import (
+    parse_params_from_results_csv_filename,
+)
+from daily_trading.bots.smc_bot.backtester.MasterLeaderboardViewer import (
+    LeadershipBy,
+    MasterLeaderboardViewer,
+)
 from daily_trading.settings import logger
 
 RANKING_COLUMN = "Score"
@@ -17,24 +24,20 @@ TOP_N = 10
 
 def rank_results(df_results):
     # 1. Hard Filters
-    df = df_results[df_results['Trades'] >= 25].copy()
-    df = df[df['WinRate'] >= 48.0].copy()
+    df = df_results[df_results["Trades"] >= 25].copy()
+    df = df[df["WinRate"] >= 48.0].copy()
 
     # 2. Normalize Columns
-    max_pnl = df['PnL'].max()
+    max_pnl = df["PnL"].max()
 
     # 3. Calculate Score
     # 40% Weight on Win Rate (Psychological ease)
     # 40% Weight on PnL (Profitability)
     # 20% Weight on RR (Risk profile - Higher RR is generally more robust to slippage)
 
-    df['Score'] = (
-            (df['WinRate'] / 100.0 * 0.4) +
-            (df['PnL'] / max_pnl * 0.4) +
-            (df['rr'] / 2.0 * 0.2)
-    )
+    df["Score"] = (df["WinRate"] / 100.0 * 0.4) + (df["PnL"] / max_pnl * 0.4) + (df["rr"] / 2.0 * 0.2)
 
-    return df.sort_values(by='Score', ascending=False)
+    return df.sort_values(by="Score", ascending=False)
 
 
 def merge_leaderboards(input_folder, output_file):
@@ -88,15 +91,14 @@ def merge_leaderboards(input_folder, output_file):
         print("⚠️  No valid data found to merge.")
 
 
-def aggregate_and_promote_champions(results_base_path: Path, filter_by: LeadershipBy,
-                                    strategy_type="ORB"):
+def aggregate_and_promote_champions(results_base_path: Path, filter_by: LeadershipBy, strategy_type="ORB"):
     ELITE_DIR = results_base_path / "ELITE_SETUPS"
     leaderboard_dir = results_base_path / "LEADERBOARDS"
     os.makedirs(leaderboard_dir, exist_ok=True)
 
     # Configuration
-    MIN_TRADES = 10  # Hard filter for statistical significance
-    MIN_WR = 45.0  # Hard filter for psychological viability
+    # MIN_TRADES = 10  # Hard filter for statistical significance
+    # MIN_WR = 45.0  # Hard filter for psychological viability
 
     if not ELITE_DIR.exists():
         pytest.fail(f"Elite directory not found at {ELITE_DIR}")
@@ -117,17 +119,20 @@ def aggregate_and_promote_champions(results_base_path: Path, filter_by: Leadersh
             continue
 
         meta = parse_params_from_results_csv_filename(csv_path.name)
-        if not meta: continue
+        if not meta:
+            continue
 
         df = pd.read_csv(csv_path)
-        if df.empty: continue
+        if df.empty:
+            continue
 
-        filled = df[df['result'].isin(['WIN', 'LOSS'])]
-        if filled.empty: continue
+        filled = df[df["result"].isin(["WIN", "LOSS"])]
+        if filled.empty:
+            continue
 
-        wins = len(filled[filled['result'] == 'WIN'])
+        wins = len(filled[filled["result"] == "WIN"])
         wr = (wins / len(filled)) * 100
-        total_pnl = round(filled['pnl'].sum())
+        total_pnl = round(filled["pnl"].sum())
 
         # Calculate Average Trade (Efficiency Proxy)
         avg_trade = total_pnl / len(filled) if len(filled) > 0 else 0
@@ -135,54 +140,52 @@ def aggregate_and_promote_champions(results_base_path: Path, filter_by: Leadersh
         # --- DYNAMIC OUTPUT CONSTRUCTION ---
         # Initialize with mandatory common fields
         output = {
-            "symbol": meta['symbol'],
-            "session": meta['session'],
+            "symbol": meta["symbol"],
+            "session": meta["session"],
             "WinRate": round(wr, 2),
             "PnL": total_pnl,
             "AvgTrade": round(avg_trade, 2),
             "Trades": len(filled),
-            "rr": meta.get('rr', 0.0),  # Safe get
+            "rr": meta.get("rr", 0.0),  # Safe get
         }
 
         # Build Config String & Add Specific Params conditionally
         config_parts = []
 
         # 1. Structural Params (if present)
-        if meta.get('sw') is not None:
-            output['sw'] = meta['sw']
-            output['int'] = meta['int']
-            config_parts.extend([
-                f"SW:{meta['sw']}",
-                f"INT:{meta['int']}",
-            ])
+        if meta.get("sw") is not None:
+            output["sw"] = meta["sw"]
+            output["int"] = meta["int"]
+            config_parts.extend(
+                [
+                    f"SW:{meta['sw']}",
+                    f"INT:{meta['int']}",
+                ]
+            )
         # 1. Structural Params (if present)
-        if meta.get('off') is not None:
-            output['off'] = meta['off']
-            output['atr'] = meta['atr']
-            output['thr'] = meta['thr']
-            config_parts.extend([
-                f"OFF:{meta['off']}",
-                f"ATR:{meta['atr']}",
-                f"THR:{meta['thr']}"
-            ])
+        if meta.get("off") is not None:
+            output["off"] = meta["off"]
+            output["atr"] = meta["atr"]
+            output["thr"] = meta["thr"]
+            config_parts.extend([f"OFF:{meta['off']}", f"ATR:{meta['atr']}", f"THR:{meta['thr']}"])
 
         # 2. Tap Zone Params (Crucial update)
-        if meta.get('mit') is not None:
-            output['mit'] = meta['mit']
+        if meta.get("mit") is not None:
+            output["mit"] = meta["mit"]
             config_parts.append(f"MIT:{meta['mit']}")
 
         # 3. Common Optional Params
-        if meta.get('sl_atr') is not None:
-            output['sl_atr'] = meta['sl_atr']
+        if meta.get("sl_atr") is not None:
+            output["sl_atr"] = meta["sl_atr"]
             config_parts.append(f"SL:{meta['sl_atr']}")
 
-        if meta.get('eb_mult') is not None:
-            output['eb_mult'] = meta['eb_mult']
+        if meta.get("eb_mult") is not None:
+            output["eb_mult"] = meta["eb_mult"]
             config_parts.append(f"EB:{meta['eb_mult']}")
 
         output.update({"Full_Path": str(csv_path), "Original_Filename": csv_path.name})
         # Finalize Config String
-        output['config'] = " | ".join(config_parts)
+        output["config"] = " | ".join(config_parts)
 
         all_summaries.append(output)
 
@@ -192,35 +195,31 @@ def aggregate_and_promote_champions(results_base_path: Path, filter_by: Leadersh
     master_df = pd.DataFrame(all_summaries)
 
     # 2. GROUP AND RANK (The Champion Logic)
-    grouped = master_df.groupby(['symbol', 'session'])
+    grouped = master_df.groupby(["symbol", "session"])
 
     for (symbol, session), group in grouped:
         group = group.copy()
         TARGET_TRADES = 15.0
 
         # 1. Normalize PnL (0-100 relative to group best)
-        max_pnl = group['PnL'].max()
+        max_pnl = group["PnL"].max()
         max_pnl = max_pnl if max_pnl > 0 else 1.0
-        group['Norm_PnL'] = (group['PnL'] / max_pnl) * 100
+        group["Norm_PnL"] = (group["PnL"] / max_pnl) * 100
 
         # 2. Normalize Risk:Reward (0-100, capped at 2.5R)
         # Note: If RR is missing, it defaults to 0.0, resulting in 0 score contribution
-        group['Norm_RR'] = (group['rr'] / 2.5).clip(upper=1.0) * 100
+        group["Norm_RR"] = (group["rr"] / 2.5).clip(upper=1.0) * 100
 
         # 3. Calculate Performance Score
-        base_score = (
-                (group['WinRate'] * 0.4) +
-                (group['Norm_PnL'] * 0.4) +
-                (group['Norm_RR'] * 0.2)
-        )
+        base_score = (group["WinRate"] * 0.4) + (group["Norm_PnL"] * 0.4) + (group["Norm_RR"] * 0.2)
 
         # 4. Apply Confidence Multiplier
-        confidence_mult = (group['Trades'] / TARGET_TRADES).clip(upper=1.0)
-        group['Score'] = base_score * confidence_mult
+        confidence_mult = (group["Trades"] / TARGET_TRADES).clip(upper=1.0)
+        group["Score"] = base_score * confidence_mult
 
         # 5. Garbage Collection
-        garbage_mask = (group['Trades'] < 5) | (group['WinRate'] < 30.0)
-        group.loc[garbage_mask, 'Score'] = 0.0
+        garbage_mask = (group["Trades"] < 5) | (group["WinRate"] < 30.0)
+        group.loc[garbage_mask, "Score"] = 0.0
 
         # Sort by Score
         sorted_group = group.sort_values(by="Score", ascending=False)
@@ -233,9 +232,8 @@ def aggregate_and_promote_champions(results_base_path: Path, filter_by: Leadersh
         best = sorted_group.iloc[0]
 
         # If the best score is 0, it means NO config met the minimum criteria
-        if best['Score'] <= 0:
-            logger.warning(
-                f"⚠️ No qualified champion for {symbol} {session}")
+        if best["Score"] <= 0:
+            logger.warning(f"⚠️ No qualified champion for {symbol} {session}")
             continue
 
         # F. Promote Champion
@@ -252,14 +250,15 @@ def aggregate_and_promote_champions(results_base_path: Path, filter_by: Leadersh
         viewer.generate_dashboard(dest_csv)
 
         logger.info(
-            f"🏆 CHAMPION: {symbol} ({session}) | Score: {best['Score']:.1f} | PnL: ${best['PnL']} | WR: {best['WinRate']}% | Cfg: {best['config']}")
+            f"🏆 CHAMPION: {symbol} ({session}) | Score: {best['Score']:.1f} | PnL: ${best['PnL']} | WR: {best['WinRate']}% | Cfg: {best['config']}"
+        )
 
     # 3. GENERATE MASTER DASHBOARD
     viewer = MasterLeaderboardViewer(
         leaderboard_dir=leaderboard_dir,
         report_name="Dashboard_Zone_Tap_Leaderboard.html",
         strategy_type=strategy_type,
-        sort_by=LeadershipBy.PNL
+        sort_by=LeadershipBy.PNL,
     )
     viewer.generate_master_dashboard()
 

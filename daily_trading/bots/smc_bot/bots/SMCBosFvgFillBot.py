@@ -2,7 +2,9 @@ import asyncio
 import traceback
 
 from daily_trading.bots.smc_bot.bots.BaseBot import SMCBotBase
-from daily_trading.bots.smc_bot.strategy.BosFvgFillStrategy_old import BosFvgFillStrategy
+from daily_trading.bots.smc_bot.strategy.BosFvgFillStrategy_old import (
+    BosFvgFillStrategy,
+)
 from daily_trading.settings import logger, TELEGRAM_MAIN_CHANNEL_CHAT_ID
 
 
@@ -17,13 +19,23 @@ class SMCBosFvgFillBot(SMCBotBase):
     6. Generate LONG/SHORT signal
     """
 
-    def __init__(self, symbols, main_tf: str = '1h', symbol_volume_threshold: float = 30000000, lookback_days: int = 1,
-                 debug=False, telegram_chat_id=TELEGRAM_MAIN_CHANNEL_CHAT_ID):
+    def __init__(
+        self,
+        symbols,
+        main_tf: str = "1h",
+        symbol_volume_threshold: float = 30000000,
+        lookback_days: int = 1,
+        debug=False,
+        telegram_chat_id=TELEGRAM_MAIN_CHANNEL_CHAT_ID,
+    ):
 
-        super().__init__(symbols, main_tf,
-                         symbol_volume_threshold,
-                         lookback_days,
-                         telegram_chat_id=telegram_chat_id)
+        super().__init__(
+            symbols,
+            main_tf,
+            symbol_volume_threshold,
+            lookback_days,
+            telegram_chat_id=telegram_chat_id,
+        )
 
         self.chat_id = telegram_chat_id
         self.bos_strategy = BosFvgFillStrategy(main_tf, debug, telegram_chat_id=self.chat_id)
@@ -44,11 +56,14 @@ class SMCBosFvgFillBot(SMCBotBase):
 
             analysis = await self.bos_strategy.analyze_smc(symbol, ohlc_1h=ohlc_1h, ohlc_lower_tf=ohlc_15m)
             analysis.title = self.strategy_name
-            await self.generate_signal(symbol, analysis,
-                                       ohlc_1d=ohlc_1d,
-                                       ohlc_4h=ohlc_4h,
-                                       ohlc_1h=ohlc_1h,
-                                       ohlc_15m=ohlc_15m)
+            await self.generate_signal(
+                symbol,
+                analysis,
+                ohlc_1d=ohlc_1d,
+                ohlc_4h=ohlc_4h,
+                ohlc_1h=ohlc_1h,
+                ohlc_15m=ohlc_15m,
+            )
 
         except Exception as e:
             # Enhanced error logging with full traceback
@@ -70,8 +85,7 @@ class SMCBosFvgFillBot(SMCBotBase):
                     if needs_refresh:
                         await self.update_symbols()
                 logger.info(f"Monitoring {len(self.symbols)} symbols")
-                await self.telegram_bot_debug.send_message(
-                    f"****** SMCBosFvgFillBot Monitoring {len(self.symbols)} symbols ******")
+                await self.telegram_bot_debug.send_message(f"****** SMCBosFvgFillBot Monitoring {len(self.symbols)} symbols ******")
                 tasks = [self.run_symbol(symbol) for symbol in self.symbols]
                 results = await asyncio.gather(*tasks, return_exceptions=True)
                 for symbol, result in zip(self.symbols, results):

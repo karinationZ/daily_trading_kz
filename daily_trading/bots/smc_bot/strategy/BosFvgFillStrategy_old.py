@@ -3,8 +3,15 @@ import pandas as pd
 from daily_trading.bots.smc_bot.detectors.BosChochDetector import BosChochDetector
 from daily_trading.bots.smc_bot.detectors.FvgDetector import FvgDetector
 from daily_trading.bots.smc_bot.detectors.HighLowDetector import HighLowDetector
-from daily_trading.bots.smc_bot.detectors.DetectorsBase import GET_READY_ALERT, BIAS, Trend
-from daily_trading.bots.smc_bot.strategy.StrategyBase import SignalSummary, DetectorsBase
+from daily_trading.bots.smc_bot.detectors.DetectorsBase import (
+    GET_READY_ALERT,
+    BIAS,
+    Trend,
+)
+from daily_trading.bots.smc_bot.strategy.StrategyBase import (
+    SignalSummary,
+    DetectorsBase,
+)
 
 
 class BosFvgFillStrategy(DetectorsBase):
@@ -24,9 +31,9 @@ class BosFvgFillStrategy(DetectorsBase):
         """
         super().__init__(main_tf, debug, telegram_chat_id=telegram_chat_id)
         self.detectors = {
-            'swing_1h': HighLowDetector(main_tf),  # Detects HH/HL/LL/LH on 1H
-            'bos_1h': BosChochDetector(main_tf),  # Detects BOS/CHOCH on 1H
-            'fvg_15m': FvgDetector(main_tf="15m", pivot_period=5, left_bars=5)  # Detects FVGs on 15m
+            "swing_1h": HighLowDetector(main_tf),  # Detects HH/HL/LL/LH on 1H
+            "bos_1h": BosChochDetector(main_tf),  # Detects BOS/CHOCH on 1H
+            "fvg_15m": FvgDetector(main_tf="15m", pivot_period=5, left_bars=5),  # Detects FVGs on 15m
         }
         self.bos_signals = None
         self.recent_bos_signal = None
@@ -52,7 +59,7 @@ class BosFvgFillStrategy(DetectorsBase):
             self.fvg_fig = fvg_result["fig"]
             return None, [event]
 
-        fvg_signals_sorted = sorted(fvg_result['signals'], key=lambda x: x['time'], reverse=True)
+        fvg_signals_sorted = sorted(fvg_result["signals"], key=lambda x: x["time"], reverse=True)
 
         bos_level = self.recent_bos_signal["level"]
         is_bullish_trend = trend == Trend.BULLISH.name
@@ -62,23 +69,23 @@ class BosFvgFillStrategy(DetectorsBase):
 
         for fvg_signal in fvg_signals_sorted:
             # Skip if mitigated
-            if fvg_signal.get('mitigated', True):
+            if fvg_signal.get("mitigated", True):
                 continue
 
             # Check if FVG bias matches trend
             expected_bias = Trend.BULLISH.value if is_bullish_trend else Trend.BEARISH.value
-            if fvg_signal.get('bias') != expected_bias:
+            if fvg_signal.get("bias") != expected_bias:
                 continue
 
             # Check position relative to BOS level
             if is_bullish_trend:
                 # For bullish trend: look for FVG below BOS level
-                if fvg_signal.get('top', float('inf')) <= bos_level:
+                if fvg_signal.get("top", float("inf")) <= bos_level:
                     nearest_fvg = fvg_signal
                     break
             else:
                 # For bearish trend: look for FVG above BOS level
-                if fvg_signal.get('bottom', float('-inf')) >= bos_level:
+                if fvg_signal.get("bottom", float("-inf")) >= bos_level:
                     nearest_fvg = fvg_signal
                     break
 
@@ -95,14 +102,14 @@ class BosFvgFillStrategy(DetectorsBase):
         """Confirm if the current candle mitigates an FVG by 60% or more."""
         recent_smc_events = []
 
-        fvg_top = fvg_signal['top']
-        fvg_bottom = fvg_signal['bottom']
+        fvg_top = fvg_signal["top"]
+        fvg_bottom = fvg_signal["bottom"]
         fvg_range = fvg_top - fvg_bottom
 
         # Check current candle
         current_candle = ohlc_lower_tf.iloc[-1]
-        candle_high = current_candle['high']
-        candle_low = current_candle['low']
+        candle_high = current_candle["high"]
+        candle_low = current_candle["low"]
         fvg_mitigated = False
 
         # Reset state for new FVG
@@ -110,7 +117,7 @@ class BosFvgFillStrategy(DetectorsBase):
             self.last_mitigated_fvg_level_map[symbol] = None
             self._current_fvg_id_map[symbol] = id(fvg_signal)
 
-        if fvg_bottom <= current_candle['close'] <= fvg_top:
+        if fvg_bottom <= current_candle["close"] <= fvg_top:
             recent_smc_events.append(f"Current price is in {trend} FVG.")
 
         if candle_low <= fvg_top and candle_high >= fvg_bottom:
@@ -128,13 +135,16 @@ class BosFvgFillStrategy(DetectorsBase):
             mitigation_percent = int((mitigation_depth / fvg_range) * 100) if fvg_range > 0 else 0
             if mitigation_percent >= 60:
                 fvg_mitigated = True
-                msg = f"{symbol} - Price mitigated {trend} FVG by {mitigation_percent}% (>= 60%)" if trend == Trend.BULLISH.name else f"Price mitigated {trend} FVG by {mitigation_percent}% (>= 60%)"
+                msg = (
+                    f"{symbol} - Price mitigated {trend} FVG by {mitigation_percent}% (>= 60%)"
+                    if trend == Trend.BULLISH.name
+                    else f"Price mitigated {trend} FVG by {mitigation_percent}% (>= 60%)"
+                )
                 recent_smc_events.append(msg)
                 self.last_mitigated_fvg_level_map[symbol] = None
                 self._current_fvg_id_map[symbol] = None
             elif mitigation_percent > 0:
-                recent_smc_events.append(
-                    f"{GET_READY_ALERT} - Price partially mitigated ({mitigation_percent}%) {trend} FVG.")
+                recent_smc_events.append(f"{GET_READY_ALERT} - Price partially mitigated ({mitigation_percent}%) {trend} FVG.")
         else:
             recent_smc_events.append(f"Current price is outside of the {trend} FVG.")
 
@@ -149,25 +159,24 @@ class BosFvgFillStrategy(DetectorsBase):
         recent_smc_events = []
 
         # Step 1: Identify market trend
-        trend, trend_event, fig = await self.confirm_trend(self.detectors['swing_1h'], ohlc_1h, symbol, cache_key,
-                                                           current_time)
+        trend, trend_event, fig = await self.confirm_trend(self.detectors["swing_1h"], ohlc_1h, symbol, cache_key, current_time)
         recent_smc_events.extend(trend_event)
 
         # Step 2: Detect BOS & ChoCH signals
-        bos_events = await self.detect_bos_choch(self.detectors['bos_1h'], ohlc_1h, trend, symbol)
+        bos_events = await self.detect_bos_choch(self.detectors["bos_1h"], ohlc_1h, trend, symbol)
         recent_smc_events.extend(bos_events)
         signal_summary = SignalSummary(
             direction=Trend.NEUTRAL.name,
             trend=trend,
             recent_smc_events=recent_smc_events,
             recent_bos_signal=self.recent_bos_signal,
-            fig=self.bos_choch_fig
+            fig=self.bos_choch_fig,
         )
         if self.recent_bos_signal is None or trend == Trend.NEUTRAL.name:
             return signal_summary
 
         # Update last BOS time
-        self.last_bos_time = self.recent_bos_signal.get('time')
+        self.last_bos_time = self.recent_bos_signal.get("time")
 
         # Step 3: Find nearest FVG
         nearest_fvg, step_3_events = await self.get_nearest_fvg(ohlc_lower_tf, trend)

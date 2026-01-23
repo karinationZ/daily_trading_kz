@@ -5,7 +5,7 @@ from typing import Dict, Optional
 import requests
 from textblob import TextBlob
 
-from daily_trading.settings import *
+from daily_trading.settings import logger, CRYPTO_PANIC_TOKEN
 
 
 class CryptoSentimentAnalyzer:
@@ -16,24 +16,21 @@ class CryptoSentimentAnalyzer:
 
         # Configure session with proper settings
         self.session = requests.Session()
-        self.session.headers.update({
-            'User-Agent': 'CryptoSentimentAnalyzer/1.0',
-            'Accept': 'application/json'
-        })
+        self.session.headers.update({"User-Agent": "CryptoSentimentAnalyzer/1.0", "Accept": "application/json"})
 
         self.last_request_time = time.time()  # Initialize to current time
         self.min_request_interval = 1
 
         # Reputable crypto news sources for weighting
         self.high_quality_sources = {
-            'coindesk.com': 1.5,
-            'cointelegraph.com': 1.4,
-            'decrypt.co': 1.3,
-            'coinbase.com': 1.3,
-            'binance.com': 1.2
+            "coindesk.com": 1.5,
+            "cointelegraph.com": 1.4,
+            "decrypt.co": 1.3,
+            "coinbase.com": 1.3,
+            "binance.com": 1.2,
         }
 
-        self.low_quality_patterns = ['blog', 'medium.com', 'reddit.com']
+        self.low_quality_patterns = ["blog", "medium.com", "reddit.com"]
 
     def _rate_limit(self) -> None:
         """Enforce rate limiting between API calls."""
@@ -62,7 +59,6 @@ class CryptoSentimentAnalyzer:
     def get_market_sentiment(self) -> Dict:
         """Get Fear & Greed Index with improved error handling."""
         self._rate_limit()
-        url = "https://api.alternative.me/fng/"
 
         #
         # try:
@@ -98,10 +94,10 @@ class CryptoSentimentAnalyzer:
 
     def _calculate_source_weight(self, post: Dict) -> float:
         """Calculate source credibility weight."""
-        if 'source' not in post or not post['source']:
+        if "source" not in post or not post["source"]:
             return 0.8  # Default weight for unknown sources
 
-        domain = post['source'].get('domain', '').lower()
+        domain = post["source"].get("domain", "").lower()
 
         # Check high-quality sources
         for source, weight in self.high_quality_sources.items():
@@ -123,16 +119,16 @@ class CryptoSentimentAnalyzer:
         self._rate_limit()
         url = "https://cryptopanic.com/api/v1/posts/"
         params = {
-            'auth_token': self.crypto_panic_token,
-            'currencies': symbol,
-            'filter': 'hot',
-            'public': 'true'
+            "auth_token": self.crypto_panic_token,
+            "currencies": symbol,
+            "filter": "hot",
+            "public": "true",
         }
 
         try:
             response = self.session.get(url, params=params, timeout=10)
             response.raise_for_status()
-            posts = response.json().get('results', [])
+            posts = response.json().get("results", [])
 
             if not posts:
                 return self.empty_news_response("No articles found")
@@ -142,7 +138,7 @@ class CryptoSentimentAnalyzer:
             bullish = bearish = neutral = 0
 
             for post in posts[:20]:  # Analyze top 20 posts
-                title = post.get('title', '')
+                title = post.get("title", "")
                 if not title:
                     continue
 
@@ -173,13 +169,13 @@ class CryptoSentimentAnalyzer:
             avg_sentiment = sum(weighted_sentiments) / total_weight
 
             return {
-                'news_sentiment_score': round(avg_sentiment, 3),
-                'news_classification': self.classify_news_sentiment(avg_sentiment),
-                'bullish_articles': bullish,
-                'bearish_articles': bearish,
-                'neutral_articles': neutral,
-                'total_articles': len(weighted_sentiments),
-                'data_available': True
+                "news_sentiment_score": round(avg_sentiment, 3),
+                "news_classification": self.classify_news_sentiment(avg_sentiment),
+                "bullish_articles": bullish,
+                "bearish_articles": bearish,
+                "neutral_articles": neutral,
+                "total_articles": len(weighted_sentiments),
+                "data_available": True,
             }
 
         except Exception as e:
@@ -190,37 +186,37 @@ class CryptoSentimentAnalyzer:
     def classify_news_sentiment(score: float) -> str:
         """Classify news sentiment with appropriate thresholds for TextBlob."""
         if score > 0.2:
-            return 'extremely_bullish'
+            return "extremely_bullish"
         elif score > 0.1:
-            return 'strongly_bullish'
+            return "strongly_bullish"
         elif score > 0.03:
-            return 'bullish'
+            return "bullish"
         elif score < -0.2:
-            return 'extremely_bearish'
+            return "extremely_bearish"
         elif score < -0.1:
-            return 'strongly_bearish'
+            return "strongly_bearish"
         elif score < -0.03:
-            return 'bearish'
+            return "bearish"
         else:
-            return 'neutral'
+            return "neutral"
 
     @staticmethod
     def classify_composite_sentiment(score: float) -> str:
         """Classify composite sentiment with appropriate thresholds for -1 to +1 scale."""
         if score > 0.5:
-            return 'extremely_bullish'
+            return "extremely_bullish"
         elif score > 0.25:
-            return 'strongly_bullish'
+            return "strongly_bullish"
         elif score > 0.1:
-            return 'bullish'
+            return "bullish"
         elif score < -0.5:
-            return 'extremely_bearish'
+            return "extremely_bearish"
         elif score < -0.25:
-            return 'strongly_bearish'
+            return "strongly_bearish"
         elif score < -0.1:
-            return 'bearish'
+            return "bearish"
         else:
-            return 'neutral'
+            return "neutral"
 
     def _normalize_fear_greed(self, value: int) -> float:
         """Normalize Fear & Greed index to -1 to +1 scale with proper scaling."""
@@ -261,12 +257,12 @@ class CryptoSentimentAnalyzer:
         composite = self.calculate_composite_sentiment(market, news)
 
         return {
-            'symbol': symbol,
-            'timestamp': datetime.now().isoformat(),
-            'market_sentiment': market,
-            'news_sentiment': news,
-            'composite_sentiment': composite,
-            'confidence': self.calculate_confidence(market, news)
+            "symbol": symbol,
+            "timestamp": datetime.now().isoformat(),
+            "market_sentiment": market,
+            "news_sentiment": news,
+            "composite_sentiment": composite,
+            "confidence": self.calculate_confidence(market, news),
         }
 
     def calculate_composite_sentiment(self, market: Dict, news: Dict) -> Dict:
@@ -275,8 +271,8 @@ class CryptoSentimentAnalyzer:
         weights = []
 
         # Market sentiment component
-        if market.get('data_available') and market.get('fear_greed_value') is not None:
-            market_value = market['fear_greed_value']
+        if market.get("data_available") and market.get("fear_greed_value") is not None:
+            market_value = market["fear_greed_value"]
             market_norm = self._normalize_fear_greed(market_value)
             market_weight = self._calculate_market_weight(market_value)
 
@@ -284,8 +280,8 @@ class CryptoSentimentAnalyzer:
             weights.append(market_weight)
 
         # News sentiment component
-        if news.get('data_available') and news.get('news_sentiment_score') is not None:
-            news_score = news['news_sentiment_score']
+        if news.get("data_available") and news.get("news_sentiment_score") is not None:
+            news_score = news["news_sentiment_score"]
             # Scale news sentiment to match composite range better
             # TextBlob rarely goes beyond ±0.5, so we amplify it slightly
             scaled_news = max(-1, min(1, news_score * 2))
@@ -304,10 +300,10 @@ class CryptoSentimentAnalyzer:
             composite = 0  # Neutral if no mgc
 
         return {
-            'composite_score': round(composite, 3),
-            'classification': self.classify_composite_sentiment(composite),
-            'components_used': len(components),
-            'total_weight': sum(weights) if weights else 0
+            "composite_score": round(composite, 3),
+            "classification": self.classify_composite_sentiment(composite),
+            "components_used": len(components),
+            "total_weight": sum(weights) if weights else 0,
         }
 
     @staticmethod
@@ -316,12 +312,12 @@ class CryptoSentimentAnalyzer:
         confidence_score = 0
 
         # Market mgc confidence
-        if market.get('data_available'):
+        if market.get("data_available"):
             confidence_score += 0.6  # Market mgc is generally reliable
 
         # News mgc confidence
-        if news.get('data_available'):
-            total_articles = news.get('total_articles', 0)
+        if news.get("data_available"):
+            total_articles = news.get("total_articles", 0)
             if total_articles >= 10:
                 confidence_score += 0.4  # Good sample size
             elif total_articles >= 5:
@@ -331,24 +327,24 @@ class CryptoSentimentAnalyzer:
 
         # Classify confidence
         if confidence_score >= 0.8:
-            return 'high'
+            return "high"
         elif confidence_score >= 0.5:
-            return 'medium'
+            return "medium"
         else:
-            return 'low'
+            return "low"
 
     @staticmethod
     def empty_news_response(reason: str) -> Dict:
         """Return empty news response template."""
         return {
-            'news_sentiment_score': None,
-            'news_classification': 'no_data',
-            'bullish_articles': None,
-            'bearish_articles': None,
-            'neutral_articles': None,
-            'total_articles': None,
-            'data_available': False,
-            'error': reason
+            "news_sentiment_score": None,
+            "news_classification": "no_data",
+            "bullish_articles": None,
+            "bearish_articles": None,
+            "neutral_articles": None,
+            "total_articles": None,
+            "data_available": False,
+            "error": reason,
         }
 
     def format_for_trading_prompt(self, symbol: str) -> Dict:
@@ -356,47 +352,47 @@ class CryptoSentimentAnalyzer:
         sentiment = self.get_comprehensive_sentiment(symbol)
 
         return {
-            'symbol': symbol,
-            'timestamp': sentiment['timestamp'],
-            'market_sentiment': {
-                'value': sentiment['market_sentiment'].get('fear_greed_value'),
-                'classification': sentiment['market_sentiment'].get('fear_greed_classification'),
-                'confidence': 'high' if sentiment['market_sentiment'].get('data_available') else 'low'
+            "symbol": symbol,
+            "timestamp": sentiment["timestamp"],
+            "market_sentiment": {
+                "value": sentiment["market_sentiment"].get("fear_greed_value"),
+                "classification": sentiment["market_sentiment"].get("fear_greed_classification"),
+                "confidence": ("high" if sentiment["market_sentiment"].get("data_available") else "low"),
             },
-            'news_sentiment': {
-                'score': sentiment['news_sentiment'].get('news_sentiment_score'),
-                'classification': sentiment['news_sentiment'].get('news_classification'),
-                'total_articles': sentiment['news_sentiment'].get('total_articles'),
-                'confidence': 'high' if sentiment['news_sentiment'].get('data_available') else 'low'
+            "news_sentiment": {
+                "score": sentiment["news_sentiment"].get("news_sentiment_score"),
+                "classification": sentiment["news_sentiment"].get("news_classification"),
+                "total_articles": sentiment["news_sentiment"].get("total_articles"),
+                "confidence": ("high" if sentiment["news_sentiment"].get("data_available") else "low"),
             },
-            'composite_sentiment': sentiment['composite_sentiment'],
-            'overall_confidence': sentiment['confidence'],
-            'analysis_summary': self._generate_analysis_summary(sentiment)
+            "composite_sentiment": sentiment["composite_sentiment"],
+            "overall_confidence": sentiment["confidence"],
+            "analysis_summary": self._generate_analysis_summary(sentiment),
         }
 
     def _generate_analysis_summary(self, sentiment: Dict) -> str:
         """Generate human-readable analysis summary."""
-        market_data = sentiment['market_sentiment']
-        news_data = sentiment['news_sentiment']
-        composite = sentiment['composite_sentiment']
+        market_data = sentiment["market_sentiment"]
+        news_data = sentiment["news_sentiment"]
+        composite = sentiment["composite_sentiment"]
 
         summary_parts = []
 
         # Market sentiment summary
-        if market_data.get('data_available'):
-            fg_value = market_data.get('fear_greed_value')
-            fg_class = market_data.get('fear_greed_classification', '').replace('_', ' ')
+        if market_data.get("data_available"):
+            fg_value = market_data.get("fear_greed_value")
+            fg_class = market_data.get("fear_greed_classification", "").replace("_", " ")
             summary_parts.append(f"Market shows {fg_class} (F&G: {fg_value})")
 
         # News sentiment summary
-        if news_data.get('data_available'):
-            news_class = news_data.get('news_classification', '').replace('_', ' ')
-            total_articles = news_data.get('total_articles', 0)
+        if news_data.get("data_available"):
+            news_class = news_data.get("news_classification", "").replace("_", " ")
+            total_articles = news_data.get("total_articles", 0)
             summary_parts.append(f"News sentiment is {news_class} based on {total_articles} articles")
 
         # Composite summary
-        comp_class = composite.get('classification', '').replace('_', ' ')
-        comp_score = composite.get('composite_score', 0)
+        comp_class = composite.get("classification", "").replace("_", " ")
+        comp_score = composite.get("composite_score", 0)
         summary_parts.append(f"Overall sentiment: {comp_class} (score: {comp_score})")
 
         return ". ".join(summary_parts) + "."

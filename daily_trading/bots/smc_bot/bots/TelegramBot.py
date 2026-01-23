@@ -13,21 +13,21 @@ from aiogram.exceptions import TelegramAPIError
 from aiogram.types import BufferedInputFile
 from tenacity import retry, stop_after_attempt, wait_exponential
 
-from daily_trading.settings import *
+from daily_trading.settings import logger, TELEGRAM_MAIN_CHANNEL_CHAT_ID, TELEGRAM_TOKEN
 
 
 class TelegramBot:
     """Handles all Telegram bot operations with async support and rate limiting."""
 
     def __init__(
-            self,
-            connection_pool_size: int = 20,
-            read_timeout: int = 180,
-            connect_timeout: int = 60,
-            total_timeout: int = 300,
-            parse_mode: Optional[str] = "HTML",
-            disable_notification: bool = False,
-            chat_id: Optional[str] = None
+        self,
+        connection_pool_size: int = 20,
+        read_timeout: int = 180,
+        connect_timeout: int = 60,
+        total_timeout: int = 300,
+        parse_mode: Optional[str] = "HTML",
+        disable_notification: bool = False,
+        chat_id: Optional[str] = None,
     ):
         """
         Initialize Telegram bot with connection pool settings.
@@ -35,7 +35,6 @@ class TelegramBot:
         Args:
             connection_pool_size (int): Number of concurrent connections
             read_timeout (int): Socket read timeout
-            write_timeout (int): Socket write timeout
             connect_timeout (int): Socket connect timeout
             total_timeout (int): Total request timeout
             parse_mode (str): Default parse mode for messages
@@ -46,22 +45,12 @@ class TelegramBot:
         self.disable_notification = disable_notification
         self.chat_id = chat_id if chat_id else TELEGRAM_MAIN_CHANNEL_CHAT_ID
 
-        timeout_config = aiohttp.ClientTimeout(
-            total=total_timeout,
-            sock_read=read_timeout,
-            sock_connect=connect_timeout
-        )
+        timeout_config = aiohttp.ClientTimeout(total=total_timeout, sock_read=read_timeout, sock_connect=connect_timeout)
 
         self.bot = Bot(
             token=TELEGRAM_TOKEN,
-            default=DefaultBotProperties(
-                parse_mode=parse_mode,
-                disable_notification=disable_notification
-            ),
-            session=AiohttpSession(
-                limit=connection_pool_size,
-                timeout=timeout_config
-            )
+            default=DefaultBotProperties(parse_mode=parse_mode, disable_notification=disable_notification),
+            session=AiohttpSession(limit=connection_pool_size, timeout=timeout_config),
         )
         self.semaphore = asyncio.Semaphore(3)
 
@@ -69,17 +58,19 @@ class TelegramBot:
         stop=stop_after_attempt(7),
         wait=wait_exponential(multiplier=2, min=3, max=60),
         retry=lambda e: (
-                isinstance(e, (TelegramAPIError, asyncio.TimeoutError, aiohttp.ClientError)) and
-                any(error_text in str(e).lower() for error_text in [
-                    "too many requests", "timeout", "connection", "network"
-                ])
-        )
+            isinstance(e, (TelegramAPIError, asyncio.TimeoutError, aiohttp.ClientError))
+            and any(
+                error_text in str(e).lower()
+                for error_text in [
+                    "too many requests",
+                    "timeout",
+                    "connection",
+                    "network",
+                ]
+            )
+        ),
     )
-    async def send_message(
-            self,
-            text: str,
-            image: Optional[go.Figure] = None
-    ) -> bool:
+    async def send_message(self, text: str, image: Optional[go.Figure] = None) -> bool:
         """
         Send message to Telegram channel with optional image.
         Handles long messages by splitting them into multiple messages.
@@ -114,16 +105,17 @@ class TelegramBot:
                 logger.error(f"Telegram API error: {e}\nFailed to send: {text[:100]}...")
                 if image:
                     logger.warning("Retrying without image due to API error...")
-                    return await self._send_single_message(f"{text}\n\n[Chart could not be sent due to API error]",
-                                                           None)
+                    return await self._send_single_message(f"{text}\n\n[Chart could not be sent due to API error]", None)
                 return False
 
             except aiohttp.ClientError as e:
                 logger.error(f"HTTP Client error: {e}\nFailed to send: {text[:100]}...")
                 if image:
                     logger.warning("Retrying without image due to client error...")
-                    return await self._send_single_message(f"{text}\n\n[Chart could not be sent due to network error]",
-                                                           None)
+                    return await self._send_single_message(
+                        f"{text}\n\n[Chart could not be sent due to network error]",
+                        None,
+                    )
                 raise
 
             except Exception as e:
@@ -135,13 +127,7 @@ class TelegramBot:
         try:
             if image:
                 buffer = io.BytesIO()
-                image.write_image(
-                    buffer,
-                    format="png",
-                    width=1200,
-                    height=675,
-                    scale=1
-                )
+                image.write_image(buffer, format="png", width=1200, height=675, scale=1)
                 buffer.seek(0)
 
                 await asyncio.wait_for(
@@ -149,34 +135,25 @@ class TelegramBot:
                         chat_id=self.chat_id,
                         photo=BufferedInputFile(file=buffer.read(), filename="chart.png"),
                         caption=text,
-                        parse_mode=ParseMode.HTML
+                        parse_mode=ParseMode.HTML,
                     ),
-                    timeout=90
+                    timeout=90,
                 )
             else:
                 await asyncio.wait_for(
-                    self.bot.send_message(
-                        chat_id=self.chat_id,
-                        text=text,
-                        parse_mode=ParseMode.HTML
-                    ),
-                    timeout=45
+                    self.bot.send_message(chat_id=self.chat_id, text=text, parse_mode=ParseMode.HTML),
+                    timeout=45,
                 )
 
-            logger.info(f"Telegram message sent successfully.")
+            logger.info("Telegram message sent successfully.")
             return True
         except Exception as e:
-            logger.error(
-                f"Error sending single message. Retrying to send just a text, no chart. {str(e)}. Message: {text}")
+            logger.error(f"Error sending single message. Retrying to send just a text, no chart. {str(e)}. Message: {text}")
             await asyncio.wait_for(
-                self.bot.send_message(
-                    chat_id=self.chat_id,
-                    text=text,
-                    parse_mode=ParseMode.HTML
-                ),
-                timeout=45
+                self.bot.send_message(chat_id=self.chat_id, text=text, parse_mode=ParseMode.HTML),
+                timeout=45,
             )
-            logger.info(f"Telegram message without image sent successfully.")
+            logger.info("Telegram message without image sent successfully.")
             return True
 
     async def _send_long_message(self, text: str, image: Optional[go.Figure] = None) -> bool:
@@ -210,20 +187,20 @@ class TelegramBot:
 
         chunks = []
         current_chunk = ""
-        paragraphs = text.split('\n\n')
+        paragraphs = text.split("\n\n")
 
         for paragraph in paragraphs:
-            if len(current_chunk + paragraph + '\n\n') <= max_length:
-                current_chunk += paragraph + '\n\n'
+            if len(current_chunk + paragraph + "\n\n") <= max_length:
+                current_chunk += paragraph + "\n\n"
             else:
                 if current_chunk:
                     chunks.append(current_chunk.strip())
                     current_chunk = ""
                 if len(paragraph) > max_length:
-                    lines = paragraph.split('\n')
+                    lines = paragraph.split("\n")
                     for line in lines:
-                        if len(current_chunk + line + '\n') <= max_length:
-                            current_chunk += line + '\n'
+                        if len(current_chunk + line + "\n") <= max_length:
+                            current_chunk += line + "\n"
                         else:
                             if current_chunk:
                                 chunks.append(current_chunk.strip())
@@ -234,9 +211,9 @@ class TelegramBot:
                                     line = line[max_length:]
                                 current_chunk = ""
                             else:
-                                current_chunk = line + '\n'
+                                current_chunk = line + "\n"
                 else:
-                    current_chunk = paragraph + '\n\n'
+                    current_chunk = paragraph + "\n\n"
 
         if current_chunk:
             chunks.append(current_chunk.strip())
@@ -249,20 +226,18 @@ class TelegramBot:
             if "retry after" in error_message.lower():
                 parts = error_message.lower().split("retry after")
                 if len(parts) > 1:
-                    match = re.search(r'\d+', parts[1])
+                    match = re.search(r"\d+", parts[1])
                     if match:
                         return int(match.group())
             return 5
-        except:
+        except Exception as e:
+            print(e)
             return 5
 
     async def get_channel_id_from_updates(self):
         """Retrieve channel ID from bot updates."""
         try:
-            updates = await asyncio.wait_for(
-                self.bot.get_updates(timeout=30),
-                timeout=60
-            )
+            updates = await asyncio.wait_for(self.bot.get_updates(timeout=30), timeout=60)
             for update in updates:
                 if update.channel_post:
                     channel_id = update.channel_post.chat.id

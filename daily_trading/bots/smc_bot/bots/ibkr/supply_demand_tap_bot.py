@@ -4,7 +4,9 @@ from zoneinfo import ZoneInfo
 
 from daily_trading.bots.smc_bot.bots.BaseBot import SMCBotBase
 from daily_trading.bots.smc_bot.strategy.StrategyBase import TradeStatus
-from daily_trading.bots.smc_bot.strategy.SupplyDemandZoneTapStrategy import SupplyDemandZoneTapStrategy
+from daily_trading.bots.smc_bot.strategy.SupplyDemandZoneTapStrategy import (
+    SupplyDemandZoneTapStrategy,
+)
 from daily_trading.settings import logger, TELEGRAM_MAIN_CHANNEL_CHAT_ID
 
 # Define your configuration here
@@ -24,9 +26,8 @@ CONFIG = {
         "zone_precision_factor": 1.5,
         "tp_multiple": 1.5,
         "entry_buffer_mult": 2.5,
-        "sl_buffer_mult": 1.5
+        "sl_buffer_mult": 1.5,
     },
-
     # ==========================================================================
     # GROUP 2: MGC NY — "THE GOLD MOMENTUM" (UPGRADED)
     # Stats: WR 60% | PnL $837 | 5 Trades
@@ -42,9 +43,8 @@ CONFIG = {
         "zone_precision_factor": 1.5,
         "tp_multiple": 2.5,
         "entry_buffer_mult": 2.0,
-        "sl_buffer_mult": 2.0
+        "sl_buffer_mult": 2.0,
     },
-
     # ==========================================================================
     # GROUP 3: MES NY — "THE PRECISION ANCHOR"
     # Stats: WR 83% | PnL $597 | 6 Trades
@@ -59,14 +59,19 @@ CONFIG = {
         "zone_precision_factor": 1.5,
         "tp_multiple": 1.5,
         "entry_buffer_mult": 1.25,
-        "sl_buffer_mult": 1.5
-    }
+        "sl_buffer_mult": 1.5,
+    },
 }
 
 
 class SupplyDemandTapBot(SMCBotBase):
     def __init__(self, telegram_chat_id=TELEGRAM_MAIN_CHANNEL_CHAT_ID, risk=250, ib_client=None):
-        super().__init__(symbols=[], main_tf="5m", telegram_chat_id=telegram_chat_id, ib_client=ib_client)
+        super().__init__(
+            symbols=[],
+            main_tf="5m",
+            telegram_chat_id=telegram_chat_id,
+            ib_client=ib_client,
+        )
         self.strategies: List[SupplyDemandZoneTapStrategy] = []
         self.active_symbols = []
         self.risk = risk
@@ -95,7 +100,7 @@ class SupplyDemandTapBot(SMCBotBase):
                     zone_precision_factor=cfg["zone_precision_factor"],
                     fvg_threshold=cfg["fvg_threshold"],
                     sl_atr_multiplier=cfg["sl_buffer_mult"],
-                    eb_mult=cfg["entry_buffer_mult"]
+                    eb_mult=cfg["entry_buffer_mult"],
                 )
                 self.strategies.append(strategy)
                 unique_symbols.add(symbol)

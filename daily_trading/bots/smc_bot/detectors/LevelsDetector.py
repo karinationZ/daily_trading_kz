@@ -25,107 +25,116 @@ class LevelsDetector(DetectorsBase):
         sr_info_list = []
 
         for i in range(self.pivot_length, len(ohlc) - self.pivot_length):
-            left_window = ohlc.iloc[max(0, i - self.pivot_length):i]
-            right_window = ohlc.iloc[i + 1:i + self.pivot_length + 1]
-            if (left_window['high'].empty or ohlc['high'].iloc[i] >= left_window['high'].max()) and \
-                    (right_window['high'].empty or ohlc['high'].iloc[i] >= right_window['high'].max()):
-                pivot_high.iloc[i] = ohlc['high'].iloc[i]
-                if self._is_valid_sr(ohlc['high'].iloc[i], sr_info_list, atr.iloc[i]):
-                    sr_info_list.insert(0, {
-                        'start_time': ohlc.index[i],
-                        'price': ohlc['high'].iloc[i],
-                        'type': 'Resistance',
-                        'strength': 1
-                    })
+            left_window = ohlc.iloc[max(0, i - self.pivot_length) : i]
+            right_window = ohlc.iloc[i + 1 : i + self.pivot_length + 1]
+            if (left_window["high"].empty or ohlc["high"].iloc[i] >= left_window["high"].max()) and (
+                right_window["high"].empty or ohlc["high"].iloc[i] >= right_window["high"].max()
+            ):
+                pivot_high.iloc[i] = ohlc["high"].iloc[i]
+                if self._is_valid_sr(ohlc["high"].iloc[i], sr_info_list, atr.iloc[i]):
+                    sr_info_list.insert(
+                        0,
+                        {
+                            "start_time": ohlc.index[i],
+                            "price": ohlc["high"].iloc[i],
+                            "type": "Resistance",
+                            "strength": 1,
+                        },
+                    )
                     if len(sr_info_list) > self.max_sr_info_size:
                         sr_info_list.pop()
 
-            if (left_window['low'].empty or ohlc['low'].iloc[i] <= left_window['low'].min()) and \
-                    (right_window['low'].empty or ohlc['low'].iloc[i] <= right_window['low'].min()):
-                pivot_low.iloc[i] = ohlc['low'].iloc[i]
-                if self._is_valid_sr(ohlc['low'].iloc[i], sr_info_list, atr.iloc[i]):
-                    sr_info_list.insert(0, {
-                        'start_time': ohlc.index[i],
-                        'price': ohlc['low'].iloc[i],
-                        'type': 'Support',
-                        'strength': 1
-                    })
+            if (left_window["low"].empty or ohlc["low"].iloc[i] <= left_window["low"].min()) and (
+                right_window["low"].empty or ohlc["low"].iloc[i] <= right_window["low"].min()
+            ):
+                pivot_low.iloc[i] = ohlc["low"].iloc[i]
+                if self._is_valid_sr(ohlc["low"].iloc[i], sr_info_list, atr.iloc[i]):
+                    sr_info_list.insert(
+                        0,
+                        {
+                            "start_time": ohlc.index[i],
+                            "price": ohlc["low"].iloc[i],
+                            "type": "Support",
+                            "strength": 1,
+                        },
+                    )
                     if len(sr_info_list) > self.max_sr_info_size:
                         sr_info_list.pop()
 
         for i in range(1, len(ohlc)):
             for sr in sr_info_list:
-                if sr['type'] == 'Resistance' and ohlc['high'].iloc[i] >= sr['price'] and ohlc['close'].iloc[i] <= sr[
-                    'price']:
-                    sr['strength'] += 1
-                elif sr['type'] == 'Support' and ohlc['low'].iloc[i] <= sr['price'] and ohlc['close'].iloc[i] >= sr[
-                    'price']:
-                    sr['strength'] += 1
+                if sr["type"] == "Resistance" and ohlc["high"].iloc[i] >= sr["price"] and ohlc["close"].iloc[i] <= sr["price"]:
+                    sr["strength"] += 1
+                elif sr["type"] == "Support" and ohlc["low"].iloc[i] <= sr["price"] and ohlc["close"].iloc[i] >= sr["price"]:
+                    sr["strength"] += 1
 
         fig = None
         if plot:
             fig = self._plot_levels(ohlc, sr_info_list)
 
-        pivot_high_points = [{'time': idx, 'level': pivot_high.loc[idx]} for idx in
-                             pivot_high[pivot_high.notna()].index]
-        pivot_low_points = [{'time': idx, 'level': pivot_low.loc[idx]} for idx in pivot_low[pivot_low.notna()].index]
+        pivot_high_points = [{"time": idx, "level": pivot_high.loc[idx]} for idx in pivot_high[pivot_high.notna()].index]
+        pivot_low_points = [{"time": idx, "level": pivot_low.loc[idx]} for idx in pivot_low[pivot_low.notna()].index]
 
         return {
-            "support_levels": [sr for sr in sr_info_list if sr['type'] == 'Support'],
-            "resistance_levels": [sr for sr in sr_info_list if sr['type'] == 'Resistance'],
+            "support_levels": [sr for sr in sr_info_list if sr["type"] == "Support"],
+            "resistance_levels": [sr for sr in sr_info_list if sr["type"] == "Resistance"],
             "pivot_high_points": pivot_high_points,
             "pivot_low_points": pivot_low_points,
-            "fig": fig
+            "fig": fig,
         }
 
     def plot_htf_levels_on_ltf(self, ohlc_ltf, signals_htf):
         ohlc_ltf = self.validate_data(ohlc_ltf)
         ohlc_ltf = ohlc_ltf.sort_index().tail(self.plot_tail)
 
-        symbol = ohlc_ltf['symbol'].iloc[0] if 'symbol' in ohlc_ltf.columns else 'Unknown'
+        symbol = ohlc_ltf["symbol"].iloc[0] if "symbol" in ohlc_ltf.columns else "Unknown"
         fig = go.Figure()
 
         # Plot candlesticks
-        fig.add_trace(go.Candlestick(
-            x=ohlc_ltf.index,
-            open=ohlc_ltf['open'],
-            high=ohlc_ltf['high'],
-            low=ohlc_ltf['low'],
-            close=ohlc_ltf['close'],
-            name="OHLC"
-        ))
+        fig.add_trace(
+            go.Candlestick(
+                x=ohlc_ltf.index,
+                open=ohlc_ltf["open"],
+                high=ohlc_ltf["high"],
+                low=ohlc_ltf["low"],
+                close=ohlc_ltf["close"],
+                name="OHLC",
+            )
+        )
 
         # Plot levels within OHLC range
-        min_price = ohlc_ltf['low'].min()
-        max_price = ohlc_ltf['high'].max()
-        sr_levels = signals_htf.get('support_levels', []) + signals_htf.get('resistance_levels', [])
+        min_price = ohlc_ltf["low"].min()
+        max_price = ohlc_ltf["high"].max()
+        sr_levels = signals_htf.get("support_levels", []) + signals_htf.get("resistance_levels", [])
         for sr in sr_levels:
-            if sr['strength'] >= self.strength and min_price <= sr['price'] <= max_price:
-                start_time = sr['start_time']
+            if sr["strength"] >= self.strength and min_price <= sr["price"] <= max_price:
+                start_time = sr["start_time"]
                 if start_time not in ohlc_ltf.index:
-                    start_time = ohlc_ltf.index[ohlc_ltf.index.get_indexer([start_time], method='nearest')[0]]
+                    start_time = ohlc_ltf.index[ohlc_ltf.index.get_indexer([start_time], method="nearest")[0]]
                 # Plot solid blue line
-                fig.add_trace(go.Scatter(
-                    x=[start_time, ohlc_ltf.index[-1]],
-                    y=[sr['price'], sr['price']],
-                    mode='lines',
-                    line=dict(color='blue', width=1),
-                    name=sr['type'],
-                    showlegend=False
-                ))
+                fig.add_trace(
+                    go.Scatter(
+                        x=[start_time, ohlc_ltf.index[-1]],
+                        y=[sr["price"], sr["price"]],
+                        mode="lines",
+                        line=dict(color="blue", width=1),
+                        name=sr["type"],
+                        showlegend=False,
+                    )
+                )
                 # Add price text annotation
                 fig.add_annotation(
                     x=ohlc_ltf.index[-1],
-                    y=sr['price'],
+                    y=sr["price"],
                     text=f"{sr['price']}",
                     showarrow=False,
                     xanchor="left",
                     yanchor="middle",
-                    font=dict(size=10, color='blue'),
-                    xshift=5
+                    font=dict(size=10, color="blue"),
+                    xshift=5,
                 )
 
-        last_candle = ohlc_ltf.index.max().tz_convert('US/Pacific').strftime('%Y-%m-%d %H:%M')
+        last_candle = ohlc_ltf.index.max().tz_convert("US/Pacific").strftime("%Y-%m-%d %H:%M")
 
         if len(ohlc_ltf) > 1:
             interval = ohlc_ltf.index[-1] - ohlc_ltf.index[-2]
@@ -144,63 +153,71 @@ class LevelsDetector(DetectorsBase):
             margin=dict(l=50, r=50, t=100, b=100),
         )
         fig.update_xaxes(
-            type='date',
+            type="date",
             tickformat="%H:%M",
-            tickmode='linear',
+            tickmode="linear",
             dtick=7200000,  # 2-hour intervals
-            tickangle=45
+            tickangle=45,
         )
 
         return fig
 
     def _is_valid_sr(self, price, sr_info_list, atr):
         for sr in sr_info_list:
-            if abs(sr['price'] - price) < atr * self.too_close_atr:
+            if abs(sr["price"] - price) < atr * self.too_close_atr:
                 return False
         return True
 
     def _plot_levels(self, ohlc, sr_info_list):
         tf_str = self.get_time_frame_name(ohlc)
         ohlc = ohlc.sort_index().tail(self.plot_tail)
-        symbol = ohlc['symbol'].iloc[0] if 'symbol' in ohlc.columns else 'Unknown'
+        symbol = ohlc["symbol"].iloc[0] if "symbol" in ohlc.columns else "Unknown"
         fig = make_subplots(rows=1, cols=1)
 
-        fig.add_trace(go.Candlestick(
-            x=ohlc.index,
-            open=ohlc['open'],
-            high=ohlc['high'],
-            low=ohlc['low'],
-            close=ohlc['close'],
-            name="OHLC"
-        ), row=1, col=1)
+        fig.add_trace(
+            go.Candlestick(
+                x=ohlc.index,
+                open=ohlc["open"],
+                high=ohlc["high"],
+                low=ohlc["low"],
+                close=ohlc["close"],
+                name="OHLC",
+            ),
+            row=1,
+            col=1,
+        )
 
         for sr in sr_info_list:
-            if sr['strength'] >= self.strength:
-                start_time = sr['start_time']
+            if sr["strength"] >= self.strength:
+                start_time = sr["start_time"]
                 if start_time not in ohlc.index:
-                    start_time = ohlc.index[ohlc.index.get_indexer([start_time], method='nearest')[0]]
+                    start_time = ohlc.index[ohlc.index.get_indexer([start_time], method="nearest")[0]]
                 end_time = ohlc.index[-1]
-                fig.add_trace(go.Scatter(
-                    x=[start_time, end_time],
-                    y=[sr['price'], sr['price']],
-                    mode='lines',
-                    line=dict(color='blue', width=1),
-                    name=sr['type'],
-                    showlegend=False
-                ), row=1, col=1)
+                fig.add_trace(
+                    go.Scatter(
+                        x=[start_time, end_time],
+                        y=[sr["price"], sr["price"]],
+                        mode="lines",
+                        line=dict(color="blue", width=1),
+                        name=sr["type"],
+                        showlegend=False,
+                    ),
+                    row=1,
+                    col=1,
+                )
                 # Add price text annotation
                 fig.add_annotation(
                     x=end_time,
-                    y=sr['price'],
+                    y=sr["price"],
                     text=f"{sr['price']}",
                     showarrow=False,
                     xanchor="left",
                     yanchor="middle",
-                    font=dict(size=10, color='blue'),
-                    xshift=5
+                    font=dict(size=10, color="blue"),
+                    xshift=5,
                 )
 
-        last_candle = ohlc.index.max().tz_convert('US/Pacific').strftime('%Y-%m-%d %H:%M')
+        last_candle = ohlc.index.max().tz_convert("US/Pacific").strftime("%Y-%m-%d %H:%M")
         # Extend x-axis to ensure last candle is fully visible
         x_range_end = ohlc.index[-1] + pd.Timedelta(minutes=120)  # Increased buffer to 30 minutes
         fig.update_layout(
@@ -212,18 +229,20 @@ class LevelsDetector(DetectorsBase):
             margin=dict(l=50, r=50, t=100, b=100),
         )
         fig.update_xaxes(
-            type='date',
+            type="date",
             tickformat="%H:%M",
-            tickmode='linear',
+            tickmode="linear",
             dtick=7200000,  # 2-hour intervals
             tickangle=45,
-            row=1, col=1
+            row=1,
+            col=1,
         )
         return fig
+
     def calculate_atr(self, ohlc, period):
-        high_low = ohlc['high'] - ohlc['low']
-        high_close = (ohlc['high'] - ohlc['close'].shift(1)).abs()
-        low_close = (ohlc['low'] - ohlc['close'].shift(1)).abs()
+        high_low = ohlc["high"] - ohlc["low"]
+        high_close = (ohlc["high"] - ohlc["close"].shift(1)).abs()
+        low_close = (ohlc["low"] - ohlc["close"].shift(1)).abs()
         true_range = pd.concat([high_low, high_close, low_close], axis=1).max(axis=1)
         self.atr = true_range.rolling(window=period).mean()
         return self.atr

@@ -28,115 +28,99 @@ class CandlePatternDetector(DetectorsBase):
         lower_wick_ratio = lower_shadow / range_ if range_ > 0 else 0
         upper_wick_ratio = upper_shadow / range_ if range_ > 0 else 0
 
-        shadow_threshold = config.get('shadow_threshold', 0.1)
-        body_threshold = config.get('body_threshold', 0.7)
-        small_body_threshold = config.get('small_body_threshold', 0.3)
-        long_wick_threshold = config.get('long_wick_threshold', 0.6)
+        shadow_threshold = config.get("shadow_threshold", 0.1)
+        body_threshold = config.get("body_threshold", 0.7)
+        small_body_threshold = config.get("small_body_threshold", 0.3)
+        long_wick_threshold = config.get("long_wick_threshold", 0.6)
 
-        if pattern == 'Belt Hold':
-            if (close > open and
-                    lower_wick_ratio <= shadow_threshold and
-                    upper_wick_ratio <= shadow_threshold and
-                    body_ratio >= body_threshold):
+        if pattern == "Belt Hold":
+            if close > open and lower_wick_ratio <= shadow_threshold and upper_wick_ratio <= shadow_threshold and body_ratio >= body_threshold:
                 return 100
-            elif (close < open and
-                  upper_wick_ratio <= shadow_threshold and
-                  lower_wick_ratio <= shadow_threshold and
-                  body_ratio >= body_threshold):
+            elif close < open and upper_wick_ratio <= shadow_threshold and lower_wick_ratio <= shadow_threshold and body_ratio >= body_threshold:
                 return -100
-        elif pattern == 'Closing Marubozu':
-            if (close > open and
-                    lower_wick_ratio <= shadow_threshold and
-                    upper_wick_ratio <= shadow_threshold and
-                    body_ratio >= body_threshold):
+        elif pattern == "Closing Marubozu":
+            if close > open and lower_wick_ratio <= shadow_threshold and upper_wick_ratio <= shadow_threshold and body_ratio >= body_threshold:
                 return 100
-            elif (close < open and
-                  upper_wick_ratio <= shadow_threshold and
-                  lower_wick_ratio <= shadow_threshold and
-                  body_ratio >= body_threshold):
+            elif close < open and upper_wick_ratio <= shadow_threshold and lower_wick_ratio <= shadow_threshold and body_ratio >= body_threshold:
                 return -100
-        elif pattern == 'Doji':
+        elif pattern == "Doji":
             if body_ratio <= small_body_threshold:
                 return 100  # Neutral, treated as bullish for consistency
-        elif pattern == 'Dragonfly Doji':
-            if (body_ratio <= small_body_threshold and
-                    lower_wick_ratio >= long_wick_threshold and
-                    upper_wick_ratio <= shadow_threshold):
+        elif pattern == "Dragonfly Doji":
+            if body_ratio <= small_body_threshold and lower_wick_ratio >= long_wick_threshold and upper_wick_ratio <= shadow_threshold:
                 return 100
-        elif pattern == 'Gravestone Doji':
-            if (body_ratio <= small_body_threshold and
-                    upper_wick_ratio >= long_wick_threshold and
-                    lower_wick_ratio <= shadow_threshold):
+        elif pattern == "Gravestone Doji":
+            if body_ratio <= small_body_threshold and upper_wick_ratio >= long_wick_threshold and lower_wick_ratio <= shadow_threshold:
                 return -100
-        elif pattern == 'Hammer':
-            if (close >= open and
-                    lower_wick_ratio >= long_wick_threshold and
-                    upper_wick_ratio <= shadow_threshold and
-                    body_ratio <= small_body_threshold):
+        elif pattern == "Hammer":
+            if (
+                close >= open
+                and lower_wick_ratio >= long_wick_threshold
+                and upper_wick_ratio <= shadow_threshold
+                and body_ratio <= small_body_threshold
+            ):
                 return 100
-        elif pattern == 'Hanging Man':
-            if (close <= open and
-                    lower_wick_ratio >= long_wick_threshold and
-                    upper_wick_ratio <= shadow_threshold and
-                    body_ratio <= small_body_threshold):
+        elif pattern == "Hanging Man":
+            if (
+                close <= open
+                and lower_wick_ratio >= long_wick_threshold
+                and upper_wick_ratio <= shadow_threshold
+                and body_ratio <= small_body_threshold
+            ):
                 return -100
-        elif pattern == 'High Wave':
-            if (body_ratio <= small_body_threshold and
-                    lower_wick_ratio >= long_wick_threshold and
-                    upper_wick_ratio >= long_wick_threshold):
+        elif pattern == "High Wave":
+            if body_ratio <= small_body_threshold and lower_wick_ratio >= long_wick_threshold and upper_wick_ratio >= long_wick_threshold:
                 return 100  # Neutral, treated as bullish
-        elif pattern == 'Inverted Hammer':
-            if (close >= open and
-                    upper_wick_ratio >= long_wick_threshold and
-                    lower_wick_ratio <= shadow_threshold and
-                    body_ratio <= small_body_threshold):
+        elif pattern == "Inverted Hammer":
+            if (
+                close >= open
+                and upper_wick_ratio >= long_wick_threshold
+                and lower_wick_ratio <= shadow_threshold
+                and body_ratio <= small_body_threshold
+            ):
                 return 100
-        elif pattern == 'Long Legged Doji':
-            if (body_ratio <= small_body_threshold and
-                    lower_wick_ratio >= long_wick_threshold and
-                    upper_wick_ratio >= long_wick_threshold):
+        elif pattern == "Long Legged Doji":
+            if body_ratio <= small_body_threshold and lower_wick_ratio >= long_wick_threshold and upper_wick_ratio >= long_wick_threshold:
                 return 100  # Neutral, treated as bullish
-        elif pattern == 'Long Line':
-            if (close > open and body_ratio >= body_threshold):
+        elif pattern == "Long Line":
+            if close > open and body_ratio >= body_threshold:
                 return 100
-            elif (close < open and body_ratio >= body_threshold):
+            elif close < open and body_ratio >= body_threshold:
                 return -100
-        elif pattern == 'Marubozu':
-            if (close > open and
-                    lower_wick_ratio <= shadow_threshold and
-                    upper_wick_ratio <= shadow_threshold and
-                    body_ratio >= body_threshold):
+        elif pattern == "Marubozu":
+            if close > open and lower_wick_ratio <= shadow_threshold and upper_wick_ratio <= shadow_threshold and body_ratio >= body_threshold:
                 return 100
-            elif (close < open and
-                  upper_wick_ratio <= shadow_threshold and
-                  lower_wick_ratio <= shadow_threshold and
-                  body_ratio >= body_threshold):
+            elif close < open and upper_wick_ratio <= shadow_threshold and lower_wick_ratio <= shadow_threshold and body_ratio >= body_threshold:
                 return -100
-        elif pattern == 'Rickshaw Man':
-            if (body_ratio <= small_body_threshold and
-                    lower_wick_ratio >= long_wick_threshold and
-                    upper_wick_ratio >= long_wick_threshold and
-                    abs(open - close) <= abs(high - low) * 0.1):
+        elif pattern == "Rickshaw Man":
+            if (
+                body_ratio <= small_body_threshold
+                and lower_wick_ratio >= long_wick_threshold
+                and upper_wick_ratio >= long_wick_threshold
+                and abs(open - close) <= abs(high - low) * 0.1
+            ):
                 return 100  # Neutral, treated as bullish
-        elif pattern == 'Shooting Star':
-            if (close <= open and
-                    upper_wick_ratio >= long_wick_threshold and
-                    lower_wick_ratio <= shadow_threshold and
-                    body_ratio <= small_body_threshold):
+        elif pattern == "Shooting Star":
+            if (
+                close <= open
+                and upper_wick_ratio >= long_wick_threshold
+                and lower_wick_ratio <= shadow_threshold
+                and body_ratio <= small_body_threshold
+            ):
                 return -100
-        elif pattern == 'Short Line':
+        elif pattern == "Short Line":
             if body_ratio <= small_body_threshold:
                 return 100  # Neutral, treated as bullish
-        elif pattern == 'Spinning Top':
-            if (body_ratio <= small_body_threshold and
-                    lower_wick_ratio >= shadow_threshold and
-                    upper_wick_ratio >= shadow_threshold):
+        elif pattern == "Spinning Top":
+            if body_ratio <= small_body_threshold and lower_wick_ratio >= shadow_threshold and upper_wick_ratio >= shadow_threshold:
                 return 100  # Neutral, treated as bullish
-        elif pattern == 'Takuri':
-            if (close >= open and
-                    lower_wick_ratio >= long_wick_threshold * 1.5 and
-                    upper_wick_ratio <= shadow_threshold and
-                    body_ratio <= small_body_threshold):
+        elif pattern == "Takuri":
+            if (
+                close >= open
+                and lower_wick_ratio >= long_wick_threshold * 1.5
+                and upper_wick_ratio <= shadow_threshold
+                and body_ratio <= small_body_threshold
+            ):
                 return 100
         return 0
 
@@ -152,26 +136,46 @@ class CandlePatternDetector(DetectorsBase):
         - tuple: (trend (int), pattern_name (str)) - Trend is 1 (Bullish), -1 (Bearish), or 0 (Neutral).
         """
         logger.debug("Detecting single-candle pattern")
-        if not all(col in df for col in ['open', 'high', 'low', 'close']):
+        if not all(col in df for col in ["open", "high", "low", "close"]):
             logger.error("Missing required columns in DataFrame")
             return Trend.NEUTRAL, "None"
 
         config = config or {
-            'shadow_threshold': 0.1,
-            'body_threshold': 0.7,
-            'small_body_threshold': 0.3,
-            'long_wick_threshold': 0.6
+            "shadow_threshold": 0.1,
+            "body_threshold": 0.7,
+            "small_body_threshold": 0.3,
+            "long_wick_threshold": 0.6,
         }
 
         patterns = [
-            'Belt Hold', 'Closing Marubozu', 'Doji', 'Dragonfly Doji', 'Gravestone Doji',
-            'Hammer', 'Hanging Man', 'High Wave', 'Inverted Hammer', 'Long Legged Doji',
-            'Long Line', 'Marubozu', 'Rickshaw Man', 'Shooting Star', 'Short Line',
-            'Spinning Top', 'Takuri'
+            "Belt Hold",
+            "Closing Marubozu",
+            "Doji",
+            "Dragonfly Doji",
+            "Gravestone Doji",
+            "Hammer",
+            "Hanging Man",
+            "High Wave",
+            "Inverted Hammer",
+            "Long Legged Doji",
+            "Long Line",
+            "Marubozu",
+            "Rickshaw Man",
+            "Shooting Star",
+            "Short Line",
+            "Spinning Top",
+            "Takuri",
         ]
 
         for pattern in patterns:
-            value = self.check_pattern(df['open'][0], df['high'][0], df['low'][0], df['close'][0], pattern, config)
+            value = self.check_pattern(
+                df["open"][0],
+                df["high"][0],
+                df["low"][0],
+                df["close"][0],
+                pattern,
+                config,
+            )
             if value > 0:
                 logger.debug(f"Detected {pattern} (Bullish)")
                 return Trend.BULLISH, pattern

@@ -6,6 +6,8 @@ from daily_trading.settings import logger, PROJECT_DIR
 from daily_trading.brokers.BitUnixClient import BitUnixClient
 
 INTERVAL = "15m"
+
+
 class FuturesFilter:
     def __init__(self):
         self.cl = BitUnixClient()
@@ -37,7 +39,7 @@ class FuturesFilter:
 
             # The candle at index 0 should be yesterday's completed candle
 
-            prev_day_data = max(daily_data, key=lambda x: int(x['time']))
+            prev_day_data = max(daily_data, key=lambda x: int(x["time"]))
             prev_day_high, prev_day_low = float(prev_day_data["high"]), float(prev_day_data["low"])
             prev_day_timestamp = int(prev_day_data["time"])
 
@@ -52,9 +54,8 @@ class FuturesFilter:
 
             # Check if the timestamp is from yesterday
             if not (yesterday_timestamp <= prev_day_timestamp < today_timestamp):
-                yesterday_date = datetime.fromtimestamp(yesterday_timestamp / 1000, tz=timezone.utc).strftime(
-                    '%Y-%m-%d')
-                data_date = datetime.fromtimestamp(prev_day_timestamp / 1000, tz=timezone.utc).strftime('%Y-%m-%d')
+                yesterday_date = datetime.fromtimestamp(yesterday_timestamp / 1000, tz=timezone.utc).strftime("%Y-%m-%d")
+                data_date = datetime.fromtimestamp(prev_day_timestamp / 1000, tz=timezone.utc).strftime("%Y-%m-%d")
                 error_msg = f"Error: {symbol} data is from {data_date}, expected previous day ({yesterday_date})"
 
                 logger.error(error_msg)
@@ -79,7 +80,7 @@ class FuturesFilter:
                     "first_candle_min_low": first_candle_min_low,
                     "first_candle_min_high": first_candle_min_high,
                     "in_range": True,
-                    "candidate": False
+                    "candidate": False,
                 }
 
             else:
@@ -91,14 +92,13 @@ class FuturesFilter:
                     "first_candle_min_low": first_candle_min_low,
                     "first_candle_min_high": first_candle_min_high,
                     "in_range": False,
-                    "candidate": True
+                    "candidate": True,
                 }
                 logger.info(f"{symbol} Not In Range.")
 
             # Determine the distance between last 1m close price and day/5min script-levels
             last_min_close_distance_pct_low_five = abs(last_min_close - first_candle_min_low) / first_candle_min_low * 100
-            last_min_close_distance_pct_high_five = abs(
-                last_min_close - first_candle_min_high) / first_candle_min_high * 100
+            last_min_close_distance_pct_high_five = abs(last_min_close - first_candle_min_high) / first_candle_min_high * 100
 
             if last_min_close_distance_pct_high_five < last_min_close_distance_pct_low_five:
                 asset_data["curr_price_distance_pct"] = f"{last_min_close_distance_pct_high_five}"
@@ -157,13 +157,23 @@ class FuturesFilter:
             df = df.sort_values(by="candidate", ascending=False)
 
             # Add a column with numeration
-            df.insert(0, 'num', range(1, len(df) + 1))
+            df.insert(0, "num", range(1, len(df) + 1))
 
             # Define the exact column order, with status after candidate
-            column_order = ['num', 'asset', 'in_range', 'candidate', 'status', 'curr_price_distance_pct',
-                            'prev_day_high', 'prev_day_low', 'first_candle_min_high','first_candle_min_low',
-                            'first_candle_vs_prev_day_low_distance_pct',
-                            'first_candle_vs_prev_day_high_distance_pct']
+            column_order = [
+                "num",
+                "asset",
+                "in_range",
+                "candidate",
+                "status",
+                "curr_price_distance_pct",
+                "prev_day_high",
+                "prev_day_low",
+                "first_candle_min_high",
+                "first_candle_min_low",
+                "first_candle_vs_prev_day_low_distance_pct",
+                "first_candle_vs_prev_day_high_distance_pct",
+            ]
 
             # Reorder the DataFrame columns
             df = df[column_order]

@@ -2,7 +2,9 @@ import asyncio
 import traceback
 
 from daily_trading.bots.smc_bot.bots.BaseBot import SMCBotBase
-from daily_trading.bots.smc_bot.strategy.BosOrderBlockTapStrategyOld import BosOrderBlockTapStrategy
+from daily_trading.bots.smc_bot.strategy.BosOrderBlockTapStrategyOld import (
+    BosOrderBlockTapStrategy,
+)
 from daily_trading.settings import logger
 
 
@@ -15,15 +17,23 @@ class SMCBosOrderBlockTapBot(SMCBotBase):
     4. Find ...
     """
 
-    def __init__(self, symbols, telegram_chat_id, main_tf: str = '1h',
-                 symbol_volume_threshold: float = 30000000,
-                 lookback_days: int = 1,
-                 debug=False):
+    def __init__(
+        self,
+        symbols,
+        telegram_chat_id,
+        main_tf: str = "1h",
+        symbol_volume_threshold: float = 30000000,
+        lookback_days: int = 1,
+        debug=False,
+    ):
 
-        super().__init__(symbols, main_tf,
-                         symbol_volume_threshold,
-                         lookback_days,
-                         telegram_chat_id=telegram_chat_id)
+        super().__init__(
+            symbols,
+            main_tf,
+            symbol_volume_threshold,
+            lookback_days,
+            telegram_chat_id=telegram_chat_id,
+        )
 
         self.chat_id = telegram_chat_id
         self.bos_15m_ob_tap_strategy = BosOrderBlockTapStrategy(main_tf, debug, telegram_chat_id=self.chat_id)
@@ -44,11 +54,14 @@ class SMCBosOrderBlockTapBot(SMCBotBase):
 
             analysis = await self.bos_15m_ob_tap_strategy.analyze_smc(symbol, ohlc_1h=ohlc_1h, ohlc_15m=ohlc_15m)
             analysis.title = self.strategy_name
-            await self.generate_signal(symbol, analysis,
-                                       ohlc_1d=ohlc_1d,
-                                       ohlc_4h=ohlc_4h,
-                                       ohlc_1h=ohlc_1h,
-                                       ohlc_15m=ohlc_15m)
+            await self.generate_signal(
+                symbol,
+                analysis,
+                ohlc_1d=ohlc_1d,
+                ohlc_4h=ohlc_4h,
+                ohlc_1h=ohlc_1h,
+                ohlc_15m=ohlc_15m,
+            )
 
         except Exception as e:
             # Enhanced error logging with full traceback
@@ -70,8 +83,7 @@ class SMCBosOrderBlockTapBot(SMCBotBase):
                     if needs_refresh:
                         await self.update_symbols()
                         logger.info(f"Monitoring {len(self.symbols)} symbols")
-                await self.telegram_bot_debug.send_message(
-                    f"****** SMCBosOrderBlockTapBot Monitoring {len(self.symbols)} symbols ******")
+                await self.telegram_bot_debug.send_message(f"****** SMCBosOrderBlockTapBot Monitoring {len(self.symbols)} symbols ******")
                 tasks = [self.run_symbol(symbol) for symbol in self.symbols]
                 results = await asyncio.gather(*tasks, return_exceptions=True)
                 for symbol, result in zip(self.symbols, results):

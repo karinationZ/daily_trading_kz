@@ -2,7 +2,9 @@ import asyncio
 import traceback
 
 from daily_trading.bots.smc_bot.bots.BaseBot import SMCBotBase
-from daily_trading.bots.smc_bot.strategy.SupportResistanceStrategy import SupportResistanceStrategy
+from daily_trading.bots.smc_bot.strategy.SupportResistanceStrategy import (
+    SupportResistanceStrategy,
+)
 from daily_trading.settings import logger
 
 DEFAULT_SYMBOLS = ["XAUTUSDT"]
@@ -17,14 +19,23 @@ class SMCSupportResistanceBot(SMCBotBase):
     Generate ALERT signal.
     """
 
-    def __init__(self, symbols, telegram_chat_id, main_tf: str = '4h', symbol_volume_threshold: float = 30000000,
-                 lookback_days: int = 1,
-                 debug=False):
+    def __init__(
+        self,
+        symbols,
+        telegram_chat_id,
+        main_tf: str = "4h",
+        symbol_volume_threshold: float = 30000000,
+        lookback_days: int = 1,
+        debug=False,
+    ):
 
-        super().__init__(symbols, main_tf,
-                         symbol_volume_threshold,
-                         lookback_days,
-                         telegram_chat_id=telegram_chat_id)
+        super().__init__(
+            symbols,
+            main_tf,
+            symbol_volume_threshold,
+            lookback_days,
+            telegram_chat_id=telegram_chat_id,
+        )
 
         self.chat_id = telegram_chat_id
         self.bos_strategy = SupportResistanceStrategy(main_tf, debug, telegram_chat_id=self.chat_id)
@@ -43,16 +54,22 @@ class SMCSupportResistanceBot(SMCBotBase):
                 logger.error(f"No data for {symbol}, skipping...")
                 return
 
-            analysis = await self.bos_strategy.analyze_smc(symbol,
-                                                           ohlc_htf=ohlc_4h,
-                                                           ohlc_for_trend_detection=ohlc_1h,
-                                                           ohlc_ltf=ohlc_15m)
+            analysis = await self.bos_strategy.analyze_smc(
+                symbol,
+                ohlc_htf=ohlc_4h,
+                ohlc_for_trend_detection=ohlc_1h,
+                ohlc_ltf=ohlc_15m,
+            )
             analysis.title = self.strategy_name
-            await self.generate_signal(symbol, analysis,
-                                       ohlc_1d=ohlc_1d,
-                                       ohlc_4h=ohlc_4h,
-                                       ohlc_1h=ohlc_1h,
-                                       ohlc_15m=ohlc_15m, send_non_signal=False)
+            await self.generate_signal(
+                symbol,
+                analysis,
+                ohlc_1d=ohlc_1d,
+                ohlc_4h=ohlc_4h,
+                ohlc_1h=ohlc_1h,
+                ohlc_15m=ohlc_15m,
+                send_non_signal=False,
+            )
 
         except Exception as e:
             # Enhanced error logging with full traceback
@@ -75,8 +92,7 @@ class SMCSupportResistanceBot(SMCBotBase):
                         await self.update_symbols()
                 self.symbols.extend(DEFAULT_SYMBOLS)
                 logger.info(f"Monitoring {len(self.symbols)} symbols")
-                await self.telegram_bot_debug.send_message(
-                    f"****** SMCSupportResistanceBot Monitoring {len(self.symbols)} symbols ******")
+                await self.telegram_bot_debug.send_message(f"****** SMCSupportResistanceBot Monitoring {len(self.symbols)} symbols ******")
                 tasks = [self.run_symbol(symbol) for symbol in self.symbols]
                 results = await asyncio.gather(*tasks, return_exceptions=True)
                 for symbol, result in zip(self.symbols, results):

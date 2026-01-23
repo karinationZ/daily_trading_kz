@@ -128,7 +128,10 @@ class BacktestResultsViewer:
             go.Indicator(
                 mode="number",
                 value=total_pnl,
-                number={"prefix": "$", "font": {"size": 48, "color": self.colors["secondary"]}},
+                number={
+                    "prefix": "$",
+                    "font": {"size": 48, "color": self.colors["secondary"]},
+                },
                 title={"text": "Net PnL", "font": {"color": self.colors["text_dim"]}},
             ),
             row=1,
@@ -139,7 +142,10 @@ class BacktestResultsViewer:
             go.Indicator(
                 mode="gauge+number",
                 value=win_rate,
-                number={"suffix": "%", "font": {"size": 48, "color": self.colors["primary"]}},
+                number={
+                    "suffix": "%",
+                    "font": {"size": 48, "color": self.colors["primary"]},
+                },
                 gauge={
                     "axis": {"range": [0, 100], "visible": False},
                     "bar": {"color": self.colors["primary"]},
@@ -154,8 +160,14 @@ class BacktestResultsViewer:
             go.Indicator(
                 mode="number",
                 value=expectancy,
-                number={"prefix": "$", "font": {"size": 48, "color": self.colors["accent_blue"]}},
-                title={"text": "Expectancy / Trade", "font": {"color": self.colors["text_dim"]}},
+                number={
+                    "prefix": "$",
+                    "font": {"size": 48, "color": self.colors["accent_blue"]},
+                },
+                title={
+                    "text": "Expectancy / Trade",
+                    "font": {"color": self.colors["text_dim"]},
+                },
             ),
             row=1,
             col=3,
@@ -220,10 +232,7 @@ class BacktestResultsViewer:
         # --------------------------------------------------
         # MONTHLY TABLE
         # --------------------------------------------------
-        pnl_colors = [
-            self.colors["secondary"] if v >= 0 else self.colors["accent_pink"]
-            for v in monthly["PnL"]
-        ]
+        pnl_colors = [self.colors["secondary"] if v >= 0 else self.colors["accent_pink"] for v in monthly["PnL"]]
 
         fig.add_trace(
             go.Table(

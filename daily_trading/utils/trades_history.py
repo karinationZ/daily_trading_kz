@@ -33,7 +33,10 @@ if __name__ == "__main__":
             current_end = end_date
 
         logger.info(f"Fetching trades from {current_start.strftime('%Y/%m/%d')} to {current_end.strftime('%Y/%m/%d')}")
-        params = {"startTime": date_to_unix_timestamp(current_start), "endTime": date_to_unix_timestamp(current_end)}
+        params = {
+            "startTime": date_to_unix_timestamp(current_start),
+            "endTime": date_to_unix_timestamp(current_end),
+        }
         trades = cl.get_history_orders(query_params=params)
 
         if trades:
@@ -45,7 +48,7 @@ if __name__ == "__main__":
         current_start = current_end
 
     if all_trades:
-        print(f"Total trades found.")
+        print("Total trades found.")
         cl.save_trades_history_to_csv(all_trades)
     else:
         logger.warning("No trades found for March.")

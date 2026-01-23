@@ -1,0 +1,60 @@
+2026-01-23T15:30:04.463121565Z 2026-01-23 15:30:04 | INFO     | execute_cycle:143 | 1H-BOS-OB | MBT:LONDON - 💤 LONDON Session has not started yet!
+2026-01-23T15:30:04.463570198Z 2026-01-23 15:30:04 | INFO     | execute_cycle:172 | ORB | MNQ:LONDON - 💤 LONDON Session has not started yet!
+2026-01-23T15:30:04.463576338Z 2026-01-23 15:30:04 | WARNING  | execute_cycle:156 | ORB | MGC:LONDON - Skipping MGC (Busy in another strategy)
+2026-01-23T15:30:04.46363215Z 2026-01-23 15:30:04 | WARNING  | execute_cycle:156 | ORB | MGC:NY - Skipping MGC (Busy in another strategy)
+2026-01-23T15:30:04.582189821Z 2026-01-23 15:30:04 | INFO     | analyze:397 | 1H-BOS-OB | MNQ:NY - 🚀 LIMIT ORDER PLACED: LONG @ 25606.94
+2026-01-23T15:30:04.582220122Z 2026-01-23 15:30:04 | INFO     | handle_execution:399 | 1H-BOS-OB | MNQ:NY - 🚀 ENTER LONG @ 25606.9375
+2026-01-23T15:30:04.691921969Z 2026-01-23 15:30:04 | INFO     | analyze:543 | ORB | MNQ:NY - No Signals | Zones: [{'start_time': Timestamp('2026-01-22 06:25:00+0000', tz='UTC'), 'top': 25495.0, 'bottom': 25483.25, 'bias': <BIAS.LONG: 'LONG'>, 'active': True, 'timeframe': '5M'}, {'start_time': Timestamp('2026-01-21 14:40:00+0000', tz='UTC'), 'top': 25206.25, 'bottom': 25128.5, 'bias': <BIAS.LONG: 'LONG'>, 'active': True, 'timeframe': '5M'}, {'start_time': Timestamp('2026-01-21 12:45:00+0000', tz='UTC'), 'top': 25060.25, 'bottom': 25032.25, 'bias': <BIAS.LONG: 'LONG'>, 'active': True, 'timeframe': '5M'}]
+2026-01-23T15:30:04.692380812Z IBKR API validation warning: Trade(contract=Contract(secType='FUT', conId=750150193, symbol='MNQ', lastTradeDateOrContractMonth='20260320', multiplier='2', exchange='CME', currency='USD', localSymbol='MNQH6', tradingClass='MNQ'), order=LimitOrder(orderId=1115, clientId=1, action='BUY', totalQuantity=1, lmtPrice=25607.0, orderRef='MNQ_NY_BOS', transmit=False, outsideRth=True), orderStatus=OrderStatus(orderId=1115, status='ValidationError', filled=0.0, remaining=0.0, avgFillPrice=0.0, permId=0, parentId=0, lastFillPrice=0.0, clientId=0, whyHeld='', mktCapPrice=0.0), fills=[], log=[TradeLogEntry(time=datetime.datetime(2026, 1, 23, 15, 30, 4, 582353, tzinfo=datetime.timezone.utc), status='PendingSubmit', message='', errorCode=0), TradeLogEntry(time=datetime.datetime(2026, 1, 23, 15, 30, 4, 691734, tzinfo=datetime.timezone.utc), status='ValidationError', message="Warning 2109, reqId 1115: Order Event Warning:Attribute 'Outside Regular Trading Hours' is ignored based on the order type and destination. PlaceOrder is now being processed.", errorCode=2109)], advancedError='')
+2026-01-23T15:30:04.692388992Z IBKR API validation warning: Trade(contract=Contract(secType='FUT', conId=750150193, symbol='MNQ', lastTradeDateOrContractMonth='20260320', multiplier='2', exchange='CME', currency='USD', localSymbol='MNQH6', tradingClass='MNQ'), order=LimitOrder(orderId=1116, clientId=1, action='SELL', totalQuantity=1, lmtPrice=25691.75, orderRef='MNQ_NY_BOS', transmit=False, parentId=1115, outsideRth=True), orderStatus=OrderStatus(orderId=1116, status='ValidationError', filled=0.0, remaining=0.0, avgFillPrice=0.0, permId=0, parentId=0, lastFillPrice=0.0, clientId=0, whyHeld='', mktCapPrice=0.0), fills=[], log=[TradeLogEntry(time=datetime.datetime(2026, 1, 23, 15, 30, 4, 582633, tzinfo=datetime.timezone.utc), status='PendingSubmit', message='', errorCode=0), TradeLogEntry(time=datetime.datetime(2026, 1, 23, 15, 30, 4, 691734, tzinfo=datetime.timezone.utc), status='ValidationError', message="Warning 2109, reqId 1116: Order Event Warning:Attribute 'Outside Regular Trading Hours' is ignored based on the order type and destination. PlaceOrder is now being processed.", errorCode=2109)], advancedError='')
+2026-01-23T15:30:07.221758271Z 2026-01-23 15:30:07 | INFO     | _send_single_message:166 | [SYSTEM]   - Telegram message sent successfully.
+2026-01-23T15:35:04.013618382Z 2026-01-23 15:35:04 | INFO     | run:208 | [SYSTEM]   - 🔒 Blocked Symbols: {'MES', 'MGC', 'MNQ'}
+2026-01-23T15:35:04.013731366Z 2026-01-23 15:35:04 | INFO     | run:221 | [SYSTEM]   - ⏳ Pending Orders: ['BUY 3.0 MGC', 'SELL 3.0 MGC', 'SELL 3.0 MGC', 'BUY 6.0 MES', 'SELL 6.0 MES', 'SELL 6.0 MES', 'BUY 1.0 MNQ', 'SELL 1.0 MNQ', 'SELL 1.0 MNQ']
+2026-01-23T15:35:04.721924659Z 2026-01-23 15:35:04 | INFO     | _send_single_message:166 | [SYSTEM]   - Telegram message sent successfully.
+2026-01-23T15:35:04.722373572Z 2026-01-23 15:35:04 | INFO     | execute_cycle:143 | 1H-BOS-OB | SIL:LONDON - 💤 LONDON Session has not started yet!
+2026-01-23T15:35:04.72266799Z 2026-01-23 15:35:04 | INFO     | execute_cycle:143 | 1H-BOS-OB | SIL:ASIA - 💤 ASIA Session has not started yet!
+2026-01-23T15:35:04.723200725Z 2026-01-23 15:35:04 | INFO     | execute_cycle:143 | 1H-BOS-OB | MBT:LONDON - 💤 LONDON Session has not started yet!
+2026-01-23T15:35:04.723284318Z 2026-01-23 15:35:04 | WARNING  | execute_cycle:156 | ORB | MNQ:NY - Skipping MNQ (Busy in another strategy)
+2026-01-23T15:35:04.723490894Z 2026-01-23 15:35:04 | INFO     | execute_cycle:172 | ORB | MNQ:LONDON - 💤 LONDON Session has not started yet!
+2026-01-23T15:35:04.723527125Z 2026-01-23 15:35:04 | WARNING  | execute_cycle:156 | ORB | MGC:LONDON - Skipping MGC (Busy in another strategy)
+2026-01-23T15:35:04.723619958Z 2026-01-23 15:35:04 | WARNING  | execute_cycle:156 | ORB | MGC:NY - Skipping MGC (Busy in another strategy)
+2026-01-23T15:40:04.577406663Z 2026-01-23 15:40:04 | INFO     | run:208 | [SYSTEM]   - 🔒 Blocked Symbols: {'MES', 'MGC', 'MNQ'}
+2026-01-23T15:40:04.577448204Z 2026-01-23 15:40:04 | INFO     | run:221 | [SYSTEM]   - ⏳ Pending Orders: ['BUY 3.0 MGC', 'SELL 3.0 MGC', 'SELL 3.0 MGC', 'BUY 6.0 MES', 'SELL 6.0 MES', 'SELL 6.0 MES', 'BUY 1.0 MNQ', 'SELL 1.0 MNQ', 'SELL 1.0 MNQ']
+2026-01-23T15:40:05.359669069Z 2026-01-23 15:40:05 | INFO     | _send_single_message:166 | [SYSTEM]   - Telegram message sent successfully.
+2026-01-23T15:40:05.360340708Z 2026-01-23 15:40:05 | INFO     | execute_cycle:143 | 1H-BOS-OB | SIL:LONDON - 💤 LONDON Session has not started yet!
+2026-01-23T15:40:05.360700529Z 2026-01-23 15:40:05 | INFO     | execute_cycle:143 | 1H-BOS-OB | SIL:ASIA - 💤 ASIA Session has not started yet!
+2026-01-23T15:40:05.361256685Z 2026-01-23 15:40:05 | INFO     | execute_cycle:143 | 1H-BOS-OB | MBT:LONDON - 💤 LONDON Session has not started yet!
+2026-01-23T15:40:05.361323306Z 2026-01-23 15:40:05 | WARNING  | execute_cycle:156 | ORB | MNQ:NY - Skipping MNQ (Busy in another strategy)
+2026-01-23T15:40:05.361514272Z 2026-01-23 15:40:05 | INFO     | execute_cycle:172 | ORB | MNQ:LONDON - 💤 LONDON Session has not started yet!
+2026-01-23T15:40:05.361681647Z 2026-01-23 15:40:05 | WARNING  | execute_cycle:156 | ORB | MGC:LONDON - Skipping MGC (Busy in another strategy)
+2026-01-23T15:40:05.361685737Z 2026-01-23 15:40:05 | WARNING  | execute_cycle:156 | ORB | MGC:NY - Skipping MGC (Busy in another strategy)
+2026-01-23T15:45:04.313089924Z 2026-01-23 15:45:04 | INFO     | run:208 | [SYSTEM]   - 🔒 Blocked Symbols: {'MES', 'MGC', 'MNQ'}
+2026-01-23T15:45:04.313115465Z 2026-01-23 15:45:04 | INFO     | run:221 | [SYSTEM]   - ⏳ Pending Orders: ['BUY 3.0 MGC', 'SELL 3.0 MGC', 'SELL 3.0 MGC', 'BUY 6.0 MES', 'SELL 6.0 MES', 'SELL 6.0 MES', 'BUY 1.0 MNQ', 'SELL 1.0 MNQ', 'SELL 1.0 MNQ']
+2026-01-23T15:45:04.98626421Z 2026-01-23 15:45:04 | INFO     | _send_single_message:166 | [SYSTEM]   - Telegram message sent successfully.
+2026-01-23T15:45:04.987436154Z 2026-01-23 15:45:04 | INFO     | execute_cycle:143 | 1H-BOS-OB | SIL:LONDON - 💤 LONDON Session has not started yet!
+2026-01-23T15:45:04.987451964Z 2026-01-23 15:45:04 | INFO     | execute_cycle:143 | 1H-BOS-OB | SIL:ASIA - 💤 ASIA Session has not started yet!
+2026-01-23T15:45:04.988721721Z 2026-01-23 15:45:04 | INFO     | execute_cycle:143 | 1H-BOS-OB | MBT:LONDON - 💤 LONDON Session has not started yet!
+2026-01-23T15:45:04.988738681Z 2026-01-23 15:45:04 | WARNING  | execute_cycle:156 | ORB | MNQ:NY - Skipping MNQ (Busy in another strategy)
+2026-01-23T15:45:04.990254475Z 2026-01-23 15:45:04 | INFO     | execute_cycle:172 | ORB | MNQ:LONDON - 💤 LONDON Session has not started yet!
+2026-01-23T15:45:04.990270025Z 2026-01-23 15:45:04 | WARNING  | execute_cycle:156 | ORB | MGC:LONDON - Skipping MGC (Busy in another strategy)
+2026-01-23T15:45:04.990274555Z 2026-01-23 15:45:04 | WARNING  | execute_cycle:156 | ORB | MGC:NY - Skipping MGC (Busy in another strategy)
+2026-01-23T15:50:03.846502903Z 2026-01-23 15:50:03 | INFO     | run:208 | [SYSTEM]   - 🔒 Blocked Symbols: {'MES', 'MGC', 'MNQ'}
+2026-01-23T15:50:03.846539764Z 2026-01-23 15:50:03 | INFO     | run:221 | [SYSTEM]   - ⏳ Pending Orders: ['BUY 3.0 MGC', 'SELL 3.0 MGC', 'SELL 3.0 MGC', 'BUY 6.0 MES', 'SELL 6.0 MES', 'SELL 6.0 MES', 'BUY 1.0 MNQ', 'SELL 1.0 MNQ', 'SELL 1.0 MNQ']
+2026-01-23T15:50:04.488837553Z 2026-01-23 15:50:04 | INFO     | _send_single_message:166 | [SYSTEM]   - Telegram message sent successfully.
+2026-01-23T15:50:04.489384969Z 2026-01-23 15:50:04 | INFO     | execute_cycle:143 | 1H-BOS-OB | SIL:LONDON - 💤 LONDON Session has not started yet!
+2026-01-23T15:50:04.48978713Z 2026-01-23 15:50:04 | INFO     | execute_cycle:143 | 1H-BOS-OB | SIL:ASIA - 💤 ASIA Session has not started yet!
+2026-01-23T15:50:04.490380307Z 2026-01-23 15:50:04 | INFO     | execute_cycle:143 | 1H-BOS-OB | MBT:LONDON - 💤 LONDON Session has not started yet!
+2026-01-23T15:50:04.490521231Z 2026-01-23 15:50:04 | WARNING  | execute_cycle:156 | ORB | MNQ:NY - Skipping MNQ (Busy in another strategy)
+2026-01-23T15:50:04.490689616Z 2026-01-23 15:50:04 | INFO     | execute_cycle:172 | ORB | MNQ:LONDON - 💤 LONDON Session has not started yet!
+2026-01-23T15:50:04.490756748Z 2026-01-23 15:50:04 | WARNING  | execute_cycle:156 | ORB | MGC:LONDON - Skipping MGC (Busy in another strategy)
+2026-01-23T15:50:04.490769598Z 2026-01-23 15:50:04 | WARNING  | execute_cycle:156 | ORB | MGC:NY - Skipping MGC (Busy in another strategy)
+2026-01-23T15:55:04.429408148Z 2026-01-23 15:55:04 | INFO     | run:208 | [SYSTEM]   - 🔒 Blocked Symbols: {'MES', 'MGC', 'MNQ'}
+2026-01-23T15:55:04.430315254Z 2026-01-23 15:55:04 | INFO     | run:221 | [SYSTEM]   - ⏳ Pending Orders: ['BUY 3.0 MGC', 'SELL 3.0 MGC', 'SELL 3.0 MGC', 'BUY 6.0 MES', 'SELL 6.0 MES', 'SELL 6.0 MES', 'BUY 1.0 MNQ', 'SELL 1.0 MNQ', 'SELL 1.0 MNQ']
+2026-01-23T15:55:05.078466849Z 2026-01-23 15:55:05 | INFO     | _send_single_message:166 | [SYSTEM]   - Telegram message sent successfully.
+2026-01-23T15:55:05.0788545Z 2026-01-23 15:55:05 | INFO     | execute_cycle:143 | 1H-BOS-OB | SIL:LONDON - 💤 LONDON Session has not started yet!
+2026-01-23T15:55:05.079145128Z 2026-01-23 15:55:05 | INFO     | execute_cycle:143 | 1H-BOS-OB | SIL:ASIA - 💤 ASIA Session has not started yet!
+2026-01-23T15:55:05.079625102Z 2026-01-23 15:55:05 | INFO     | execute_cycle:143 | 1H-BOS-OB | MBT:LONDON - 💤 LONDON Session has not started yet!
+2026-01-23T15:55:05.079703015Z 2026-01-23 15:55:05 | WARNING  | execute_cycle:156 | ORB | MNQ:NY - Skipping MNQ (Busy in another strategy)
+2026-01-23T15:55:05.07988535Z 2026-01-23 15:55:05 | INFO     | execute_cycle:172 | ORB | MNQ:LONDON - 💤 LONDON Session has not started yet!
+2026-01-23T15:55:05.079924791Z 2026-01-23 15:55:05 | WARNING  | execute_cycle:156 | ORB | MGC:LONDON - Skipping MGC (Busy in another strategy)
+2026-01-23T15:55:05.079979772Z 2026-01-23 15:55:05 | WARNING  | execute_cycle:156 | ORB | MGC:NY - Skipping MGC (Busy in another strategy)

@@ -18,7 +18,7 @@ dotenv.load_dotenv()
 BITUNIX_CONFIG = {
     "API_KEY": os.environ.get("BITUNIX_API_KEY"),
     "API_SECRET": os.environ.get("BITUNIX_SECRET_KEY"),
-    "PASSWORD": os.environ.get("BITUNIX_PSWRD")
+    "PASSWORD": os.environ.get("BITUNIX_PSWRD"),
 }
 
 
@@ -42,12 +42,12 @@ class BitUnixClient:
 
     @staticmethod
     def sha256_hex(input_string):
-        return hashlib.sha256(input_string.encode('utf-8')).hexdigest()
+        return hashlib.sha256(input_string.encode("utf-8")).hexdigest()
 
     @staticmethod
     def generate_random_nonce(length=32):
         """Generate a random nonce of specified length"""
-        return ''.join(choices(string.ascii_letters + string.digits, k=length))
+        return "".join(choices(string.ascii_letters + string.digits, k=length))
 
     def generate_signature(self, query_params=None, body=None):
         nonce = self.generate_random_nonce()
@@ -98,7 +98,15 @@ class BitUnixClient:
 
         return data["mgc"]
 
-    def get_klines(self, symbol, interval, start_time=None, end_time=None, limit=100, kline_type="LAST_PRICE"):
+    def get_klines(
+        self,
+        symbol,
+        interval,
+        start_time=None,
+        end_time=None,
+        limit=100,
+        kline_type="LAST_PRICE",
+    ):
         """
         Fetch kline (candlestick) mgc from BitUnix API
 
@@ -119,7 +127,7 @@ class BitUnixClient:
             "symbol": s,
             "interval": interval,
             "limit": limit,
-            "type": kline_type
+            "type": kline_type,
         }
 
         if start_time:
@@ -157,24 +165,26 @@ class BitUnixClient:
 
     def place_order(self, symbol, side, price, qty, tp_trigger_price, sl_trigger_price):
         symbol = symbol.replace("/", "").replace("USD", "USDT")
-        body = {"symbol": symbol, "side": side,
-                "price": price,
-                "qty": qty,
-                "orderType": "LIMIT",
-                "reduceOnly": False,
-                "clientId": "1110000aaa",
-                "effect": "GTC",
-                "tpPrice": tp_trigger_price,
-                "tpStopType": "LAST_PRICE",
-                "tpOrderType": "MARKET",
-                "slPrice": sl_trigger_price,
-                "slStopType": "LAST_PRICE",
-                "slOrderType": "MARKET"}
+        body = {
+            "symbol": symbol,
+            "side": side,
+            "price": price,
+            "qty": qty,
+            "orderType": "LIMIT",
+            "reduceOnly": False,
+            "clientId": "1110000aaa",
+            "effect": "GTC",
+            "tpPrice": tp_trigger_price,
+            "tpStopType": "LAST_PRICE",
+            "tpOrderType": "MARKET",
+            "slPrice": sl_trigger_price,
+            "slStopType": "LAST_PRICE",
+            "slOrderType": "MARKET",
+        }
 
         url = f"{self.BASE_URL}{Endpoints.PLACE_ORDER.value}"
         headers = self.get_headers(query_params=None, body=body)
-        response = requests.post(url, headers=headers,
-                                 data=json.dumps(body))
+        response = requests.post(url, headers=headers, data=json.dumps(body))
         if response.status_code != 200:
             raise Exception(response.text)
         return response.json()
@@ -209,14 +219,23 @@ class BitUnixClient:
             total_fee += fee
             total_realized_pnl += realized_pnl
 
-        with open(filename, 'w', newline='') as csvfile:
+        with open(filename, "w", newline="") as csvfile:
             writer = csv.writer(csvfile)
 
             # Write header
-            writer.writerow([
-                "Date", "Time", "Symbol", "Quantity", "Price", "Side",
-                "Leverage", "Fee", "realizedPNL"
-            ])
+            writer.writerow(
+                [
+                    "Date",
+                    "Time",
+                    "Symbol",
+                    "Quantity",
+                    "Price",
+                    "Side",
+                    "Leverage",
+                    "Fee",
+                    "realizedPNL",
+                ]
+            )
 
             # Write trade mgc
             for trade in trades_history:
@@ -231,25 +250,36 @@ class BitUnixClient:
                 realized_pnl = trade.get("realizedPNL", 0)
 
                 # Write row with correct number of columns
-                writer.writerow([
-                    date_str,
-                    time_str,
-                    trade["symbol"],
-                    trade["qty"],
-                    trade["avgPrice"],
-                    side,
-                    trade["leverage"],
-                    fee,
-                    realized_pnl
-                ])
+                writer.writerow(
+                    [
+                        date_str,
+                        time_str,
+                        trade["symbol"],
+                        trade["qty"],
+                        trade["avgPrice"],
+                        side,
+                        trade["leverage"],
+                        fee,
+                        realized_pnl,
+                    ]
+                )
 
             # Add a blank row to separate totals
             writer.writerow([])
 
             # Add totals row
-            writer.writerow([
-                "", "", "", "", "", "", "TOTALS:",
-                f"{total_fee:.8f}", f"{total_realized_pnl:.8f}"
-            ])
+            writer.writerow(
+                [
+                    "",
+                    "",
+                    "",
+                    "",
+                    "",
+                    "",
+                    "TOTALS:",
+                    f"{total_fee:.8f}",
+                    f"{total_realized_pnl:.8f}",
+                ]
+            )
 
         logger.info(f"CSV file has been created: {filename}")

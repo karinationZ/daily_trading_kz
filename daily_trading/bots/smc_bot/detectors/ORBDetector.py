@@ -17,8 +17,15 @@ from daily_trading.bots.smc_bot.strategy.StrategyBase import SESSION_MAP
 # ORB Detector
 # ==========================
 class ORBDetector(DetectorsBase):
-    def __init__(self, timezone: ZoneInfo, main_tf="5m", orb_minutes: int = 15, target_percent: float = 0.5,
-                 plot_tail: int = 500, wick_ratio: float = 0.10):
+    def __init__(
+        self,
+        timezone: ZoneInfo,
+        main_tf="5m",
+        orb_minutes: int = 15,
+        target_percent: float = 0.5,
+        plot_tail: int = 500,
+        wick_ratio: float = 0.10,
+    ):
         super().__init__(main_tf, plot_tail, wick_ratio=wick_ratio)
         self.tz = timezone
         self.orb_minutes = orb_minutes
@@ -99,8 +106,8 @@ class ORBDetector(DetectorsBase):
         if orb_range_bars.empty:
             return {"boxes": [], "signals": [], "up_targets": [], "down_targets": []}
 
-        or_high = orb_range_bars['high'].max()
-        or_low = orb_range_bars['low'].min()
+        or_high = orb_range_bars["high"].max()
+        or_low = orb_range_bars["low"].min()
 
         # If we haven't finished the 15 mins yet, we can't send signals
         if last_bar_local < orb_end_local:
@@ -117,19 +124,30 @@ class ORBDetector(DetectorsBase):
             prev_row = post_orb_bars.iloc[i - 1]
 
             if self._crossover(prev_row.close, row.close, or_high):
-                signals.append({
-                    "time": post_orb_bars.index[i],
-                    "direction": BIAS.LONG,
-                    "orb_high": or_high, "orb_low": or_low
-                })
+                signals.append(
+                    {
+                        "time": post_orb_bars.index[i],
+                        "direction": BIAS.LONG,
+                        "orb_high": or_high,
+                        "orb_low": or_low,
+                    }
+                )
             elif self._crossunder(prev_row.close, row.close, or_low):
-                signals.append({
-                    "time": post_orb_bars.index[i],
-                    "direction": BIAS.SHORT,
-                    "orb_high": or_high, "orb_low": or_low
-                })
+                signals.append(
+                    {
+                        "time": post_orb_bars.index[i],
+                        "direction": BIAS.SHORT,
+                        "orb_high": or_high,
+                        "orb_low": or_low,
+                    }
+                )
 
-        return {"boxes": orb_boxes, "signals": signals, "upper": or_high, "lower": or_low}
+        return {
+            "boxes": orb_boxes,
+            "signals": signals,
+            "upper": or_high,
+            "lower": or_low,
+        }
 
     def plot(self, ohlc: pd.DataFrame, result: dict) -> go.Figure:
         ohlc = ohlc.tail(self.plot_tail)
@@ -137,14 +155,16 @@ class ORBDetector(DetectorsBase):
         x_end = ohlc.index[-1]
 
         # --- Candles
-        fig.add_trace(go.Candlestick(
-            x=ohlc.index,
-            open=ohlc.open,
-            high=ohlc.high,
-            low=ohlc.low,
-            close=ohlc.close,
-            name="OHLC"
-        ))
+        fig.add_trace(
+            go.Candlestick(
+                x=ohlc.index,
+                open=ohlc.open,
+                high=ohlc.high,
+                low=ohlc.low,
+                close=ohlc.close,
+                name="OHLC",
+            )
+        )
 
         # --- ORB boxes and lines
         for start, end, or_high, or_low in result["boxes"]:
@@ -157,24 +177,28 @@ class ORBDetector(DetectorsBase):
                 y1=or_high,
                 fillcolor="rgba(120,123,134,0.25)",
                 line=dict(width=1, color="rgba(120,123,134,0.7)"),
-                layer="below"
+                layer="below",
             )
 
             # OR high/low lines
-            fig.add_trace(go.Scatter(
-                x=[start, x_end],
-                y=[or_high, or_high],
-                mode="lines",
-                line=dict(color="gray", width=1, dash="solid"),
-                showlegend=False
-            ))
-            fig.add_trace(go.Scatter(
-                x=[start, x_end],
-                y=[or_low, or_low],
-                mode="lines",
-                line=dict(color="gray", width=1, dash="solid"),
-                showlegend=False
-            ))
+            fig.add_trace(
+                go.Scatter(
+                    x=[start, x_end],
+                    y=[or_high, or_high],
+                    mode="lines",
+                    line=dict(color="gray", width=1, dash="solid"),
+                    showlegend=False,
+                )
+            )
+            fig.add_trace(
+                go.Scatter(
+                    x=[start, x_end],
+                    y=[or_low, or_low],
+                    mode="lines",
+                    line=dict(color="gray", width=1, dash="solid"),
+                    showlegend=False,
+                )
+            )
 
             # --- Targets
             step = (or_high - or_low) / 2
@@ -183,25 +207,29 @@ class ORBDetector(DetectorsBase):
             upper1 = or_high + step
             upper2 = upper1 + step
             for target in [upper1, upper2]:
-                fig.add_trace(go.Scatter(
-                    x=[start, x_end],
-                    y=[target, target],
-                    mode="lines",
-                    line=dict(color="green", width=1, dash="dot"),
-                    showlegend=False
-                ))
+                fig.add_trace(
+                    go.Scatter(
+                        x=[start, x_end],
+                        y=[target, target],
+                        mode="lines",
+                        line=dict(color="green", width=1, dash="dot"),
+                        showlegend=False,
+                    )
+                )
 
             # Lower targets
             lower1 = or_low - step
             lower2 = lower1 - step
             for target in [lower1, lower2]:
-                fig.add_trace(go.Scatter(
-                    x=[start, x_end],
-                    y=[target, target],
-                    mode="lines",
-                    line=dict(color="red", width=1, dash="dot"),
-                    showlegend=False
-                ))
+                fig.add_trace(
+                    go.Scatter(
+                        x=[start, x_end],
+                        y=[target, target],
+                        mode="lines",
+                        line=dict(color="red", width=1, dash="dot"),
+                        showlegend=False,
+                    )
+                )
 
         # --- Layout
         fig.update_layout(
@@ -210,7 +238,7 @@ class ORBDetector(DetectorsBase):
             xaxis=dict(type="date", tickformat="%H:%M"),
             yaxis_title="Price",
             template="plotly_white",
-            height=600
+            height=600,
         )
 
         return fig

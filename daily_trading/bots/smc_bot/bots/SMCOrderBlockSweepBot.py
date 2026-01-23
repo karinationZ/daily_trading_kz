@@ -18,14 +18,23 @@ class SMCOrderBlockSweepBot(SMCBotBase):
     Sends Telegram messages with plots (OHLC.tail(100)) for each step, including FVGs in final plot for visibility.
     """
 
-    def __init__(self, symbols, main_tf: str = '1h', symbol_volume_threshold: float = 30000000, lookback_days: int = 1,
-                 debug=False, telegram_chat_id=TELEGRAM_MAIN_CHANNEL_CHAT_ID):
+    def __init__(
+        self,
+        symbols,
+        main_tf: str = "1h",
+        symbol_volume_threshold: float = 30000000,
+        lookback_days: int = 1,
+        debug=False,
+        telegram_chat_id=TELEGRAM_MAIN_CHANNEL_CHAT_ID,
+    ):
 
-        super().__init__(symbols,
-                         main_tf,
-                         symbol_volume_threshold,
-                         lookback_days,
-                         telegram_chat_id=telegram_chat_id)
+        super().__init__(
+            symbols,
+            main_tf,
+            symbol_volume_threshold,
+            lookback_days,
+            telegram_chat_id=telegram_chat_id,
+        )
         self.ob_sweep_strategy = OrderBlockSweepStrategy(main_tf, debug, telegram_chat_id=telegram_chat_id)
         logger.info(f"SMCOrderBlockSweepBot initialized with {len(symbols)} symbols, {main_tf} TF.")
         self.strategy_name = "🧱🧹1H Order Block Sweep"
@@ -45,11 +54,14 @@ class SMCOrderBlockSweepBot(SMCBotBase):
 
             analysis = await self.ob_sweep_strategy.analyze_smc(symbol, ohlc_1h)
             analysis.title = self.strategy_name
-            await self.generate_signal(symbol, analysis,
-                                       ohlc_1d=ohlc_1d,
-                                       ohlc_4h=ohlc_4h,
-                                       ohlc_1h=ohlc_1h,
-                                       ohlc_15m=ohlc_15m)
+            await self.generate_signal(
+                symbol,
+                analysis,
+                ohlc_1d=ohlc_1d,
+                ohlc_4h=ohlc_4h,
+                ohlc_1h=ohlc_1h,
+                ohlc_15m=ohlc_15m,
+            )
 
         except Exception as e:
             logger.error(f"Error processing {symbol}: {e}")
@@ -66,8 +78,7 @@ class SMCOrderBlockSweepBot(SMCBotBase):
                     if needs_refresh:
                         await self.update_symbols()
                 logger.info(f"Monitoring {len(self.symbols)} symbols")
-                await self.telegram_bot_debug.send_message(
-                    f"****** SMCOrderBlockSweepBot - Monitoring {len(self.symbols)} symbols ******")
+                await self.telegram_bot_debug.send_message(f"****** SMCOrderBlockSweepBot - Monitoring {len(self.symbols)} symbols ******")
                 tasks = [self.run_symbol(symbol) for symbol in self.symbols]
                 results = await asyncio.gather(*tasks, return_exceptions=True)
                 for symbol, result in zip(self.symbols, results):

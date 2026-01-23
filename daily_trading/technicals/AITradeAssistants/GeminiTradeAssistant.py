@@ -13,7 +13,9 @@ from daily_trading.bots.smc_bot.detectors.BosChochDetector import BosChochDetect
 from daily_trading.bots.smc_bot.detectors.FvgDetector import FvgDetector
 from daily_trading.bots.smc_bot.detectors.HighLowDetector import HighLowDetector
 from daily_trading.bots.smc_bot.detectors.LevelsDetector import LevelsDetector
-from daily_trading.bots.smc_bot.detectors.OrderBlocksDetectorOld import OrderBlocksDetectorOld
+from daily_trading.bots.smc_bot.detectors.OrderBlocksDetectorOld import (
+    OrderBlocksDetectorOld,
+)
 from daily_trading.bots.smc_bot.detectors.VolumeProfiler import VolumeProfiler
 from daily_trading.settings import GEMINI_API_KEY, logger
 from daily_trading.technicals.CryptoSentimentAnalyzer import CryptoSentimentAnalyzer
@@ -61,9 +63,7 @@ class Ohlc:
 
 
 class GeminiTradeAssistant:
-    def __init__(self, symbol: str, model: str, ohlc: Ohlc,
-                 main_tf="1h",
-                 debug=False):
+    def __init__(self, symbol: str, model: str, ohlc: Ohlc, main_tf="1h", debug=False):
         self.api_key = GEMINI_API_KEY
         self.model = model
         self.symbol = symbol.upper()
@@ -101,8 +101,7 @@ class GeminiTradeAssistant:
         fvg_results = detector_fvg.calculate_fvg(self.ohlc_15m, plot=False)
         ob_results = ob_detector.calculate_order_blocks(self.ohlc_1h, plot=False)
         vol_profiler_results = vol_profiler.calculate_volume_profile(self.ohlc_4h, plot=False)
-        support_resistance_results = support_levels_detector.calculate_support_resistance_levels(self.ohlc_4h,
-                                                                                                 plot=False)
+        support_resistance_results = support_levels_detector.calculate_support_resistance_levels(self.ohlc_4h, plot=False)
 
         del vol_profiler_results["fig"]
 
@@ -119,7 +118,7 @@ class GeminiTradeAssistant:
             ohlc_15m=ohlc_15m_subset,
             ohlc_4h=ohlc_4h_subset,
             vol_profile=vol_profiler_results,
-            support_resistance_data=support_resistance_results
+            support_resistance_data=support_resistance_results,
         )
 
         #     async def build_prompt(self) -> str:
@@ -265,14 +264,18 @@ class GeminiTradeAssistant:
         # When institutional signals conflict or structure is unclear, I wait.
         # Quality institutional setups with proper confluence consistently outperform quantity."
         #
-        # Remember: Your edge comes from identifying where institutions are positioned and how retail traders will be trapped. Use volume profile to confirm institutional activity, sentiment analysis to gauge retail positioning, and ICT concepts to time entries with institutional flow. When in doubt, preserve capital and wait for the next high-probability institutional setup.
+        # Remember: Your edge comes from identifying where institutions are positioned and how retail
+        # traders will be trapped. Use volume profile to confirm institutional activity,
+        # sentiment analysis to gauge retail positioning, and ICT concepts to time entries with institutional flow.
+        # When in doubt, preserve capital and wait for the next high-probability institutional setup.
         # """
         #         return prompt
 
     async def build_prompt(self) -> str:
         """Build the prompt for Gemini API based on ICT Smart Money Concepts."""
         data = await self.fetch_data()
-        prompt = f"""
+        prompt = (
+            f"""
 You are an elite ICT (Inner Circle Trader) Sniper.
 Your goal is to identify **Precision Limit Orders** at specific Institutional Arrays (FVGs, Order Blocks, Breakers).
 You prioritize **High Win Rate** and **Realistic Targets** ("Low Hanging Fruit") over massive R:R ratios.
@@ -288,7 +291,8 @@ You prioritize **High Win Rate** and **Realistic Targets** ("Low Hanging Fruit")
 - **Pivot Highs/Lows**: {data.pivot_high_points} / {data.pivot_low_points}
 - **Order Blocks**: {data.ob_signals}
 - **Volume Profile**: {data.vol_profile}
-- **Sentiment**: {data.sentiment}""" + """
+- **Sentiment**: {data.sentiment}"""
+            + """
 
 ## Strategic Instructions (The "Sniper" Mindset):
 1.  **Limit Orders are King**: If price is currently expanding (chasing), DO NOT say "No Entry". Instead, identify the **Limit Order** waiting at the Premium/Discount array (FVG/OB) that caused the move. Set the entry there.
@@ -310,7 +314,12 @@ You prioritize **High Win Rate** and **Realistic Targets** ("Low Hanging Fruit")
 ### For A VALID SETUP (Limit or Market):
 ```json
 {
-    "message": "• **Setup Summary**: [Bearish/Bullish Limit Order at X]\n• **Key Confluence**: [Structure + Specific Array]\n• **Entry Logic**: [Why this specific FVG/OB is the reloading point]\n• **Volume Profile**: [Confluence with POC/VAH/VAL]\n• **Sentiment**: [Context]\n• **Risk Management**: [Strict SL logic based on candle invalidation]\n• **Expected Move**: [Nearest liquidity target]\n• **Trade Quality**: [High/Medium]",
+    "message": "• **Setup Summary**: [Bearish/Bullish Limit Order at X]
+    \n• **Key Confluence**: [Structure + Specific Array]
+    \n• **Entry Logic**: [Why this specific FVG/OB is the reloading point]
+    \n• **Volume Profile**: [Confluence with POC/VAH/VAL]\n• **Sentiment**: [Context]
+    \n• **Risk Management**: [Strict SL logic based on candle invalidation]
+    \n• **Expected Move**: [Nearest liquidity target]\n• **Trade Quality**: [High/Medium]",
     "entry": [exact_price_integer],
     "take_profit": [exact_price_integer],
     "stop_loss": [exact_price_integer]
@@ -329,15 +338,14 @@ Output JSON Only.
 SL must be realistic: Tight enough to allow high leverage, loose enough to survive a wick. (Typically 5-15 points on GC).
 If current price is far from Entry: Output the SETUP anyway as a Limit Order. Do not say "Waiting". Give the numbers.
 """
+        )
 
         return prompt
 
     async def call_gemini_api(self, prompt: str):
         try:
             logger.warning("$$$$$ Making Gemini API Request $$$$")
-            response = self.client.models.generate_content(
-                model=self.model, contents=prompt
-            )
+            response = self.client.models.generate_content(model=self.model, contents=prompt)
             return response
         except Exception as e:
             logger.error(f"Gemini API failed: {e}")
@@ -358,88 +366,105 @@ If current price is far from Entry: Output the SETUP anyway as a Limit Order. Do
                 content = response.candidates[0].content.parts[0].text
                 raw_message = json.loads(content.replace("```json\n", "").replace("\n```", "").strip())
                 logger.info(f"Gemini AI analysis complete - {json.dumps(raw_message, indent=1)}")
-                formatted_ai_message = f"\n*** 🤖📊 AI Analysis | {self.symbol} ***\n" \
-                                       f"\n{raw_message['message']}\n" \
-                                       f"\nEntry: {raw_message['entry']}" \
-                                       f"\nTP: {raw_message['take_profit']}" \
-                                       f"\nSL: {raw_message['stop_loss']}"
+                formatted_ai_message = (
+                    f"\n*** 🤖📊 AI Analysis | {self.symbol} ***\n"
+                    f"\n{raw_message['message']}\n"
+                    f"\nEntry: {raw_message['entry']}"
+                    f"\nTP: {raw_message['take_profit']}"
+                    f"\nSL: {raw_message['stop_loss']}"
+                )
                 return formatted_ai_message, raw_message
             except (KeyError, json.JSONDecodeError) as e:
                 logger.error(f"Error parsing Gemini response: {e}")
-                return {"message": "Error processing Gemini response", "entry": None, "stop_loss": None,
-                        "take_profit": None}
-        return {"message": "Failed to retrieve Gemini analysis", "entry": None, "stop_loss": None, "take_profit": None}
+                return {
+                    "message": "Error processing Gemini response",
+                    "entry": None,
+                    "stop_loss": None,
+                    "take_profit": None,
+                }
+        return {
+            "message": "Failed to retrieve Gemini analysis",
+            "entry": None,
+            "stop_loss": None,
+            "take_profit": None,
+        }
 
     @staticmethod
     def update_plot_with_entry_data(fig: go.Figure, raw_message):
-        entry = raw_message['entry']
-        stop_loss = raw_message['stop_loss']
-        take_profit = raw_message['take_profit']
+        entry = raw_message["entry"]
+        stop_loss = raw_message["stop_loss"]
+        take_profit = raw_message["take_profit"]
         # Get x-axis range from candlestick mgc
-        x_range = fig.data[0]['x']  # Assumes candlestick is first trace
+        x_range = fig.data[0]["x"]  # Assumes candlestick is first trace
         x_start, x_end = x_range[0], x_range[-1]
 
         # Calculate midpoint for text placement
         x_mid = x_range[len(x_range) // 2]
 
         # Add Entry line (Dashed Orange with centered text)
-        fig.add_trace(go.Scatter(
-            x=[x_start, x_end],
-            y=[entry, entry],
-            mode='lines',
-            name='Entry',
-            line=dict(color='orange', width=2, dash='dash')
-        ))
+        fig.add_trace(
+            go.Scatter(
+                x=[x_start, x_end],
+                y=[entry, entry],
+                mode="lines",
+                name="Entry",
+                line=dict(color="orange", width=2, dash="dash"),
+            )
+        )
         fig.add_annotation(
             x=x_mid,
             y=entry,
-            text='Entry',
+            text="Entry",
             showarrow=False,
             font=dict(size=18),
-            xanchor='center',
-            yanchor='middle'
+            xanchor="center",
+            yanchor="middle",
         )
 
         # Add Stop Loss line (Dashed Red with centered text)
-        fig.add_trace(go.Scatter(
-            x=[x_start, x_end],
-            y=[stop_loss, stop_loss],
-            mode='lines',
-            name='Stop Loss',
-            line=dict(color='red', width=2, dash='dash')
-        ))
+        fig.add_trace(
+            go.Scatter(
+                x=[x_start, x_end],
+                y=[stop_loss, stop_loss],
+                mode="lines",
+                name="Stop Loss",
+                line=dict(color="red", width=2, dash="dash"),
+            )
+        )
         fig.add_annotation(
             x=x_mid,
             y=stop_loss,
-            text='Stop Loss',
+            text="Stop Loss",
             showarrow=False,
             font=dict(size=18),
-            xanchor='center',
-            yanchor='middle'
+            xanchor="center",
+            yanchor="middle",
         )
 
         # Add Take Profit line (Dashed Green with centered text)
-        fig.add_trace(go.Scatter(
-            x=[x_start, x_end],
-            y=[take_profit, take_profit],
-            mode='lines',
-            name='Take Profit',
-            line=dict(color='green', width=2, dash='dash')
-        ))
+        fig.add_trace(
+            go.Scatter(
+                x=[x_start, x_end],
+                y=[take_profit, take_profit],
+                mode="lines",
+                name="Take Profit",
+                line=dict(color="green", width=2, dash="dash"),
+            )
+        )
         fig.add_annotation(
             x=x_mid,
             y=take_profit,
-            text='Take Profit',
+            text="Take Profit",
             showarrow=False,
             font=dict(size=18),
-            xanchor='center',
-            yanchor='middle'
+            xanchor="center",
+            yanchor="middle",
         )
         return fig
 
     @staticmethod
     def within_ai_request_hours(start_hour=8, end_hour=22, end_minute=0):
-        pacific = pytz.timezone('US/Pacific')
+        pacific = pytz.timezone("US/Pacific")
         now = datetime.now(pacific)
         current_time = now.hour * 60 + now.minute
         start_time = start_hour * 60

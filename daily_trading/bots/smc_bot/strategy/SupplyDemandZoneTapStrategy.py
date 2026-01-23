@@ -37,7 +37,7 @@ class SupplyDemandZoneTapStrategy(StrategyBase):
         self.risk = risk
         self.tp_multiple = tp_multiple
         if timezone == ZoneInfo("America/New_York"):
-            self.end_buffer_minutes = 5
+            self.end_buffer_minutes = self.NY_END_BUFFER_MIN
         else:
             self.end_buffer_minutes = 0
 

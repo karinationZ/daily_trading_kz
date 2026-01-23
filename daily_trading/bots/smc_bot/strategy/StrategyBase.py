@@ -77,6 +77,7 @@ class SignalSummary:
 class StrategyBase(ABC):
     """Base class for trading strategies, providing reusable methods for caching, plotting, and messaging."""
     # Updated Configuration with MCL
+    NY_END_BUFFER_MIN = 10
     POINT_VALUE = {
         "MNQ": 2.0,
         "MES": 5.0,

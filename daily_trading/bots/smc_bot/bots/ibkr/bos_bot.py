@@ -8,7 +8,63 @@ from daily_trading.bots.smc_bot.strategy.StrategyBase import TradeStatus
 from daily_trading.settings import logger, TELEGRAM_MAIN_CHANNEL_CHAT_ID
 
 # Define your configuration here
-CONFIG = {}
+CONFIG = {
+    # --- SILVER (Dual Session) ---
+    ("SIL", "LONDON"): {
+        "swing_length": 50,
+        "internal_length": 5,
+        "entry_depth": 0.25,  # Shallow Entry
+        "tp_multiple": 2.0,  # High Reward
+        "sl_buffer": 0.1,
+        "confluence_filter": True
+    },
+    ("SIL", "NY"): {
+        "swing_length": 50,
+        "internal_length": 5,
+        "entry_depth": 0.75,  # Deep Entry
+        "tp_multiple": 1.5,  # High Accuracy
+        "sl_buffer": 0.1,
+        "confluence_filter": True
+    },
+
+    # --- GOLD ---
+    ("MGC", "NY"): {
+        "swing_length": 24,  # Faster Structure
+        "internal_length": 5,
+        "entry_depth": 0.75,  # Deep Entry
+        "tp_multiple": 2.0,
+        "sl_buffer": 0.1,
+        "confluence_filter": True
+    },
+
+    # --- INDICES ---
+    ("MNQ", "NY"): {
+        "swing_length": 50,
+        "internal_length": 5,
+        "entry_depth": 0.25,  # Scalp Mode
+        "tp_multiple": 1.2,
+        "sl_buffer": 0.1,
+        "confluence_filter": True
+    },
+    ("MES", "NY"): {
+        "swing_length": 50,
+        "internal_length": 5,
+        "entry_depth": 0.25,  # Balanced Mode
+        "tp_multiple": 1.5,
+        "sl_buffer": 0.1,
+        "confluence_filter": True
+    },
+
+    # --- CRYPTO ---
+    ("MBT", "LONDON"): {
+        "swing_length": 45,
+        "internal_length": 5,
+        "entry_depth": 0.1,  # Conservative
+        "tp_multiple": 1.5,
+        "sl_buffer": 1.2,  # Wide Stop
+        "confluence_filter": True
+    }
+}
 
 
 class BosOrderBlockBot(SMCBotBase):
@@ -33,10 +89,12 @@ class BosOrderBlockBot(SMCBotBase):
                 strategy = BosOrderBlockStrategy(symbol=symbol,
                                                  timezone=tz,
                                                  main_tf="1h",
+                                                 swing_length=cfg["swing_length"],
+                                                 internal_length=cfg["internal_length"],
                                                  risk=self.risk,
-                                                 tp_multiple=cfg["rr"],
+                                                 tp_multiple=cfg["tp_multiple"],
                                                  entry_depth=cfg["entry_depth"],
-                                                 sl_buffer_mult=cfg["sl_buffer_mult"],
+                                                 sl_buffer_mult=cfg["sl_buffer"],
                                                  )
                 self.strategies.append(strategy)
                 unique_symbols.add(symbol)

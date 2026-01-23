@@ -14,7 +14,8 @@ class SupplyDemandZonesDetector(DetectorsBase):
 
     def __init__(self, main_tf="5m", swing_length: int = 50, internal_length: int = 5, atr_length: int = 200,
                  zone_precision_factor: float = 2.0, volatility_filter: str = "atr", max_display_zones: int = 5,
-                 plot_tail: int = 300, fvg_based_only: bool = True, fvg_offset: int = 3, fvg_threshold=0.15, wick_ratio: float = 0.10):
+                 plot_tail: int = 300, fvg_based_only: bool = True, fvg_offset: int = 3, fvg_threshold=0.15,
+                 wick_ratio: float = 0.10, internal_confluence_filter: bool = True):
         super().__init__(main_tf, plot_tail, wick_ratio=wick_ratio)
         self.swing_length = swing_length
         self.internal_length = internal_length
@@ -27,6 +28,7 @@ class SupplyDemandZonesDetector(DetectorsBase):
         self.fvg_offset = fvg_offset
         self.fvg_threshold = fvg_threshold
         self.zone_timeframe = None
+        self.internal_confluence_filter = internal_confluence_filter
 
     def _calculate_volatility(self, df: pd.DataFrame) -> pd.Series:
         tr = pd.concat([
@@ -54,6 +56,7 @@ class SupplyDemandZonesDetector(DetectorsBase):
         self.raw_highs = df["high"].values
         self.raw_lows = df["low"].values
         self.raw_closes = df["close"].values
+        self.raw_opens = df["open"].values
         self.df_index = df.index
 
         # ATR for FVG Threshold
@@ -61,12 +64,12 @@ class SupplyDemandZonesDetector(DetectorsBase):
         self.atr_series = tr.rolling(20).mean().bfill().values
 
         # Run logic
-        swing_zones = self._find_zones(self.swing_length)
-        internal_zones = self._find_zones(self.internal_length)
+        swing_zones = self._find_zones(self.swing_length, use_confluence=False)
+        internal_zones = self._find_zones(self.internal_length, use_confluence=self.internal_confluence_filter)
 
         return swing_zones[:self.max_display_zones], internal_zones[:self.max_display_zones]
 
-    def _find_zones(self, length: int) -> List[Dict]:
+    def _find_zones(self, length: int, use_confluence=False) -> List[Dict]:
         """Finds zones using a robust pivot lookback/lookahead window."""
         zones = []
         n = len(self.raw_closes)
@@ -86,6 +89,27 @@ class SupplyDemandZonesDetector(DetectorsBase):
             window_l = self.raw_lows[idx - length: idx + length + 1]
             if len(window_l) > 0 and self.raw_lows[idx] == np.min(window_l):
                 p_low = {"price": self.raw_lows[idx], "index": idx, "crossed": False}
+
+            # --- PRE-CALCULATE CONFLUENCE (Wick Logic) ---
+            # Replicating Pine lines 431-432:
+            # bullishBar := high - max(close, open) > min(close, open) - low
+            valid_bullish_confluence = True
+            valid_bearish_confluence = True
+
+            if use_confluence:
+                open_price = self.raw_opens[i]
+                close_price = self.raw_closes[i]
+                high_price = self.raw_highs[i]
+                low_price = self.raw_lows[i]
+
+                upper_wick = high_price - max(close_price, open_price)
+                lower_wick = min(close_price, open_price) - low_price
+
+                # Pine Script Logic:
+                # Bullish BOS requires Upper Wick > Lower Wick
+                # Bearish BOS requires Upper Wick < Lower Wick
+                valid_bullish_confluence = upper_wick > lower_wick
+                valid_bearish_confluence = upper_wick < lower_wick
 
             # Breaks
             close_i = self.raw_closes[i]

@@ -41,7 +41,7 @@ class Trend(Enum):
 
 class DetectorsBase:
 
-    def __init__(self, main_tf, left_bars=None, right_bars=None, plot_tail=100, atr_length_buffer=14, wick_ratio: float = 0.10):
+    def __init__(self, main_tf, left_bars=None, right_bars=None, plot_tail=200, atr_length_buffer=14, wick_ratio: float = 0.10):
         self.wick_ratio = wick_ratio
         self.main_tf = main_tf
         self.swing_length_map = {

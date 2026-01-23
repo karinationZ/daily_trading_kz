@@ -10,7 +10,7 @@ import plotly.graph_objects as go
 
 from daily_trading.bots.smc_bot.detectors.DetectorsBase import BIAS
 from daily_trading.bots.smc_bot.detectors.ORBDetector import SESSION_MAP
-from daily_trading.bots.smc_bot.strategy.StrategyBase import TradeAction
+from daily_trading.bots.smc_bot.strategy.StrategyBase import TradeAction, TradeSignal
 from daily_trading.settings import logger
 
 
@@ -108,11 +108,11 @@ class Backtester:
 
             # 3. RECORD KEEPING (The Accountant)
             if analysis.trade_signal:
-                self._process_signal(analysis.trade_signal, ts_utc)
+                self._process_signal(analysis.trade_signal, ts_utc=ts_utc)
 
         return pd.DataFrame(self.journal)
 
-    def _process_signal(self, sig, ts_utc):
+    def _process_signal(self, sig: TradeSignal, ts_utc):
         """Updates the Ledger based on Strategy Signals."""
 
         # --- NEW TRADE ---
@@ -123,7 +123,7 @@ class Backtester:
                     "timestamp": ts_utc,
                     "trade_id": str(uuid.uuid4())[:8],  # Short unique ID
                     "direction": sig.direction.name,
-                    "entry_time": ts_utc,
+                    "entry_time": sig.entry_timestamp,
                     "entry_price": sig.price,
                     "sl": sig.sl,
                     "tp": sig.tp,
@@ -136,6 +136,7 @@ class Backtester:
                     "comment": None,
                     "status": "OPEN",
                     "symbol": self.strategy.symbol,
+                    "Pass/Fail": None
                 }
 
         # --- UPDATE ORDER ---
@@ -144,6 +145,7 @@ class Backtester:
             # Just update the price/sl/tp/size of the active pending record
             self.active_record.update({
                 "entry_price": sig.price,
+                "entry_time": sig.entry_timestamp,
                 "sl": sig.sl,
                 "tp": sig.tp,
                 "size": sig.size,
@@ -169,11 +171,12 @@ class Backtester:
 
             self.active_record.update({
                 "status": "CLOSED",
+                "entry_time": sig.entry_timestamp,
                 "exit_time": ts_utc,
                 "exit_price": exit_price,
                 "pnl": round(pnl, 2),
                 "result": result_tag,
-                "comment": "Strategy Exit"
+                "comment": "Strategy Exit",
             })
 
             # Commit to Journal and Clear Active
@@ -184,6 +187,7 @@ class Backtester:
         elif sig.action == TradeAction.CANCEL and self.active_record:
             self.active_record.update({
                 "status": "CANCELLED",
+                "entry_time": sig.entry_timestamp,
                 "exit_time": ts_utc,
                 "exit_price": 0.0,
                 "pnl": 0.0,

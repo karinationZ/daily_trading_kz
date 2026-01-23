@@ -1,9 +1,8 @@
-import asyncio
 import os
 from pathlib import Path
-from zoneinfo import ZoneInfo
 
 import numpy as np
+import pandas as pd
 import pytest
 import pytest_asyncio
 
@@ -23,7 +22,8 @@ from daily_trading.bots.smc_bot.detectors.OrderBlocksDetectorOld import OrderBlo
 from daily_trading.bots.smc_bot.detectors.SupplyDemandZonesDetector import SupplyDemandZonesDetector
 from daily_trading.bots.smc_bot.detectors.VolumeProfiler import VolumeProfiler
 from daily_trading.bots.smc_bot.strategy.ORBStrategy import ORBStrategy
-from daily_trading.bots.smc_bot.strategy.StrategyBase import SignalSummary, TradeStatus
+from daily_trading.bots.smc_bot.strategy.StrategyBase import SignalSummary
+from daily_trading.brokers.IBKRClient import IBKRClient  # Adjust import path as needed
 from daily_trading.settings import logger, PROJECT_DIR, TELEGRAM_MY_DEBUG_BOT_ID
 from daily_trading.technicals.AITradeAssistants.GeminiTradeAssistant import GEMINI_PRO, GeminiTradeAssistant, Ohlc
 from daily_trading.utils.common import load_data, merge_csv_no_dups
@@ -31,6 +31,15 @@ from daily_trading.utils.common import load_data, merge_csv_no_dups
 symbol = "BTCUSDT"
 main_tf = "1h"
 lookback_days = 5
+
+# CONFIGURATION
+# Ensure this matches your running TWS/Gateway (Paper Trading recommended)
+HOST = '127.0.0.1'
+PORT = 4002
+CLIENT_ID = 999  # Use a unique ID for testing to avoid conflict with running bots
+
+# The symbols we must verify
+TARGET_SYMBOLS = ["MNQ", "MES", "MGC", "SIL"]
 
 
 @pytest.mark.asyncio
@@ -44,21 +53,6 @@ async def test_trend():
 
     trend = detector.detect_trend(ohlc)
     logger.info(trend)
-
-
-@pytest.mark.asyncio
-async def test_bos_detector():
-    symbol = "MNQ"
-    bot = SMCBotBase(symbols=[symbol], main_tf="1h", market_type="futures")
-    ohlc = await bot.fetch_ibkr_ohlc_data(symbol, "1h", num_candles=200)
-
-    # with pd.option_context('display.max_rows', None, 'display.max_columns', None):
-    #     logger.info("\n{}", ohlc.tail(50).to_string())
-
-    detector = BosChochDetector(main_tf, show_bull=True, show_bear=True, left_bars=5, right_bars=5)
-    results = detector.calculate_bos_choch(ohlc, plot=True)
-    fig = results["fig"]
-    fig.show()
 
 
 @pytest.mark.asyncio
@@ -301,22 +295,23 @@ async def test_order_blocks_old():
 @pytest.mark.asyncio
 async def test_supply_demand_zones():
     symbol = "MNQ"
-    bot = SMCBotBase(symbols=[symbol], main_tf="1h", market_type="futures")
-    ohlc = await bot.fetch_ibkr_ohlc_data(symbol, "1h", num_candles=200)
+    # bot = SMCBotBase(symbols=[symbol], main_tf="1h", market_type="futures")
+    # ohlc = await bot.fetch_ibkr_ohlc_data(symbol, "1h", num_candles=200)
 
-    # pathlib = f"/project/daily_trading/bots/smc_bot/tests/ohlc_data/{symbol.lower()}.csv"
-    # ohlc = load_data(
-    #     pathlib,
-    #     start_ts="2025-03-03 12:30:00+00:00",
-    #     end_ts="2025-03-03 17:00:00+00:00"
-    # )
+    pathlib = f"/project/daily_trading/bots/smc_bot/tests/ohlc_data/mnq_1h.csv"
+    ohlc = load_data(
+        pathlib,
+        start_ts="2025-02-01 00:30:00+00:00",
+        end_ts="2025-02-12 15:00:00+00:00"
+    )
     # Tested_V12_MNQ_NY_sw12_int4_off1_atr2_2_thr0_3_rr1_5_results_copy
     detector = SupplyDemandZonesDetector(fvg_based_only=True,
-                                         fvg_offset=5,
+                                         fvg_offset=10,
                                          swing_length=50,
                                          internal_length=5,
-                                         zone_precision_factor=1.8,
-                                         fvg_threshold=0.15)
+                                         zone_precision_factor=1,
+                                         fvg_threshold=0.1,
+                                         internal_confluence_filter=True)
 
     #
     # ohlc_before = ohlc.loc[ohlc.index < cutoff]
@@ -325,6 +320,26 @@ async def test_supply_demand_zones():
     active_swing, active_internal = detector.calculate(ohlc)
     logger.info(f"Active Swing Zones: {active_swing}, Active Internal Zones: {active_internal}")
     fig = detector.plot(ohlc)
+    fig.show()
+
+
+@pytest.mark.asyncio
+async def test_bos_detector():
+    symbol = "MNQ"
+    # bot = SMCBotBase(symbols=[symbol], main_tf="1h", market_type="futures")
+    # ohlc = await bot.fetch_ibkr_ohlc_data(symbol, "1h", num_candles=200)
+
+    pathlib = f"/project/daily_trading/bots/smc_bot/tests/ohlc_data/mnq_1h.csv"
+    ohlc = load_data(
+        pathlib,
+        start_ts="2025-02-07 13:30:00+00:00",
+        end_ts="2025-02-12 16:00:00+00:00"
+    )
+
+    detector = BosChochDetector(main_tf, show_bull=True, show_bear=True, left_bars=5, right_bars=5)
+    detector.plot_tail = 300
+    results = detector.calculate_bos_choch(ohlc, plot=True)
+    fig = results["fig"]
     fig.show()
 
 
@@ -443,20 +458,6 @@ async def test_ibkr_contract_resolution(ib_client, input_symbol, expected_root, 
     print(f"✅ PASS: {input_symbol} -> {contract.localSymbol} ({contract.exchange}) Exp: {expiry_str}")
 
 
-import pytest
-import pandas as pd
-from daily_trading.brokers.IBKRClient import IBKRClient  # Adjust import path as needed
-
-# CONFIGURATION
-# Ensure this matches your running TWS/Gateway (Paper Trading recommended)
-HOST = '127.0.0.1'
-PORT = 4002
-CLIENT_ID = 999  # Use a unique ID for testing to avoid conflict with running bots
-
-# The symbols we must verify
-TARGET_SYMBOLS = ["MNQ", "MES", "MGC", "SIL"]
-
-
 @pytest.mark.asyncio
 async def test_ibkr():
     """
@@ -470,4 +471,3 @@ async def test_ibkr():
     logger.info(msg)
 
     # ohlc = await client.get_klines("MES", "5m")
-

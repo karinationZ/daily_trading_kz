@@ -223,7 +223,7 @@ class MasterBot:
 
                     # Pass State to Bots
                     await asyncio.gather(
-                        # self.bos_ob_bot.execute_cycle(market_data, blocked, positions, orders),
+                        self.bos_ob_bot.execute_cycle(market_data, blocked, positions, orders),
                         self.orb_bot.execute_cycle(market_data, blocked, positions, orders),
                     )
 

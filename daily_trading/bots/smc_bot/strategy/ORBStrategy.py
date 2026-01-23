@@ -96,7 +96,7 @@ class ORBStrategy(StrategyBase):
         self.risk = risk
         self.tp_multiple = tp_multiple
         if timezone == ZoneInfo("America/New_York"):
-            self.end_buffer_minutes = 5
+            self.end_buffer_minutes = self.NY_END_BUFFER_MIN
         else:
             self.end_buffer_minutes = 0
         self.orb_detector = ORBDetector(main_tf="5m", orb_minutes=15, timezone=timezone, wick_ratio=wick_ratio)

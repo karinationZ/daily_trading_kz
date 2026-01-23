@@ -142,8 +142,6 @@ def aggregate_and_promote_champions(results_base_path: Path, filter_by: Leadersh
             "AvgTrade": round(avg_trade, 2),
             "Trades": len(filled),
             "rr": meta.get('rr', 0.0),  # Safe get
-            "Full_Path": str(csv_path),
-            "Original_Filename": csv_path.name,
         }
 
         # Build Config String & Add Specific Params conditionally
@@ -153,12 +151,16 @@ def aggregate_and_promote_champions(results_base_path: Path, filter_by: Leadersh
         if meta.get('sw') is not None:
             output['sw'] = meta['sw']
             output['int'] = meta['int']
+            config_parts.extend([
+                f"SW:{meta['sw']}",
+                f"INT:{meta['int']}",
+            ])
+        # 1. Structural Params (if present)
+        if meta.get('off') is not None:
             output['off'] = meta['off']
             output['atr'] = meta['atr']
             output['thr'] = meta['thr']
             config_parts.extend([
-                f"SW:{meta['sw']}",
-                f"INT:{meta['int']}",
                 f"OFF:{meta['off']}",
                 f"ATR:{meta['atr']}",
                 f"THR:{meta['thr']}"
@@ -178,6 +180,7 @@ def aggregate_and_promote_champions(results_base_path: Path, filter_by: Leadersh
             output['eb_mult'] = meta['eb_mult']
             config_parts.append(f"EB:{meta['eb_mult']}")
 
+        output.update({"Full_Path": str(csv_path), "Original_Filename": csv_path.name})
         # Finalize Config String
         output['config'] = " | ".join(config_parts)
 
@@ -236,7 +239,7 @@ def aggregate_and_promote_champions(results_base_path: Path, filter_by: Leadersh
             continue
 
         # F. Promote Champion
-        champion_folder = WINNERS_DIR / f"CHAMPION_{session}_{symbol}"
+        champion_folder = WINNERS_DIR / f"{session}_{symbol}"
         champion_folder.mkdir(parents=True, exist_ok=True)
 
         src_csv = Path(best["Full_Path"])

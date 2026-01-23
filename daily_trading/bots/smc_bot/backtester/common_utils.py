@@ -29,16 +29,16 @@ def parse_params_from_results_csv_filename(filename: str) -> Optional[Dict[str, 
     """
 
     # --- PATTERN 2: Complex (Legacy) ---
-    # MNQ_NY_sw35_int3_rr1.2_sl1_eb_mult1_results.csv"
+    # MNQ_LONDON_sw45_int5_rr1.2_mit0.75_sl0.1_results.csv"
     pattern_complex = r"""
         (?P<symbol>[A-Z0-9]+)_
         (?P<session>[A-Z]+)
         _sw(?P<sw>\d+)
         _int(?P<int>\d+)
         _rr(?P<rr>[\d.]+)
+        (?:_mit(?P<mit>[\d.]+))?
         (?:_sl(?P<sl_atr>[\d.]+))?
         (?:_eb(?:_mult)?(?P<eb_mult>[\d.]+))? 
-        (?:_mit(?P<mit>[\d.]+))?
         _?results\.csv
     """
 
@@ -46,6 +46,8 @@ def parse_params_from_results_csv_filename(filename: str) -> Optional[Dict[str, 
     pattern_tap = r"""
         (?P<symbol>[A-Z0-9]+)_
         (?P<session>[A-Z]+)
+        _sw(?P<sw>\d+)
+        _int(?P<int>\d+)
         _rr(?P<rr>[\d.]+)
         _mit(?P<mit>[\d.]+)
         _sl(?P<sl_atr>[\d.]+)

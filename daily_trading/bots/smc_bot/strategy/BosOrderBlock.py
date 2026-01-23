@@ -36,13 +36,14 @@ class BosOrderBlockStrategy(StrategyBase):
                  sl_buffer_mult: float = 0.1,
                  swing_length: int = 45,
                  internal_length: int = 5,
-                 # zone_precision_factor: float = 1.8,
-                 # fvg_based_only: bool = True,
-                 # fvg_offset: int = 5,
-                 # fvg_threshold=0.15,
                  bos_left_bars: int = 5,
                  bos_right_bars: int = 5,
-                 bos_volume_thresh: float = 0):
+                 bos_volume_thresh: float = 0,
+                 fvg_based_only: bool = False,
+                 # fvg_offset: int = 10,
+                 # fvg_threshold=0.15,
+                 # zone_precision_factor: float = 1,
+                 ):
 
         super().__init__(main_tf)
         self.symbol = symbol
@@ -59,7 +60,7 @@ class BosOrderBlockStrategy(StrategyBase):
         self.entry_depth = entry_depth
 
         if timezone == ZoneInfo("America/New_York"):
-            self.end_buffer_minutes = 5
+            self.end_buffer_minutes = self.NY_END_BUFFER_MIN
         else:
             self.end_buffer_minutes = 0
 
@@ -68,18 +69,16 @@ class BosOrderBlockStrategy(StrategyBase):
             main_tf=main_tf,
             left_bars=bos_left_bars,
             right_bars=bos_right_bars,
-            wick_ratio=0.1,  # Standard wick ratio
             volume_thresh=bos_volume_thresh
         )
 
         self.sd_detector = SupplyDemandZonesDetector(
-            fvg_based_only=False,
+            fvg_based_only=fvg_based_only,
             swing_length=swing_length,
             internal_length=internal_length,
             # zone_precision_factor=zone_precision_factor,
             # fvg_offset=fvg_offset,
             # fvg_threshold=fvg_threshold,
-            wick_ratio=0.1
         )
 
         # State Variables
@@ -252,6 +251,10 @@ class BosOrderBlockStrategy(StrategyBase):
                           size=self.active_trade.size,
                           timestamp=timestamp)
 
+        # Propagate the entry_timestamp from the active trade to the exit signal
+        if self.active_trade and hasattr(self.active_trade, 'entry_timestamp'):
+            sig.entry_timestamp = self.active_trade.entry_timestamp
+
         # Pass metadata for Exit logic
         if self.active_trade and self.active_trade.metadata:
             sig.metadata.update(self.active_trade.metadata)
@@ -289,6 +292,7 @@ class BosOrderBlockStrategy(StrategyBase):
 
             if filled:
                 self.trade_status = TradeStatus.FILLED
+                self.active_trade.entry_timestamp = ts_utc
                 just_filled = True
                 self.log.info(f"⚡ ORDER FILLED {self.symbol} @ {self.active_trade.price:.2f}")
 

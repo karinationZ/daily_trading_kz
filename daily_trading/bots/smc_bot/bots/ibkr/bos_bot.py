@@ -3,7 +3,7 @@ from typing import List
 from zoneinfo import ZoneInfo
 
 from daily_trading.bots.smc_bot.bots.BaseBot import SMCBotBase
-from daily_trading.bots.smc_bot.strategy.BosOrderBlock import BosOrderBlockStrategy
+from daily_trading.bots.smc_bot.strategy.BosOrderBlockStrategy import BosOrderBlockStrategy
 from daily_trading.bots.smc_bot.strategy.StrategyBase import TradeStatus
 from daily_trading.settings import logger, TELEGRAM_MAIN_CHANNEL_CHAT_ID
 
@@ -16,7 +16,6 @@ CONFIG = {
         "entry_depth": 0.25,  # Shallow Entry
         "tp_multiple": 2.0,  # High Reward
         "sl_buffer": 0.1,
-        "confluence_filter": True
     },
     ("SIL", "NY"): {
         "swing_length": 50,
@@ -24,7 +23,14 @@ CONFIG = {
         "entry_depth": 0.75,  # Deep Entry
         "tp_multiple": 1.5,  # High Accuracy
         "sl_buffer": 0.1,
-        "confluence_filter": True
+    },
+
+    ("SIL", "ASIA"): {
+        "swing_length": 8,
+        "internal_length": 5,
+        "entry_depth": 0.75,  # Deep Entry
+        "tp_multiple": 1.2,  # High Accuracy
+        "sl_buffer": 0.1,
     },
 
     # --- GOLD ---
@@ -34,7 +40,6 @@ CONFIG = {
         "entry_depth": 0.75,  # Deep Entry
         "tp_multiple": 2.0,
         "sl_buffer": 0.1,
-        "confluence_filter": True
     },
 
     # --- INDICES ---

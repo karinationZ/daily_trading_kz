@@ -359,6 +359,11 @@ class BosOrderBlockStrategy(StrategyBase):
 
             # --- EXECUTION ---
             if exit_type:
+                # TODO: Mark zone as processed if we don't want to re-enter
+                # zone_id = self.active_trade.metadata.get("zone_id")
+                # if zone_id:
+                #     self.processed_zone_ids.add(zone_id)
+
                 sig = self.create_signal(TradeAction.EXIT, ts_utc, custom_price=exit_price)
                 sig.trade_result = exit_type  # 'WIN' or 'LOSS'
                 sig.metadata["exit_reason"] = exit_reason

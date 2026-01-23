@@ -100,6 +100,7 @@ class BosOrderBlockStrategy(StrategyBase):
         self.sl_buffer_mult = sl_buffer_mult
         self.zones = None
         self.last_processed_hour: int = -1
+        self.restore_metadata_defaults = {"bos_ts": pd.Timestamp(0, tz="UTC")}
 
     def reset_session_state(self):
         """Resets daily state."""

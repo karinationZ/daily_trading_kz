@@ -13,20 +13,20 @@ class SupplyDemandZonesDetector(DetectorsBase):
     BEARISH = BIAS.SHORT
 
     def __init__(
-            self,
-            main_tf="5m",
-            swing_length: int = 50,
-            internal_length: int = 5,
-            atr_length: int = 200,
-            zone_precision_factor: float = 2.0,
-            volatility_filter: str = "atr",
-            max_display_zones: int = 5,
-            plot_tail: int = 300,
-            fvg_based_only: bool = True,
-            fvg_offset: int = 3,
-            fvg_threshold=0.15,
-            wick_ratio: float = 0.10,
-            internal_confluence_filter: bool = True,
+        self,
+        main_tf="5m",
+        swing_length: int = 50,
+        internal_length: int = 5,
+        atr_length: int = 200,
+        zone_precision_factor: float = 2.0,
+        volatility_filter: str = "atr",
+        max_display_zones: int = 5,
+        plot_tail: int = 300,
+        fvg_based_only: bool = True,
+        fvg_offset: int = 3,
+        fvg_threshold=0.15,
+        wick_ratio: float = 0.10,
+        internal_confluence_filter: bool = True,
     ):
         super().__init__(main_tf, plot_tail, wick_ratio=wick_ratio)
         self.swing_length = swing_length
@@ -99,12 +99,12 @@ class SupplyDemandZonesDetector(DetectorsBase):
             idx = i - length
 
             # Pivot High check
-            window_h = self.raw_highs[idx - length: idx + length + 1]
+            window_h = self.raw_highs[idx - length : idx + length + 1]
             if len(window_h) > 0 and self.raw_highs[idx] == np.max(window_h):
                 p_high = {"price": self.raw_highs[idx], "index": idx, "crossed": False}
 
             # Pivot Low check
-            window_l = self.raw_lows[idx - length: idx + length + 1]
+            window_l = self.raw_lows[idx - length : idx + length + 1]
             if len(window_l) > 0 and self.raw_lows[idx] == np.min(window_l):
                 p_low = {"price": self.raw_lows[idx], "index": idx, "crossed": False}
 
@@ -118,8 +118,8 @@ class SupplyDemandZonesDetector(DetectorsBase):
                 high_price = self.raw_highs[i]
                 low_price = self.raw_lows[i]
 
-                upper_wick = high_price - max(close_price, open_price)
-                lower_wick = min(close_price, open_price) - low_price
+                high_price - max(close_price, open_price)
+                min(close_price, open_price) - low_price
 
             # Breaks
             close_i = self.raw_closes[i]

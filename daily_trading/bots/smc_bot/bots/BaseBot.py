@@ -257,6 +257,11 @@ class SMCBotBase:
                         else:
                             tp_price = price
 
+            meta = {"zone_id": "RECOVERED"}
+
+            if hasattr(strategy, "restore_metadata_defaults"):
+                meta.update(strategy.restore_metadata_defaults)
+
             strategy.active_trade = TradeSignal(
                 action=TradeAction.ENTER,
                 symbol=strategy.symbol,
@@ -266,7 +271,7 @@ class SMCBotBase:
                 tp=tp_price,
                 size=size,
                 timestamp=pd.Timestamp.now(tz=strategy.timezone),
-                metadata={"zone_id": "RECOVERED"},
+                metadata=meta,
             )
             strategy.trade_status = TradeStatus.PENDING
             # Re-acquire Lock on recovery

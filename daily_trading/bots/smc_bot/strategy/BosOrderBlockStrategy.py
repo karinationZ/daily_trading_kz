@@ -445,7 +445,7 @@ class BosOrderBlockStrategy(StrategyBase):
                         cancel_reason = "NEW_STRUCTURE"
 
             if should_cancel:
-                self.log.info(f"🚫CANCELLING PENDING ENTRY | Reason: {cancel_reason}")
+                self.log.info(f"🚫 CANCELLING PENDING ENTRY | Reason: {cancel_reason}")
                 return SignalSummary(
                     direction="CANCELLED",
                     trade_signal=self.create_signal(TradeAction.CANCEL, ts_utc),

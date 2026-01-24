@@ -13,8 +13,14 @@ from ib_async import (
     MarketOrder,
     util,
 )
+from tenacity import retry, retry_if_result, stop_after_attempt, wait_fixed
 
 from daily_trading.settings import logger
+
+
+def is_not_flat(result):
+    is_flat, _ = result
+    return not is_flat
 
 
 class IBKRClient:
@@ -275,6 +281,12 @@ class IBKRClient:
             if order_ref is None or trade.order.orderRef == order_ref:
                 self.ib.cancelOrder(trade.order)
                 logger.info(f"Cancelled Order ID: {trade.order.orderId} (Ref: {trade.order.orderRef})")
+
+    @retry(retry=retry_if_result(is_not_flat), wait=wait_fixed(3), stop=stop_after_attempt(10))  # Stop after 1 minute (12 * 5s)
+    async def wait_for_flat(self, symbol):
+        # This will be retried automatically if is_flat is False
+        is_flat, pos_size = await self.check_flatness(symbol)
+        return is_flat, pos_size
 
     async def diagnostic_market_data(self, symbol: str):
         contract = await self.get_futures_contract(symbol)

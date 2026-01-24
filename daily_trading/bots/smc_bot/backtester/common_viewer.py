@@ -29,6 +29,7 @@ TOP_N = 20
 # ========================================================================
 # High RR strategies need more trades to prove themselves
 
+
 def rr_sample_penalty(row):
     """
     If RR > 2.0 and Trades < 50, apply penalty
@@ -45,6 +46,7 @@ def rr_sample_penalty(row):
 # ========================================================================
 # Edge = (Win% × Avg_Win) - (Loss% × Avg_Loss)
 # Normalized by risk (RR-aware breakeven calculation)
+
 
 def calculate_edge_margin(row):
     """
@@ -251,10 +253,26 @@ def aggregate_and_promote_champions(results_base_path: Path, filter_by: Leadersh
     master_df = pd.DataFrame(all_summaries)
 
     # symbol	session	WinRate	PnL	AvgTrade	Trades	rr	sw	int	mit	sl_atr	Full_Path	Original_Filename	config	Norm_PnL	Norm_RR	Score	Source_File
-    columns_order = ["symbol", "session", "WinRate", "PnL", "Score", "Trades",
-                     "rr", "sw", "int", "mit", "sl_atr",
-                     "Full_Path", "Original_Filename", "AvgTrade",
-                     "config", "Norm_PnL", "Norm_RR", "Source_File"]
+    columns_order = [
+        "symbol",
+        "session",
+        "WinRate",
+        "PnL",
+        "Score",
+        "Trades",
+        "rr",
+        "sw",
+        "int",
+        "mit",
+        "sl_atr",
+        "Full_Path",
+        "Original_Filename",
+        "AvgTrade",
+        "config",
+        "Norm_PnL",
+        "Norm_RR",
+        "Source_File",
+    ]
     master_df = master_df.reindex(columns=columns_order)
 
     # 2. GROUP AND RANK (The Champion Logic)
@@ -310,10 +328,10 @@ def aggregate_and_promote_champions(results_base_path: Path, filter_by: Leadersh
         group["Norm_Expectancy"] = (group["Expectancy"] / group["Expectancy"].max()) * 100
 
         base_score = (
-                group["Norm_Edge"] * 0.30 +  # Edge over breakeven (critical)
-                group["Profit_Quality"] * 0.30 +  # Actual profitability
-                group["Norm_Expectancy"] * 0.25 +  # Long-term expectancy
-                group["Norm_RAWR"] * 0.15  # Difficulty-adjusted win rate
+            group["Norm_Edge"] * 0.30  # Edge over breakeven (critical)
+            + group["Profit_Quality"] * 0.30  # Actual profitability
+            + group["Norm_Expectancy"] * 0.25  # Long-term expectancy
+            + group["Norm_RAWR"] * 0.15  # Difficulty-adjusted win rate
         )
 
         # Apply confidence multiplier

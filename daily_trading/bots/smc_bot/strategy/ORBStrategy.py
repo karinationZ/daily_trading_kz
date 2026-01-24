@@ -90,8 +90,9 @@ class ORBStrategy(StrategyBase):
         entry_buffer_mult: float = 0.05,
         sl_buffer_mult: float = 0.1,
         tick_buffer_mult: float = 0.05,
+        priority: int = 2,
     ):
-        super().__init__(main_tf)
+        super().__init__(main_tf, priority)
         self.orb_results = None
         self.symbol = symbol
         self.timezone = timezone

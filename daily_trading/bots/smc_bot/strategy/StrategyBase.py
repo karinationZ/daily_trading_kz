@@ -137,7 +137,7 @@ class StrategyBase(ABC):
         "SIL": 0.005,
     }
 
-    def __init__(self, main_tf: str, debug=False, telegram_chat_id=None):
+    def __init__(self, main_tf: str, debug=False, telegram_chat_id=None, priority: int = 1):
         """
         Initialize base strategy with Telegram bot and cache.
         """
@@ -153,6 +153,7 @@ class StrategyBase(ABC):
         self.bos_signals = None
         self.recent_bos_signal = None
         self.bos_choch_fig = None
+        self.priority = priority
 
     @staticmethod
     def get_tz_short(timezone: ZoneInfo):

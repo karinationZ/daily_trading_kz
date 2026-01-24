@@ -13,7 +13,6 @@ ORB_CONFIG = {
     # ==========================================================================
     # MNQ NY: The "5R" Sniper
     # Stats: PnL $2,181 | WR 40% | RR 5.0
-    # Change: RR increased to 5.0. SL Buffer increased to 0.15 to accommodate volatility.
     ("MNQ", "NY"): {
         "swing_length": 15,  # Tied with 12/18, kept 15 for consistency
         "internal_length": 4,
@@ -123,6 +122,7 @@ class ORBBot(SMCBotBase):
                     entry_buffer_mult=config["entry_buffer_mult"],
                     sl_buffer_mult=config["sl_buffer_mult"],
                     tick_buffer_mult=config["tick_buffer_mult"],
+                    priority=2,
                 )
                 self.strategies.append(strategy)
                 unique_symbols.add(symbol)

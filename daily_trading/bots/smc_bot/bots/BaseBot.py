@@ -50,6 +50,15 @@ class TimeZone:
     ASIA = ZoneInfo("Asia/Tokyo")
 
 
+# Add this near your other dataclasses
+@dataclass
+class LockInfo:
+    strategy_tag: str
+    status: TradeStatus  # PENDING or FILLED
+    priority: int  # 1 = Low (BOS), 2 = High (ORB)
+    timestamp: datetime
+
+
 class SMCBotBase:
     """SMC-based trading bot for high-probability continuation trades across multiple symbols.
     Uses SMCAnalyser for analysis and Telegram messaging, targeting scalping opportunities
@@ -151,6 +160,66 @@ class SMCBotBase:
         logger.info(f"Lookback: {self.main_tf}={lookback[self.main_tf]} candles, " f"15m={lookback['15m']} candles")
         return lookback
 
+        # In SMCBotBase class
+
+    async def acquire_lock(self, strategy) -> bool:
+        """
+        Attempts to acquire a lock on the symbol.
+        1. If Free -> Locks it immediately (Reservation).
+        2. If PENDING + Lower Priority -> Overrides, Cancels, and Relocks immediately.
+        """
+        symbol = strategy.symbol
+        current_lock: LockInfo = self.ACTIVE_SYMBOL_LOCKS.get(symbol)
+        priority = getattr(strategy, 'priority', 1)
+
+        # 1. Symbol is free
+        if not current_lock:
+            # CLAIM IT IMMEDIATELY to prevent race conditions
+            self.ACTIVE_SYMBOL_LOCKS[symbol] = LockInfo(
+                strategy_tag=strategy.ext_tag,
+                status=TradeStatus.NONE,  # Temporary status, will be updated end of cycle
+                priority=priority,
+                timestamp=datetime.now(),
+            )
+            return True
+
+        # 2. We already own the lock (re-entrant check)
+        if current_lock.strategy_tag == strategy.ext_tag:
+            return True
+
+        # 3. Symbol is occupied. Can we steal it?
+        if current_lock.status == TradeStatus.PENDING and priority > current_lock.priority:
+            logger.info(
+                f"⚡ OVERRIDE: {strategy.ext_tag} (P{priority}) kicking out {current_lock.strategy_tag}" f" (P{current_lock.priority}) on {symbol}"
+            )
+
+            # --- CRITICAL: CANCEL THE EXISTING ORDERS ---
+            try:
+                # Cancel orders of the OLD strategy
+                await self.ib_client.cancel_all_orders(order_ref=current_lock.strategy_tag)
+
+                # Verify flatness (Tenacity retry handle implicit in wait_for_flat)
+                # Note: Cancelling a LIMIT order usually results in flat immediately.
+                is_flat, pos_size = await self.ib_client.wait_for_flat(strategy.symbol)
+
+                if not is_flat:
+                    logger.error(f"❌ Override failed: Could not flatten {symbol}. Position: {pos_size}")
+                    return False
+
+                # CLAIM IT IMMEDIATELY after flattening
+                self.ACTIVE_SYMBOL_LOCKS[symbol] = LockInfo(
+                    strategy_tag=strategy.ext_tag, status=TradeStatus.NONE, priority=strategy.priority, timestamp=datetime.now()
+                )
+                return True
+
+            except Exception as e:
+                logger.error(f"Error during lock override: {e}")
+                return False
+
+        # 4. Hard Block
+        # logger.info(f"🔒 {symbol} locked by {current_lock.strategy_tag}. Skipping.")
+        return False
+
     @staticmethod
     def sync_state(strategy, current_positions: list, open_orders: list):
         """
@@ -220,7 +289,9 @@ class SMCBotBase:
             strategy.trade_status = TradeStatus.FILLED
 
             # Re-acquire Lock on recovery
-            SMCBotBase.ACTIVE_SYMBOL_LOCKS[strategy.symbol] = strategy.ext_tag
+            SMCBotBase.ACTIVE_SYMBOL_LOCKS[strategy.symbol] = LockInfo(
+                strategy_tag=strategy.ext_tag, status=strategy.trade_status, priority=getattr(strategy, "priority", 1), timestamp=datetime.now()
+            )
 
             strategy.log.info(f"♻️ RESTORED STATE: FILLED {direction.name} @ {avg_price} (SL:{sl_price} TP:{tp_price})")
             return
@@ -275,19 +346,17 @@ class SMCBotBase:
             )
             strategy.trade_status = TradeStatus.PENDING
             # Re-acquire Lock on recovery
-            SMCBotBase.ACTIVE_SYMBOL_LOCKS[strategy.symbol] = strategy.ext_tag
+            SMCBotBase.ACTIVE_SYMBOL_LOCKS[strategy.symbol] = LockInfo(
+                strategy_tag=strategy.ext_tag, status=strategy.trade_status, priority=getattr(strategy, 'priority', 1), timestamp=datetime.now()
+            )
             strategy.log.info(f"♻️ RESTORED STATE: PENDING {direction.name} @ {entry_price}")
 
     async def run_strategy_cycle(self, strategy, *args, **kwargs):
+        can_trade = await self.acquire_lock(strategy)
+        if not can_trade:
+            return
         try:
             symbol = strategy.symbol
-            # Check Locking to prevent collisions
-            current_lock = self.ACTIVE_SYMBOL_LOCKS.get(symbol)
-            if current_lock and current_lock != strategy.ext_tag:
-                # Symbol is busy with another strategy (e.g., ORB has it, BOS 1H can't touch it)
-                # Fail silently or log debug to avoid spam
-                logger.info(f"Skipping {symbol}, busy with {current_lock}")
-                return
             # -----------------------------------------------------------------
             # 1. ANALYSIS & SIGNAL GENERATION
             # -----------------------------------------------------------------
@@ -302,23 +371,38 @@ class SMCBotBase:
             # -----------------------------------------------------------------
             # 2. EXECUTION (The "Doer")
             # -----------------------------------------------------------------
-            execution_success = False
             try:
                 # This will raise Exception if order placement fails (e.g. Insufficient Funds)
-                execution_success = await self.handle_execution(strategy, analysis)
-                if not execution_success:
-                    return
+                await self.handle_execution(strategy, analysis)
 
                 # Manage Locks based on action
                 if sig.action == TradeAction.ENTER:
-                    self.ACTIVE_SYMBOL_LOCKS[symbol] = strategy.ext_tag
+                    # Update the central lock with full info
+                    self.ACTIVE_SYMBOL_LOCKS[symbol] = LockInfo(
+                        strategy_tag=strategy.ext_tag, status=strategy.trade_status, priority=strategy.priority, timestamp=datetime.now()
+                    )
                 elif sig.action in [TradeAction.EXIT, TradeAction.CANCEL]:
                     self.ACTIVE_SYMBOL_LOCKS.pop(symbol, None)
 
             except Exception as exe_err:
                 strategy.log.error(f"Execution Aborted: {exe_err}")
-                # Do NOT proceed to reporting if execution failed
-                return
+
+            finally:
+                # SYNC LOCK STATE (THE CLEANUP)
+                if strategy.trade_status == TradeStatus.NONE:
+                    # If strategy is neutral (or just finished a trade), RELEASE the lock.
+                    # Only release if WE are the ones holding it (don't delete someone else's lock)
+                    current = self.ACTIVE_SYMBOL_LOCKS.get(strategy.symbol)
+                    if current and current.strategy_tag == strategy.ext_tag:
+                        self.ACTIVE_SYMBOL_LOCKS.pop(strategy.symbol, None)
+                else:
+                    # If PENDING or FILLED, UPDATE/CONFIRM the lock
+                    self.ACTIVE_SYMBOL_LOCKS[strategy.symbol] = LockInfo(
+                        strategy_tag=strategy.ext_tag,
+                        status=strategy.trade_status,
+                        priority=getattr(strategy, 'priority', 1),
+                        timestamp=datetime.now(),
+                    )
 
             # -----------------------------------------------------------------
             # 3. POST-EXECUTION WAIT & MONITOR (The "Safety Net")
@@ -327,27 +411,16 @@ class SMCBotBase:
             # --- A. WAIT FOR BROKER ---
             if sig.action == TradeAction.EXIT:
                 exit_type = sig.metadata.get("exit_type", ExitType.SL_TP_HIT)
-
-                if exit_type == ExitType.SL_TP_HIT:
-                    # Passive Exit: Wait long for IBKR API to update Position
-                    await asyncio.sleep(15.0)
-                else:
-                    # Force Exit: Wait short for Market Order fill
-                    await asyncio.sleep(5.0)
+                await asyncio.sleep(5.0)
 
                 # --- B. CHECK FLATNESS (Pass 1) ---
                 is_flat, pos_size = await self.ib_client.check_flatness(sig.symbol)
 
                 # --- C. RETRY LOGIC (Pass 2) ---
                 # If not flat and it was a Passive exit, force refresh and try again
-                for _ in range(3):
-                    if not is_flat and exit_type == ExitType.SL_TP_HIT:
-                        logger.warning(f"⚠️ Exit (SL_TP_HIT) - Flatness Check Failed for {sig.symbol}. Retrying...")
-                        await asyncio.sleep(3.0)
-                        await self.ib_client.get_active_positions()  # Request update from Server
-                        is_flat, pos_size = await self.ib_client.check_flatness(sig.symbol)
-                        if is_flat:
-                            break
+                if not is_flat and exit_type == ExitType.SL_TP_HIT:
+                    logger.warning(f"⚠️ Exit (SL_TP_HIT) - Flatness Check Failed for {sig.symbol}. Retrying...")
+                    is_flat, pos_size = await self.ib_client.wait_for_flat(strategy.symbol)
 
                 # --- D. FINAL DECISION ---
                 if not is_flat:

@@ -49,12 +49,10 @@ class BosOrderBlockStrategy(StrategyBase):
         bos_right_bars: int = 5,
         bos_volume_thresh: float = 0,
         fvg_based_only: bool = False,
-        # fvg_offset: int = 10,
-        # fvg_threshold=0.15,
-        # zone_precision_factor: float = 1,
+        priority: int = 1,
     ):
 
-        super().__init__(main_tf)
+        super().__init__(main_tf, priority=priority)
         self.symbol = symbol
         self.timezone = timezone
 

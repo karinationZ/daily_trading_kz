@@ -31,91 +31,27 @@ from daily_trading.settings import logger, TELEGRAM_MAIN_CHANNEL_CHAT_ID
 #     "sl_buffer": 0.1
 # },
 CONFIG = {
-
     # --- MBT LONDON | WinRate 54.72% | Score 107.4 | APPROVED | Consistent Performer
-    ("MBT", "LONDON"): {
-        "swing_length": 45,
-        "internal_length": 5,
-        "entry_depth": 0.1,
-        "tp_multiple": 1.5,
-        "sl_buffer": 1.2
-    },
-
+    ("MBT", "LONDON"): {"swing_length": 45, "internal_length": 5, "entry_depth": 0.1, "tp_multiple": 1.5, "sl_buffer": 1.2},
     # --- MES LONDON | WinRate 51.35% | Score 107.4 | APPROVED | Strong Edge
-    ("MES", "LONDON"): {
-        "swing_length": 24,
-        "internal_length": 3,
-        "entry_depth": 0.1,
-        "tp_multiple": 2.5,
-        "sl_buffer": 0.1
-    },
-
+    ("MES", "LONDON"): {"swing_length": 24, "internal_length": 3, "entry_depth": 0.1, "tp_multiple": 2.5, "sl_buffer": 0.1},
     # --- MES NY | WinRate 62.22% | Score 100.4 | APPROVED | Solid Bread & Butter
-    ("MES", "NY"): {
-        "swing_length": 8,
-        "internal_length": 5,
-        "entry_depth": 0.75,
-        "tp_multiple": 1.2,
-        "sl_buffer": 1.0
-    },
-
+    ("MES", "NY"): {"swing_length": 8, "internal_length": 5, "entry_depth": 0.75, "tp_multiple": 1.2, "sl_buffer": 1.0},
     # --- MGC ASIA | WinRate 58.0% | Score 93.5 | APPROVED | Decent Edge
-    ("MGC", "ASIA"): {
-        "swing_length": 8,
-        "internal_length": 3,
-        "entry_depth": 0.75,
-        "tp_multiple": 1.2,
-        "sl_buffer": 0.1
-    },
-
+    ("MGC", "ASIA"): {"swing_length": 8, "internal_length": 3, "entry_depth": 0.75, "tp_multiple": 1.2, "sl_buffer": 0.1},
     # --- MGC NY | WinRate 55.74% | Score 105.0 | APPROVED | Strong Edge
-    ("MGC", "NY"): {
-        "swing_length": 24,
-        "internal_length": 5,
-        "entry_depth": 0.75,
-        "tp_multiple": 2.0,
-        "sl_buffer": 0.1
-    },
-
+    ("MGC", "NY"): {"swing_length": 24, "internal_length": 5, "entry_depth": 0.75, "tp_multiple": 2.0, "sl_buffer": 0.1},
     # --- MNQ NY | WinRate 63.46% | Score 107.9 | APPROVED | High Confidence Sample
     # TRADER NOTE: This is a Portfolio Anchor. High volume, proven edge.
-    ("MNQ", "NY"): {
-        "swing_length": 12,
-        "internal_length": 5,
-        "entry_depth": 0.25,
-        "tp_multiple": 1.2,
-        "sl_buffer": 0.1
-    },
-
+    ("MNQ", "NY"): {"swing_length": 12, "internal_length": 5, "entry_depth": 0.25, "tp_multiple": 1.2, "sl_buffer": 0.1},
     # --- SIL ASIA | WinRate 80.95% | Score 109.1 | APPROVED | Strong Edge
     # TRADER NOTE: The Stat Winner. Exceptional edge (35%+).
     # Must trade this.
-    ("SIL", "ASIA"): {
-        "swing_length": 8,
-        "internal_length": 5,
-        "entry_depth": 0.75,
-        "tp_multiple": 1.2,
-        "sl_buffer": 0.1
-    },
-
+    ("SIL", "ASIA"): {"swing_length": 8, "internal_length": 5, "entry_depth": 0.75, "tp_multiple": 1.2, "sl_buffer": 0.1},
     # --- SIL LONDON | WinRate 59.52% | Score 101.3 | APPROVED | Strong Edge
-    ("SIL", "LONDON"): {
-        "swing_length": 50,
-        "internal_length": 5,
-        "entry_depth": 0.5,
-        "tp_multiple": 2.0,
-        "sl_buffer": 0.1
-    },
-
+    ("SIL", "LONDON"): {"swing_length": 50, "internal_length": 5, "entry_depth": 0.5, "tp_multiple": 2.0, "sl_buffer": 0.1},
     # --- SIL NY | WinRate 63.64% | Score 106.9 | APPROVED | Strong Edge
-    ("SIL", "NY"): {
-        "swing_length": 50,
-        "internal_length": 5,
-        "entry_depth": 0.75,
-        "tp_multiple": 1.5,
-        "sl_buffer": 0.1
-    },
-
+    ("SIL", "NY"): {"swing_length": 50, "internal_length": 5, "entry_depth": 0.75, "tp_multiple": 1.5, "sl_buffer": 0.1},
 }
 
 
@@ -153,6 +89,7 @@ class BosOrderBlockBot(SMCBotBase):
                     tp_multiple=cfg["tp_multiple"],
                     entry_depth=cfg["entry_depth"],
                     sl_buffer_mult=cfg["sl_buffer"],
+                    priority=1,
                 )
                 self.strategies.append(strategy)
                 unique_symbols.add(symbol)

@@ -10,60 +10,112 @@ from daily_trading.bots.smc_bot.strategy.StrategyBase import TradeStatus
 from daily_trading.settings import logger, TELEGRAM_MAIN_CHANNEL_CHAT_ID
 
 # Define your configuration here
+# --- MES ASIA | WinRate 70.0% | Score 88.6 | SUGGEST EXCLUDE (Weak Stats) | Low Sample (20 trades)
+# TRADER NOTE: Sample size < 25 is too risky for live money.
+# High win rate likely due to luck/low volatility in Asia.
+# ("MES", "ASIA"): {
+#     "swing_length": 50,
+#     "internal_length": 3,
+#     "entry_depth": 0.75,
+#     "tp_multiple": 2.0,
+#     "sl_buffer": 0.1
+# },
+# --- MNQ LONDON | WinRate 43.4% | Score 86.4 | CAUTION | Low WR (43.4%)
+# TRADER NOTE: 43% WR is psychologically hard to trade manually,
+# but math works (2.5R). Ensure bot can handle drawdown streaks.
+# ("MNQ", "LONDON"): {
+#     "swing_length": 12,
+#     "internal_length": 3,
+#     "entry_depth": 0.25,
+#     "tp_multiple": 2.5,
+#     "sl_buffer": 0.1
+# },
 CONFIG = {
-    # --- SILVER (Dual Session) ---
-    ("SIL", "LONDON"): {
-        "swing_length": 50,
-        "internal_length": 5,
-        "entry_depth": 0.25,  # Shallow Entry
-        "tp_multiple": 2.0,  # High Reward
-        "sl_buffer": 0.1,
-    },
-    ("SIL", "NY"): {
-        "swing_length": 50,
-        "internal_length": 5,
-        "entry_depth": 0.75,  # Deep Entry
-        "tp_multiple": 1.5,  # High Accuracy
-        "sl_buffer": 0.1,
-    },
-    ("SIL", "ASIA"): {
-        "swing_length": 8,
-        "internal_length": 5,
-        "entry_depth": 0.75,  # Deep Entry
-        "tp_multiple": 1.2,  # High Accuracy
-        "sl_buffer": 0.1,
-    },
-    # --- GOLD ---
-    ("MGC", "NY"): {
-        "swing_length": 24,  # Faster Structure
-        "internal_length": 5,
-        "entry_depth": 0.75,  # Deep Entry
-        "tp_multiple": 2.0,
-        "sl_buffer": 0.1,
-    },
-    # --- INDICES ---
-    ("MNQ", "NY"): {
-        "swing_length": 50,
-        "internal_length": 5,
-        "entry_depth": 0.25,  # Scalp Mode
-        "tp_multiple": 1.2,
-        "sl_buffer": 0.1,
-    },
-    ("MES", "NY"): {
-        "swing_length": 50,
-        "internal_length": 5,
-        "entry_depth": 0.25,  # Balanced Mode
-        "tp_multiple": 1.5,
-        "sl_buffer": 0.1,
-    },
-    # --- CRYPTO ---
+
+    # --- MBT LONDON | WinRate 54.72% | Score 107.4 | APPROVED | Consistent Performer
     ("MBT", "LONDON"): {
         "swing_length": 45,
         "internal_length": 5,
-        "entry_depth": 0.1,  # Conservative
+        "entry_depth": 0.1,
         "tp_multiple": 1.5,
-        "sl_buffer": 1.2,  # Wide Stop
+        "sl_buffer": 1.2
     },
+
+    # --- MES LONDON | WinRate 51.35% | Score 107.4 | APPROVED | Strong Edge
+    ("MES", "LONDON"): {
+        "swing_length": 24,
+        "internal_length": 3,
+        "entry_depth": 0.1,
+        "tp_multiple": 2.5,
+        "sl_buffer": 0.1
+    },
+
+    # --- MES NY | WinRate 62.22% | Score 100.4 | APPROVED | Solid Bread & Butter
+    ("MES", "NY"): {
+        "swing_length": 8,
+        "internal_length": 5,
+        "entry_depth": 0.75,
+        "tp_multiple": 1.2,
+        "sl_buffer": 1.0
+    },
+
+    # --- MGC ASIA | WinRate 58.0% | Score 93.5 | APPROVED | Decent Edge
+    ("MGC", "ASIA"): {
+        "swing_length": 8,
+        "internal_length": 3,
+        "entry_depth": 0.75,
+        "tp_multiple": 1.2,
+        "sl_buffer": 0.1
+    },
+
+    # --- MGC NY | WinRate 55.74% | Score 105.0 | APPROVED | Strong Edge
+    ("MGC", "NY"): {
+        "swing_length": 24,
+        "internal_length": 5,
+        "entry_depth": 0.75,
+        "tp_multiple": 2.0,
+        "sl_buffer": 0.1
+    },
+
+    # --- MNQ NY | WinRate 63.46% | Score 107.9 | APPROVED | High Confidence Sample
+    # TRADER NOTE: This is a Portfolio Anchor. High volume, proven edge.
+    ("MNQ", "NY"): {
+        "swing_length": 12,
+        "internal_length": 5,
+        "entry_depth": 0.25,
+        "tp_multiple": 1.2,
+        "sl_buffer": 0.1
+    },
+
+    # --- SIL ASIA | WinRate 80.95% | Score 109.1 | APPROVED | Strong Edge
+    # TRADER NOTE: The Stat Winner. Exceptional edge (35%+).
+    # Must trade this.
+    ("SIL", "ASIA"): {
+        "swing_length": 8,
+        "internal_length": 5,
+        "entry_depth": 0.75,
+        "tp_multiple": 1.2,
+        "sl_buffer": 0.1
+    },
+
+    # --- SIL LONDON | WinRate 59.52% | Score 101.3 | APPROVED | Strong Edge
+    ("SIL", "LONDON"): {
+        "swing_length": 50,
+        "internal_length": 5,
+        "entry_depth": 0.5,
+        "tp_multiple": 2.0,
+        "sl_buffer": 0.1
+    },
+
+    # --- SIL NY | WinRate 63.64% | Score 106.9 | APPROVED | Strong Edge
+    ("SIL", "NY"): {
+        "swing_length": 50,
+        "internal_length": 5,
+        "entry_depth": 0.75,
+        "tp_multiple": 1.5,
+        "sl_buffer": 0.1
+    },
+
 }
 
 

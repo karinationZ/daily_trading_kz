@@ -416,7 +416,8 @@ class BosOrderBlockStrategy(StrategyBase):
                     self.trade_status = TradeStatus.PENDING
                     self.log.info(f"🚀 LIMIT ORDER PLACED: {new_trade.direction.name} @ {new_trade.price:.2f}")
                     return SignalSummary(direction=new_trade.direction.name, trade_signal=new_trade)
-
+            else:
+                logger.info(f"🚫~ ⏰No new entries allowed after {entry_cutoff.strftime('%H:%M')}")
         # 4. PENDING MANAGEMENT (Cutoff & BOS Structure Update)
         if self.trade_status == TradeStatus.PENDING:
             should_cancel = False
@@ -444,7 +445,7 @@ class BosOrderBlockStrategy(StrategyBase):
                         cancel_reason = "NEW_STRUCTURE"
 
             if should_cancel:
-                self.log.info(f"🚫 CANCELLING PENDING ENTRY | Reason: {cancel_reason}")
+                self.log.info(f"🚫CANCELLING PENDING ENTRY | Reason: {cancel_reason}")
                 return SignalSummary(
                     direction="CANCELLED",
                     trade_signal=self.create_signal(TradeAction.CANCEL, ts_utc),

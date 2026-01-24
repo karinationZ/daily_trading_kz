@@ -1,8 +1,10 @@
 import glob
 import os
 import shutil
+from functools import partial
 from pathlib import Path
 
+import numpy as np
 import pandas as pd
 import pytest
 
@@ -19,7 +21,65 @@ from daily_trading.bots.smc_bot.backtester.MasterLeaderboardViewer import (
 from daily_trading.settings import logger
 
 RANKING_COLUMN = "Score"
-TOP_N = 10
+TOP_N = 20
+
+
+# ========================================================================
+# OPTIONAL: Penalize High RR with Low Sample Size
+# ========================================================================
+# High RR strategies need more trades to prove themselves
+
+def rr_sample_penalty(row):
+    """
+    If RR > 2.0 and Trades < 50, apply penalty
+    - Prevents "got lucky with 3 big wins" scenarios
+    """
+    if row["rr"] > 2.0 and row["Trades"] < 50:
+        penalty = 1 - (0.01 * (50 - row["Trades"]))  # Max 50% penalty
+        return max(penalty, 0.5)
+    return 1.0
+
+
+# ========================================================================
+# Calculate True Edge (most important metric)
+# ========================================================================
+# Edge = (Win% × Avg_Win) - (Loss% × Avg_Loss)
+# Normalized by risk (RR-aware breakeven calculation)
+
+def calculate_edge_margin(row):
+    """
+    Edge Margin = Actual Win% - Breakeven Win%
+    Breakeven Win% = 1 / (1 + RR)
+
+    Example:
+    - 60% WR at 1.2 RR → BE = 45.5% → Edge = +14.5%
+    - 52% WR at 2.5 RR → BE = 28.6% → Edge = +23.4%
+    """
+    breakeven_wr = 100 / (1 + row["rr"])
+    edge_margin = row["WinRate"] - breakeven_wr
+    return edge_margin
+
+
+SESSION_TARGETS = {
+    "ASIA": 30,  # Quieter sessions, fewer setups
+    "LONDON": 40,  # Medium activity
+    "NY": 50,  # Highest activity, most trades
+}
+
+
+def statistical_confidence(trades, session):
+    """
+    Logarithmic confidence score
+    - 20 trades = ~0.75 confidence
+    - 50 trades = 1.00 confidence
+    - 100 trades = 1.10 confidence (diminishing returns)
+    """
+    target = SESSION_TARGETS.get(session, 50)
+    if trades < 10:
+        return 0.5  # Heavy penalty for tiny samples
+
+    confidence = np.log(trades + 1) / np.log(target + 1)
+    return min(confidence, 1.15)  # Cap at 1.15 (slight bonus for huge samples)
 
 
 def rank_results(df_results):
@@ -95,10 +155,6 @@ def aggregate_and_promote_champions(results_base_path: Path, filter_by: Leadersh
     ELITE_DIR = results_base_path / "ELITE_SETUPS"
     leaderboard_dir = results_base_path / "LEADERBOARDS"
     os.makedirs(leaderboard_dir, exist_ok=True)
-
-    # Configuration
-    # MIN_TRADES = 10  # Hard filter for statistical significance
-    # MIN_WR = 45.0  # Hard filter for psychological viability
 
     if not ELITE_DIR.exists():
         pytest.fail(f"Elite directory not found at {ELITE_DIR}")
@@ -194,12 +250,18 @@ def aggregate_and_promote_champions(results_base_path: Path, filter_by: Leadersh
 
     master_df = pd.DataFrame(all_summaries)
 
+    # symbol	session	WinRate	PnL	AvgTrade	Trades	rr	sw	int	mit	sl_atr	Full_Path	Original_Filename	config	Norm_PnL	Norm_RR	Score	Source_File
+    columns_order = ["symbol", "session", "WinRate", "PnL", "Score", "Trades",
+                     "rr", "sw", "int", "mit", "sl_atr",
+                     "Full_Path", "Original_Filename", "AvgTrade",
+                     "config", "Norm_PnL", "Norm_RR", "Source_File"]
+    master_df = master_df.reindex(columns=columns_order)
+
     # 2. GROUP AND RANK (The Champion Logic)
     grouped = master_df.groupby(["symbol", "session"])
 
     for (symbol, session), group in grouped:
         group = group.copy()
-        TARGET_TRADES = 15.0
 
         # 1. Normalize PnL (0-100 relative to group best)
         max_pnl = group["PnL"].max()
@@ -211,11 +273,60 @@ def aggregate_and_promote_champions(results_base_path: Path, filter_by: Leadersh
         group["Norm_RR"] = (group["rr"] / 2.5).clip(upper=1.0) * 100
 
         # 3. Calculate Performance Score
-        base_score = (group["WinRate"] * 0.4) + (group["Norm_PnL"] * 0.4) + (group["Norm_RR"] * 0.2)
+        group["Edge_Margin"] = group.apply(calculate_edge_margin, axis=1)
+        group["Norm_Edge"] = (group["Edge_Margin"] / group["Edge_Margin"].max()) * 100
 
-        # 4. Apply Confidence Multiplier
-        confidence_mult = (group["Trades"] / TARGET_TRADES).clip(upper=1.0)
-        group["Score"] = base_score * confidence_mult
+        # ========================================================================
+        # Profit Quality (not just total PnL)
+        # ========================================================================
+        # Penalize inconsistent profit (high PnL from a few lucky trades)
+
+        group["Profit_Per_Trade"] = group["PnL"] / group["Trades"]
+        group["Norm_PPT"] = (group["Profit_Per_Trade"] / group["Profit_Per_Trade"].max()) * 100
+
+        # Profit Consistency = how smoothly profits accumulate
+        # (High Sharpe-like metric: reward steady grinding over boom-bust)
+        group["Profit_Quality"] = (group["Norm_PnL"] * 0.6) + (group["Norm_PPT"] * 0.4)
+
+        # ========================================================================
+        # Risk-Adjusted Win Rate
+        # ========================================================================
+        # A 55% WR at 2.5 RR is MORE impressive than 70% WR at 1.2 RR
+        # This accounts for the difficulty of achieving high WR with wide targets
+
+        group["Risk_Adjusted_WR"] = group["WinRate"] * np.sqrt(group["rr"])
+        group["Norm_RAWR"] = (group["Risk_Adjusted_WR"] / group["Risk_Adjusted_WR"].max()) * 100
+
+        confidence_func = partial(statistical_confidence, session=session)
+        group["Confidence"] = group["Trades"].apply(confidence_func)
+
+        # ========================================================================
+        # Expectancy (trader's true north star)
+        # ========================================================================
+        # Expectancy = (Win% × Avg_Win) - (Loss% × Avg_Loss)
+        # Simplified using RR: E = (WR × RR) - (1 - WR)
+
+        group["Expectancy"] = (group["WinRate"] / 100 * group["rr"]) - (1 - group["WinRate"] / 100)
+        group["Norm_Expectancy"] = (group["Expectancy"] / group["Expectancy"].max()) * 100
+
+        base_score = (
+                group["Norm_Edge"] * 0.30 +  # Edge over breakeven (critical)
+                group["Profit_Quality"] * 0.30 +  # Actual profitability
+                group["Norm_Expectancy"] * 0.25 +  # Long-term expectancy
+                group["Norm_RAWR"] * 0.15  # Difficulty-adjusted win rate
+        )
+
+        # Apply confidence multiplier
+        group["Score"] = base_score * group["Confidence"]
+
+        group["RR_Penalty"] = group.apply(rr_sample_penalty, axis=1)
+        group["Score"] = group["Score"] * group["RR_Penalty"]
+
+        # base_score = (group["WinRate"] * 0.4) + (group["Norm_PnL"] * 0.4) + (group["Norm_RR"] * 0.2)
+        #
+        # # 4. Apply Confidence Multiplier
+        # confidence_mult = (group["Trades"] / 15).clip(upper=1.0)
+        # group["Score"] = base_score * confidence_mult
 
         # 5. Garbage Collection
         garbage_mask = (group["Trades"] < 5) | (group["WinRate"] < 30.0)
@@ -225,7 +336,7 @@ def aggregate_and_promote_champions(results_base_path: Path, filter_by: Leadersh
         sorted_group = group.sort_values(by="Score", ascending=False)
 
         # Save Leaderboard
-        leaderboard_name = f"TAP_{session}_{symbol}_Leaderboard.csv"
+        leaderboard_name = f"{session}_{symbol}_Leaderboard.csv"
         sorted_group.to_csv(leaderboard_dir / leaderboard_name, index=False)
 
         # E. Identify Champion
@@ -258,7 +369,7 @@ def aggregate_and_promote_champions(results_base_path: Path, filter_by: Leadersh
         leaderboard_dir=leaderboard_dir,
         report_name="Dashboard_Zone_Tap_Leaderboard.html",
         strategy_type=strategy_type,
-        sort_by=LeadershipBy.PNL,
+        sort_by=filter_by,
     )
     viewer.generate_master_dashboard()
 

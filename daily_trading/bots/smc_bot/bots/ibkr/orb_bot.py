@@ -7,69 +7,38 @@ from daily_trading.bots.smc_bot.strategy.ORBStrategy import ORBStrategy
 from daily_trading.bots.smc_bot.strategy.StrategyBase import TradeStatus
 from daily_trading.settings import logger, TELEGRAM_MAIN_CHANNEL_CHAT_ID
 
-ORB_CONFIG = {
-    # ==========================================================================
-    # GROUP 1: MNQ (THE MOMENTUM ENGINE)
-    # ==========================================================================
-    # MNQ NY: The "5R" Sniper
-    # Stats: PnL $2,181 | WR 40% | RR 5.0
-    ("MNQ", "NY"): {
-        "swing_length": 15,  # Tied with 12/18, kept 15 for consistency
-        "internal_length": 4,
-        "fvg_offset": 1,
-        "fvg_threshold": 0.25,
-        "zone_precision_factor": 1.8,
-        "tp_multiple": 5.0,  # <--- UPGRADED from 4.25
-        "entry_buffer_mult": 0.0,
-        "sl_buffer_mult": 0.15,  # <--- INCREASED from 0.10 for stability
-        "tick_buffer_mult": 0.05,
+CONFIG = [
+    # MNQ NY: Stats: PnL $2,181 | WR 40% | RR 5.0
+    {
+        'name': 'MNQ_NY_sw15_int4_off1_atr1.8_rr5.0_thr0.25_eb0.0_sl0.15',
+        'symbol': 'MNQ',
+        'tz_name': 'NY',
+        'sw': 15,
+        'int': 4,
+        'off': 1,
+        'atr': 1.8,
+        'thr': 0.25,
+        'rr': 5.0,
+        'entry_buffer_mult': 0.0,
+        'sl_buffer_mult': 0.15,
+        'tick_buffer_mult': 0.05,
     },
-    # MNQ LONDON: The 62% Scalper
-    # Stats: PnL $1,821 | WR 62% | RR 1.0
-    # Status: Unchanged. Leaderboard confirms these exact settings.
-    ("MNQ", "LONDON"): {
-        "swing_length": 12,
-        "internal_length": 5,
-        "fvg_offset": 3,
-        "fvg_threshold": 0.2,
-        "zone_precision_factor": 1.8,
-        "tp_multiple": 1.0,
-        "entry_buffer_mult": 0.05,
-        "sl_buffer_mult": 0.15,
-        "tick_buffer_mult": 0.05,
+    # MGC NY: Stats: PnL $3,056 | WR 69% | RR 2.0
+    {
+        'name': 'MGC_NY_sw28_int3_off1_atr2.3_rr2.0_thr0.25_eb0.02_sl0.12',
+        'symbol': 'MGC',
+        'tz_name': 'NY',
+        'sw': 28,
+        'int': 3,
+        'rr': 2.0,
+        'entry_buffer_mult': 0.02,
+        'sl_buffer_mult': 0.12,
+        'off': 1,
+        'atr': 2.3,
+        'thr': 0.25,
+        'tick_buffer_mult': 0.05,
     },
-    # ==========================================================================
-    # GROUP 2: MGC (GOLD) (THE CASH MACHINE)
-    # ==========================================================================
-    # MGC LONDON: The Golden King
-    # Stats: PnL $3,528 | WR 51.6% | RR 1.6
-    # Status: Performance updated ($3528 vs old $3417). No param changes needed.
-    ("MGC", "LONDON"): {
-        "swing_length": 24,
-        "internal_length": 4,
-        "fvg_offset": 3,
-        "fvg_threshold": 0.2,
-        "zone_precision_factor": 2.3,
-        "tp_multiple": 1.6,
-        "entry_buffer_mult": 0.02,
-        "sl_buffer_mult": 0.15,
-        "tick_buffer_mult": 0.05,
-    },
-    # MGC NY: The Elite 2.0
-    # Stats: PnL $3,056 | WR 69% | RR 2.0
-    # Change: Major overhaul. RR up to 2.0. Offset tightened to 1. Threshold 0.25.
-    ("MGC", "NY"): {
-        "swing_length": 28,  # Selected 28 over 24 for stability at higher RR
-        "internal_length": 3,
-        "fvg_offset": 1,  # <--- TIGHTENED from 2
-        "fvg_threshold": 0.25,  # <--- INCREASED from 0.2
-        "zone_precision_factor": 2.3,  # <--- ADJUSTED from 2.5
-        "tp_multiple": 2.0,  # <--- UPGRADED from 1.7
-        "entry_buffer_mult": 0.02,
-        "sl_buffer_mult": 0.12,
-        "tick_buffer_mult": 0.05,
-    },
-}
+]
 
 
 class ORBBot(SMCBotBase):
@@ -92,13 +61,15 @@ class ORBBot(SMCBotBase):
         self.risk = risk
 
         self._initialize_strategies()  # (Keep your existing init logic)
-        logger.info(f"🤖 ORBBot Manager Ready: {len(self.strategies)} strategies.")
+        logger.info(f"🤖 ORB Bot Manager Ready: {len(self.strategies)} strategies.")
 
     def _initialize_strategies(self):
         """Builds strategy instances based on the Deployment Config."""
         unique_symbols = set()
 
-        for (symbol, session_name), config in ORB_CONFIG.items():
+        for config in CONFIG:
+            symbol = config["symbol"]
+            session_name = config["tz_name"]
             try:
                 if session_name == "NY":
                     tz = ZoneInfo("America/New_York")
@@ -113,11 +84,11 @@ class ORBBot(SMCBotBase):
                     main_tf="5m",
                     risk=self.risk,
                     # Injection from Config
-                    swing_length=config.get("swing_length", 50),
-                    internal_length=config.get("internal_length", 5),
-                    fvg_offset=config.get("fvg_offset", 3),
-                    zone_precision_factor=config.get("zone_precision_factor", 2.0),
-                    tp_multiple=config.get("tp_multiple", 1.2),
+                    swing_length=config["sw"],
+                    internal_length=config["int"],
+                    fvg_offset=config["off"],
+                    zone_precision_factor=config["atr"],
+                    tp_multiple=config["rr"],
                     # Dynamic Buffers
                     entry_buffer_mult=config["entry_buffer_mult"],
                     sl_buffer_mult=config["sl_buffer_mult"],

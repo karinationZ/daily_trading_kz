@@ -1,5 +1,5 @@
 from datetime import timedelta
-from typing import Dict, Optional
+from typing import Dict, Optional, Set
 from zoneinfo import ZoneInfo
 
 import pandas as pd
@@ -8,6 +8,11 @@ import pandas as pd
 from daily_trading.bots.smc_bot.detectors.BosChochDetector import BosChochDetector
 from daily_trading.bots.smc_bot.detectors.DetectorsBase import BIAS
 from daily_trading.bots.smc_bot.detectors.FvgDetector import FvgDetector
+
+# Assuming FvgDetector exists in your codebase based on the context
+from daily_trading.bots.smc_bot.strategy.StrategyBase import (
+    ExitType,
+)
 from daily_trading.bots.smc_bot.strategy.StrategyBase import (
     SESSION_MAP,
     SignalSummary,
@@ -157,94 +162,72 @@ CONFIG = {
 
 class BosFvgStrategy(StrategyBase):
     """
-    STRATEGY: Multi-Timeframe Trend Following (SMC)
+    STRATEGY: Multi-Timeframe Trend Following (SMC) - BOS + LTF FVG
 
     OVERVIEW:
     A "Smart Money Concept" strategy that aligns Higher Timeframe (HTF) market structure
-    with Lower Timeframe (LTF) entry signals. It seeks to join an established trend
-    by placing Limit Orders inside fresh Fair Value Gaps (FVG).
+    with Lower Timeframe (LTF) entry signals.
 
-    TRADING LOGIC:
-    1. Trend Identification (HTF):
-       - Uses Break of Structure (BOS) and Change of Character (CHoCH) on the HTF (e.g., 1H)
-       - Determines the Bias (Long/Short).
+    LOGIC:
+    1. HTF (e.g., 1H): Identify Trend Bias via Break of Structure (BOS).
+    2. LTF (e.g., 15m): Identify "Fresh" Fair Value Gaps (FVG) matching the bias.
+    3. ENTRY: Limit Order inside the FVG (at `fvg_mitigation_ratio`).
+    4. EXIT: SL outside FVG, Fixed RR TP.
 
-    2. Entry Signal (LTF):
-       - Scans the LTF (e.g., 5m) for "Fresh" (Unmitigated) Fair Value Gaps that align with the HTF Bias.
-       - Places a Limit Order inside the FVG (defined by `fvg_mitigation_ratio`).
-       - Stop Loss is placed slightly beyond the FVG boundary.
-
-    3. Order Management:
-       - 'Trailing' Entries: If a new BOS occurs while an order is pending, the old order
-         is cancelled and a new one is calculated for the most recent FVG.
-       - Session Cutoff: All pending orders are cancelled 5 minutes before session close.
-
-    ROBUSTNESS & SAFETY MECHANISMS:
-    ----------------------------------------------------------------------------
-    [1] Restart Safety (Stateless Recovery):
-        - On bot restart, it recalculates history to ensure it doesn't trade
-          an FVG that was already invalidated/filled while the bot was offline.
-
-    [2] "Zombie" Protection (Infinite Loop Prevention):
-        - Actively detects invalid trade states (e.g., SL=0.00 due to bad data).
-        - Force-clears internal state to prevent repeated entry/exit loops.
-
-    [3] Math Gatekeepers:
-        - Validates all calculated prices (Entry, SL, Size) before signal generation.
-        - Prevents submission of invalid orders to the broker.
-
-    [4] Atomic Updates:
-        - Uses a "Cancel-then-Replace" logic for order updates rather than modification requests.
-        - Prevents state desynchronization with the broker/database.
-    ----------------------------------------------------------------------------
+    ROBUSTNESS:
+    - Stateless recovery (checks FVG invalidation on restart).
+    - Zombie protection (bad math/state detection).
+    - Session cutoffs.
     """
 
     def __init__(
         self,
         symbol: str,
         timezone: ZoneInfo,
-        main_tf="5m",  # LTF for Entry
-        htf="1h",  # HTF for Trend
+        main_tf="15m",  # LTF for Entry execution
+        htf="1h",  # HTF for Trend Bias
         risk: float = 150.0,
         tp_multiple: float = 2.0,
-        fvg_mitigation_ratio: float = 0.5,  # Entry at 50% of FVG
+        fvg_mitigation_ratio: float = 0.5,  # 0.5 = Entry at 50% of FVG
         sl_buffer_mult: float = 0.1,
+        priority: int = 1,
     ):
 
-        super().__init__(main_tf)
+        super().__init__(main_tf, priority=priority)
 
         self.symbol = symbol
         self.timezone = timezone
-        self.htf = htf
+        self.htf_name = htf
+
+        # Logging
+        self.tz_short = self.get_tz_short(self.timezone)
+        self.log_tag = f"BOS-FVG | {symbol}:{self.tz_short}"
+        self.log = logger.bind(bot_id=self.log_tag)
+
+        # Config
         self.risk = risk
         self.tp_multiple = tp_multiple
         self.entry_depth = fvg_mitigation_ratio
         self.sl_buffer_mult = sl_buffer_mult
-
-        # State
-        self.active_bos_timestamp = None
-        self.active_trade: Optional[TradeSignal] = None
-        self.trade_status: TradeStatus = TradeStatus.NONE
-
-        # Detectors
-        self.htf_bos_detector = BosChochDetector(main_tf=htf)
-        self.ltf_fvg_detector = FvgDetector(main_tf=main_tf, pivot_period=5, fvg_threshold=0.5)
-
-        # Logging & Tags
-        self.tz_short = self.get_tz_short(self.timezone)
-        self.log_tag = f"BOS-FVG | {symbol}:{self.tz_short}"
-        self.log = logger.bind(bot_id=self.log_tag)
-        self.ext_tag = f"{symbol}_{self.tz_short}_BOS_FVG"
-
-        # Cache & Config
-        self.processed_zone_ids = set()
         self.point_value = self.POINT_VALUE.get(symbol, 5.0)
 
-        # Session Cutoff
+        # Session Config
         if timezone == ZoneInfo("America/New_York"):
             self.end_buffer_minutes = self.NY_END_BUFFER_MIN
         else:
             self.end_buffer_minutes = 0
+
+        # --- DETECTORS ---
+        # HTF: For Trend Bias
+        self.htf_bos_detector = BosChochDetector(main_tf=htf)
+
+        # LTF: For Entry Signals
+        self.ltf_fvg_detector = FvgDetector(main_tf=main_tf, pivot_period=5, fvg_threshold=0.5)
+
+        # --- STATE ---
+        self.active_trade: Optional[TradeSignal] = None
+        self.trade_status: TradeStatus = TradeStatus.NONE
+        self.processed_zone_ids: Set[str] = set()
 
     def reset_session_state(self):
         """Standard reset for start of trading day."""
@@ -252,11 +235,10 @@ class BosFvgStrategy(StrategyBase):
         self.active_trade = None
         self.trade_status = TradeStatus.NONE
         self.processed_zone_ids.clear()
-        self.active_bos_timestamp = None
 
-    # ==================================================================
-    # 1. HELPERS: Validation
-    # ==================================================================
+    # -------------------------------------------------------------------------
+    # HELPERS: Safety & Math
+    # -------------------------------------------------------------------------
 
     @staticmethod
     def is_fvg_invalidated(df_ltf: pd.DataFrame, fvg: Dict) -> bool:
@@ -266,7 +248,7 @@ class BosFvgStrategy(StrategyBase):
         """
         fvg_time = fvg["time"]
 
-        # 1. Robust Timezone Alignment
+        # Normalize Timezone
         try:
             if df_ltf.index.tz is None:
                 fvg_time = fvg_time.replace(tzinfo=None)
@@ -277,139 +259,119 @@ class BosFvgStrategy(StrategyBase):
         except Exception:
             fvg_time = fvg_time.replace(tzinfo=None)
 
-        # 2. Get history strictly AFTER FVG creation
-        # Exclude current candle to avoid self-invalidation during calc
+        # Get history strictly AFTER FVG creation (excluding current forming candle)
         history = df_ltf[df_ltf.index > fvg_time].iloc[:-1]
 
         if history.empty:
             return False
 
-        # 3. Check Invalidation (Close beyond the gap)
-        if fvg["bias"] == 1:  # Bullish FVG (Demand)
+        # Check Invalidation (Close beyond the gap)
+        if fvg["bias"] == 1:  # Bullish FVG
             # Invalidated if a candle CLOSES below the bottom
             if history["close"].min() < fvg["bottom"]:
                 return True
-        else:  # Bearish FVG (Supply)
+        else:  # Bearish FVG
             # Invalidated if a candle CLOSES above the top
             if history["close"].max() > fvg["top"]:
                 return True
 
         return False
 
-    def find_valid_fvg(self, df_ltf: pd.DataFrame, direction: BIAS, current_price: float):
+    # -------------------------------------------------------------------------
+    # LOGIC: Find Setup
+    # -------------------------------------------------------------------------
+
+    def find_setup(self, df_ltf: pd.DataFrame, htf_bias: BIAS, bos_time, ts_now) -> Optional[TradeSignal]:
         """
-        Finds the nearest FRESH FVG that matches the trend direction.
+        Scans LTF for fresh FVGs that align with HTF Bias.
         """
+        # 1. Get LTF FVGs
         result = self.ltf_fvg_detector.calculate_fvg(df_ltf, plot=False)
         fvg_signals = result.get("signals", [])
+        atr = self.ltf_fvg_detector.get_current_atr(df_ltf)
 
         if not fvg_signals:
             return None
 
-        target_bias_val = BIAS.LONG.num_value if direction == BIAS.LONG else BIAS.SHORT.num_value
+        current_price = df_ltf.iloc[-1]["close"]
+        target_bias_val = BIAS.LONG.num_value if htf_bias == BIAS.LONG else BIAS.SHORT.num_value
 
-        # FvgDetector returns signals sorted by Time Descending (Newest First).
-        # We iterate normally to find the most recent valid one.
+        # Iterate FVGs (Newest First)
         for fvg in fvg_signals:
 
-            # 1. Bias Mismatch
+            # A. Filter by Bias
             if fvg["bias"] != target_bias_val:
                 continue
 
-            # 2. Mitigation Check (Detector Flag)
+            # B. Filter by Mitigation (Must be Fresh)
             if fvg.get("mitigated", True):
                 continue
 
-            # 3. Memory Cache (Already traded/processed)
+            # C. Filter by Cache (Already processed)
             fvg_id = f"{fvg['time']}_{self.symbol}"
             if fvg_id in self.processed_zone_ids:
                 continue
 
-            # 4. Historical Invalidation (Restart Safety)
+            # D. Filter by Historical Invalidation (Restart Safety)
             if self.is_fvg_invalidated(df_ltf, fvg):
                 self.processed_zone_ids.add(fvg_id)
                 continue
 
-            # 5. Price Logic (Limit Order Validity)
-            # We need the zone to be "behind" price so we can place a limit pullback order.
-            if direction == BIAS.LONG:
-                if fvg["top"] < current_price:
-                    return fvg
-            elif direction == BIAS.SHORT:
-                if fvg["bottom"] > current_price:
-                    return fvg
+            # E. Calculate Entry Params
+            top = fvg["top"]
+            bottom = fvg["bottom"]
+            height = top - bottom
+
+            if htf_bias == BIAS.LONG:
+                # Buy Limit at X% depth
+                entry = top - (height * self.entry_depth)
+                sl = bottom - (atr * self.sl_buffer_mult)
+
+                # Logic: Entry must be below current price for a Limit Buy
+                if entry > current_price:
+                    continue  # Price is below entry, we missed it or need market order (skipping for limit strategy)
+            else:
+                # Sell Limit at X% depth
+                entry = bottom + (height * self.entry_depth)
+                sl = top + (atr * self.sl_buffer_mult)
+
+                # Logic: Entry must be above current price for a Limit Sell
+                if entry < current_price:
+                    continue
+
+            # F. Calculate Position Size
+            pos_math = self.calculate_trade_position(
+                symbol=self.symbol, tp_multiple=self.tp_multiple, risk=self.risk, entry_price=entry, sl=sl, direction=htf_bias
+            )
+
+            # Gatekeeper
+            if pos_math["size"] <= 0 or pos_math["sl"] <= 0:
+                continue
+
+            # G. Create Signal
+            return TradeSignal(
+                action=TradeAction.ENTER,
+                symbol=self.symbol,
+                direction=htf_bias,
+                price=pos_math["entry"] if "entry" in pos_math else entry,
+                sl=pos_math["sl"],
+                tp=pos_math["tp"],
+                size=pos_math["size"],
+                timestamp=ts_now,
+                metadata={
+                    "fvg_id": fvg_id,
+                    "bos_ts": bos_time,
+                },
+            )
 
         return None
 
-    # ==================================================================
-    # 2. TRADE CALCULATION
-    # ==================================================================
-
-    def calculate_setup_params(self, fvg, direction: BIAS, df_ltf: pd.DataFrame):
-        atr = self.ltf_fvg_detector.get_current_atr(df_ltf)
-        top = fvg["top"]
-        bottom = fvg["bottom"]
-        height = top - bottom
-
-        if direction == BIAS.LONG:
-            # BUY LIMIT @ Depth % into the zone
-            entry = top - (height * self.entry_depth)
-            sl = bottom - (atr * self.sl_buffer_mult)
-        else:
-            # SELL LIMIT @ Depth % into the zone
-            entry = bottom + (height * self.entry_depth)
-            sl = top + (atr * self.sl_buffer_mult)
-
-        pos_math = self.calculate_trade_position(entry, sl, direction)
-
-        return {
-            "entry": entry,
-            "sl": pos_math["sl"],
-            "tp": pos_math["tp"],
-            "size": pos_math["size"],
-            "direction": direction,
-        }
-
-    def calculate_trade_position(self, entry_price: float, sl: float, direction: BIAS) -> dict:
-        """
-        Calculates size with hard floors to prevent over-leveraging on tight stops.
-        """
-        # Calculate Chart Distance
-        chart_dist = abs(entry_price - sl)
-        if chart_dist == 0:
-            chart_dist = 0.25
-
-        # 3. Apply Safety Floor for Sizing Math
-        # We size the position AS IF the stop was at least the Hard Floor distance
-        hard_floor = self.HARD_MIN_DIST.get(self.symbol, 0.0)
-        effective_dist_for_sizing = max(chart_dist, hard_floor)
-
-        # Calculate Risk Per Contract
-        risk_per_contract = effective_dist_for_sizing * self.point_value
-        if risk_per_contract <= 0:
-            risk_per_contract = 5.0
-
-        # Calculate Size
-        raw_size = int(self.risk / risk_per_contract)
-
-        # 6. Safety Cap
-        max_contracts = 10
-        size = max(1, min(raw_size, max_contracts))
-
-        if raw_size > max_contracts:
-            self.log.warning(f"⚠️ RISK CAP: {raw_size} -> {size}")
-
-        # Calculate TP based on ACTUAL Chart Distance
-        # We use the real chart distance for TP to keep the RR ratio accurate on the chart
-        if direction == BIAS.LONG:
-            tp = entry_price + (chart_dist * self.tp_multiple)
-        else:
-            tp = entry_price - (chart_dist * self.tp_multiple)
-
-        return {"sl": sl, "tp": tp, "size": size}
+    # -------------------------------------------------------------------------
+    # MAIN LOOP
+    # -------------------------------------------------------------------------
 
     def create_signal(self, action: TradeAction, timestamp, custom_price: float = None) -> TradeSignal:
-        """Creates signal and auto-resets state on terminal actions."""
+        """Helper to create signals and manage state transitions."""
         report_price = custom_price if custom_price is not None else self.active_trade.price
 
         sig = TradeSignal(
@@ -423,30 +385,22 @@ class BosFvgStrategy(StrategyBase):
             timestamp=timestamp,
         )
 
-        # Auto-Reset State on Exit/Cancel
+        # Pass metadata
+        if self.active_trade and self.active_trade.metadata:
+            sig.metadata.update(self.active_trade.metadata)
+
+        # State Reset on Terminal Actions
         if action in [TradeAction.CANCEL, TradeAction.EXIT]:
-            self.active_trade = None
-            self.trade_status = TradeStatus.NONE
+            self.active_trade, self.trade_status = None, TradeStatus.NONE
 
         return sig
 
-    def check_order_fill(self, candle) -> bool:
-        if not self.active_trade:
-            return False
-        if self.active_trade.direction == BIAS.LONG:
-            return candle["low"] <= self.active_trade.price
-        else:
-            return candle["high"] >= self.active_trade.price
-
-    # ==================================================================
-    # 3. MAIN LOOP
-    # ==================================================================
-
-    def analyze(self, df_ltf: pd.DataFrame, df_htf: pd.DataFrame, df_4h: pd.DataFrame = None) -> SignalSummary:
+    def analyze(self, df_ltf: pd.DataFrame, df_htf: pd.DataFrame) -> SignalSummary:
         curr = df_ltf.iloc[-1]
         ts_now = curr.name.tz_convert(self.timezone)
         ts_utc = curr.name.tz_convert("UTC")
 
+        # Session Cutoff Calculation
         s_info = SESSION_MAP[self.timezone.key]
         session_end = ts_now.replace(
             hour=s_info.get("end_hour", 16),
@@ -454,35 +408,46 @@ class BosFvgStrategy(StrategyBase):
             second=0,
         )
         cutoff_ts = session_end - timedelta(minutes=self.end_buffer_minutes)
+        entry_cutoff = session_end - timedelta(minutes=30)  # No new entries last 30m
 
         just_filled = False
-        # 1. FILL CHECK (Limit Orders)
-        if self.trade_status == TradeStatus.PENDING:
-            if self.check_order_fill(curr):
-                self.trade_status = TradeStatus.FILLED
-                just_filled = True  # <--- MARK AS JUST FILLED
 
+        # ==================================================================
+        # 1. FILL CHECK (Limit Orders)
+        # ==================================================================
+        if self.trade_status == TradeStatus.PENDING:
+            filled = False
+            if self.active_trade.direction == BIAS.LONG:
+                if curr["low"] <= self.active_trade.price:
+                    filled = True
+            else:
+                if curr["high"] >= self.active_trade.price:
+                    filled = True
+
+            if filled:
+                self.trade_status = TradeStatus.FILLED
+                self.active_trade.entry_timestamp = ts_utc
+                just_filled = True
                 self.log.info(f"⚡ ORDER FILLED {self.symbol} @ {self.active_trade.price:.2f}")
 
-        # 2. EXIT CHECK
+        # ==================================================================
+        # 2. EXIT CHECK (Stop Loss, Take Profit, Zombies, Cutoff)
+        # ==================================================================
         if self.trade_status == TradeStatus.FILLED:
-
-            # --- ZOMBIE KILLER ---
+            # --- ZOMBIE KILLER (Safety) ---
             if self.active_trade.sl <= 0 or self.active_trade.price <= 0:
                 self.log.error(f"🧟 ZOMBIE TRADE DETECTED ({self.symbol}). Cleaning up.")
                 self.active_trade, self.trade_status = None, TradeStatus.NONE
                 return SignalSummary(direction="NEUTRAL")
-            # ---------------------
 
             sl, tp = self.active_trade.sl, self.active_trade.tp
             is_long = self.active_trade.direction == BIAS.LONG
 
-            # Initialize Exit Variables
             exit_type = None
             exit_price = None
-            # ======================================================
-            # Only check for Gaps if we didn't just fill this moment.
-            # ======================================================
+            exit_reason = "NORMAL"
+
+            # A. GAP CHECK (If not just filled)
             if not just_filled:
                 if is_long:
                     if curr["open"] <= sl:
@@ -494,40 +459,20 @@ class BosFvgStrategy(StrategyBase):
                         exit_type, exit_price = "LOSS", curr["open"]
                     elif curr["open"] <= tp:
                         exit_type, exit_price = "WIN", curr["open"]
-            # ======================================================
-            # --- STANDARD CHECK (If no gap detected) ---
+
+            # B. STANDARD CHECK (Trust Wicks)
             if not exit_type:
-                hit_sl = False
-                hit_tp = False
-
-                if just_filled:
-                    # 🛑 STRICT MODE (Entry Candle)
-                    # If we just filled, we CANNOT trust the High/Low for TP,
-                    # because the High might have happened BEFORE the fill.
-                    # We only take TP if the candle CLOSES past the target.
-                    # We ALWAYS check SL because if Low <= SL, we definitely died.
-                    if is_long:
-                        hit_sl = curr["low"] <= sl
-                        hit_tp = curr["close"] >= tp  # Strict (Close)
-                    else:
-                        hit_sl = curr["high"] >= sl
-                        hit_tp = curr["close"] <= tp  # Strict (Close)
+                if is_long:
+                    hit_sl = curr["low"] <= sl
+                    hit_tp = curr["high"] >= tp
                 else:
-                    # ✅ STANDARD MODE (Subsequent Candles)
-                    # We are already in. We trust the Wicks.
-                    if is_long:
-                        hit_sl = curr["low"] <= sl
-                        hit_tp = curr["high"] >= tp
-                    else:
-                        hit_sl = curr["high"] >= sl
-                        hit_tp = curr["low"] <= tp
+                    hit_sl = curr["high"] >= sl
+                    hit_tp = curr["low"] <= tp
 
-                # --- LOGIC: CONFLICT RESOLUTION ---
-                # If both hit in the same candle, assume SL was hit first (Pessimistic)
+                # Pessimistic conflict resolution
                 if hit_sl and hit_tp:
                     hit_tp = False
 
-                # --- LOGIC: ASSIGN EXIT TYPE ---
                 if hit_sl:
                     exit_type = "LOSS"
                     exit_price = sl
@@ -535,103 +480,85 @@ class BosFvgStrategy(StrategyBase):
                     exit_type = "WIN"
                     exit_price = tp
 
-            # --- LOGIC: TIME CUTOFF ---
-            # Only check cutoff if we haven't already hit SL or TP
-            if not exit_type and ts_now >= cutoff_ts:
-                exit_type = "CUTOFF"
+            # C. TIME CUTOFF
+            is_cutoff = ts_now >= cutoff_ts
+            if not exit_type and is_cutoff:
                 exit_price = curr["close"]
+                exit_reason = "CUTOFF"
+
+                # Determine Result Manually
+                pnl = (exit_price - self.active_trade.price) if is_long else (self.active_trade.price - exit_price)
+                exit_type = "WIN" if pnl > 0 else "LOSS"
 
             # --- EXECUTION ---
             if exit_type:
-                # Use custom_price to report the actual SL/TP/Close price
                 sig = self.create_signal(TradeAction.EXIT, ts_utc, custom_price=exit_price)
+                sig.trade_result = exit_type
+                sig.metadata["exit_reason"] = exit_reason
 
-                # Tag result for the Backtester
-                if exit_type in ["WIN", "LOSS"]:
-                    sig.trade_result = exit_type
+                if exit_reason == "CUTOFF":
+                    sig.metadata["exit_type"] = ExitType.MARKET_FORCE
+                else:
+                    sig.metadata["exit_type"] = ExitType.SL_TP_HIT
 
-                self.log.info(f"🎯 TRADE EXIT ({exit_type}) {self.symbol} @ {exit_price:.2f}")
+                self.log.info(f"🎯 TRADE EXIT ({exit_type}) {self.symbol} | Reason: {exit_reason}")
                 return SignalSummary(direction="EXIT", trade_signal=sig)
 
             return SignalSummary(direction="IN_TRADE")
 
-        # # ❌ Early NY session is hurting performance
-        # if self.tz_short == "NY" and ts_now.hour < 11:
-        #     logger.warning("Skipping High volatile NY hours")
-        #     return SignalSummary(direction="NEUTRAL")
+        # ==================================================================
+        # 3. HTF TREND ANALYSIS
+        # ==================================================================
+        trend_bias = self.htf_bos_detector.get_current_trend(df_htf)
+        bos_signals = self.htf_bos_detector.signals
 
-        if ts_now < cutoff_ts:
-            trend_bias = self.htf_bos_detector.get_current_trend(df_htf)
-            bos_signals = self.htf_bos_detector.signals
+        # If no structure, no trade
+        if trend_bias == BIAS.NEUTRAL or not bos_signals:
+            return SignalSummary(direction="NEUTRAL")
 
-            if df_4h is not None:
-                bias_4h = self.htf_bos_detector.get_current_trend(df_4h)
-                # If 1H is Long but 4H is Short -> SKIP
-                if trend_bias != bias_4h and bias_4h != BIAS.NEUTRAL:
-                    # self.log.info(f"⏳ FILTERED: 1H {trend_bias.name} vs 4H {bias_4h.name}")
-                    return SignalSummary(direction="NEUTRAL")
+        last_bos = bos_signals[-1]
+        bos_time = last_bos.get("time")
 
-            if trend_bias != BIAS.NEUTRAL and bos_signals:
-                last_bos = bos_signals[-1]
-                bos_time = last_bos.get("time")
+        # ==================================================================
+        # 4. NEW ENTRY SEARCH
+        # ==================================================================
+        if self.trade_status == TradeStatus.NONE:
+            if ts_now < entry_cutoff:
+                new_trade = self.find_setup(df_ltf, trend_bias, bos_time, ts_utc)
 
-                is_new_bos = self.active_bos_timestamp is None or bos_time != self.active_bos_timestamp
+                if new_trade:
+                    self.active_trade = new_trade
+                    self.trade_status = TradeStatus.PENDING
+                    # Mark FVG as processed immediately to avoid recalc
+                    self.processed_zone_ids.add(new_trade.metadata["fvg_id"])
 
-                should_search = (self.trade_status == TradeStatus.NONE) or (self.trade_status == TradeStatus.PENDING and is_new_bos)
+                    self.log.info(f"🚀 LIMIT ORDER PLACED: {new_trade.direction.name} @ {new_trade.price:.2f}")
+                    return SignalSummary(direction=new_trade.direction.name, trade_signal=new_trade)
 
-                if should_search:
-                    fvg = self.find_valid_fvg(df_ltf, trend_bias, curr["close"])
-
-                    if fvg:
-                        params = self.calculate_setup_params(fvg, trend_bias, df_ltf)
-
-                        # --- GATEKEEPER ---
-                        if params["entry"] <= 0 or params["sl"] <= 0 or params["size"] <= 0:
-                            self.log.warning("⚠️ Bad Math in Setup. Skipping.")
-                            return SignalSummary(direction="NEUTRAL")
-                        # ------------------
-
-                        fvg_id = f"{fvg['time']}_{self.symbol}"
-
-                        # CASE 1: NEW TRADE
-                        if self.trade_status == TradeStatus.NONE:
-                            new_trade = TradeSignal(
-                                action=TradeAction.ENTER,
-                                symbol=self.symbol,
-                                direction=params["direction"],
-                                price=params["entry"],
-                                sl=params["sl"],
-                                tp=params["tp"],
-                                size=params["size"],
-                                timestamp=curr.name,
-                                metadata={
-                                    "fvg_id": fvg_id,
-                                    "bos_id": bos_time,
-                                    "bos_type": last_bos.get("type"),
-                                },
-                            )
-                            self.active_trade = new_trade
-                            self.trade_status = TradeStatus.PENDING
-                            self.processed_zone_ids.add(fvg_id)
-                            self.active_bos_timestamp = bos_time
-                            self.log.info(f"🚀 SIGNAL: {params['direction'].name} Limit @ {params['entry']:.2f}")
-                            return SignalSummary(
-                                direction=params["direction"].name,
-                                trade_signal=new_trade,
-                            )
-
-                        # CASE 2: UPDATE VIA CANCEL (Clean Reset)
-                        elif self.trade_status == TradeStatus.PENDING and is_new_bos:
-                            current_fvg_id = self.active_trade.metadata.get("fvg_id")
-                            if current_fvg_id != fvg_id:
-                                self.log.info("♻️ NEW STRUCTURE: Cancelling old order to re-assess.")
-                                cancel_sig = self.create_signal(TradeAction.CANCEL, ts_utc)
-                                self.active_bos_timestamp = bos_time
-                                return SignalSummary(direction="CANCELLED", trade_signal=cancel_sig)
-
-        # 4. PENDING CANCEL (Cutoff)
+        # ==================================================================
+        # 5. PENDING MANAGEMENT (Cutoff & Structure Update)
+        # ==================================================================
         if self.trade_status == TradeStatus.PENDING:
+            should_cancel = False
+            cancel_reason = ""
+
+            # A. Time Cutoff
             if ts_now >= cutoff_ts:
+                should_cancel = True
+                cancel_reason = "CUTOFF"
+
+            # B. Check for BOS Change (Trailing Entry Logic)
+            # If HTF forms a NEW BOS, the old FVG might be outdated or trend accelerated.
+            # Cancel old limit to look for a new one in the next tick.
+            elif self.active_trade and self.active_trade.metadata:
+                current_trade_bos_ts = self.active_trade.metadata.get("bos_ts")
+
+                if current_trade_bos_ts and bos_time != current_trade_bos_ts:
+                    should_cancel = True
+                    cancel_reason = "NEW_STRUCTURE"
+
+            if should_cancel:
+                self.log.info(f"🚫 CANCELLING PENDING ENTRY | Reason: {cancel_reason}")
                 return SignalSummary(
                     direction="CANCELLED",
                     trade_signal=self.create_signal(TradeAction.CANCEL, ts_utc),

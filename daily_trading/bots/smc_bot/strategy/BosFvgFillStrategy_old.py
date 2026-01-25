@@ -29,7 +29,7 @@ class BosFvgFillStrategy(DetectorsBase):
         """
         Initialize SMC strategy with detectors.
         """
-        super().__init__(main_tf, debug, telegram_chat_id=telegram_chat_id)
+        super().__init__(main_tf, debug)
         self.detectors = {
             "swing_1h": HighLowDetector(main_tf),  # Detects HH/HL/LL/LH on 1H
             "bos_1h": BosChochDetector(main_tf),  # Detects BOS/CHOCH on 1H

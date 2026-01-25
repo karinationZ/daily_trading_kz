@@ -259,19 +259,20 @@ def aggregate_and_promote_champions(results_base_path: Path, filter_by: Leadersh
         "WinRate",
         "PnL",
         "Score",
+        "Edge_Margin",
         "Trades",
         "rr",
         "sw",
         "int",
         "mit",
         "sl_atr",
-        "Full_Path",
-        "Original_Filename",
         "AvgTrade",
         "config",
         "Norm_PnL",
         "Norm_RR",
         "Source_File",
+        "Full_Path",
+        "Original_Filename",
     ]
     master_df = master_df.reindex(columns=columns_order)
 
@@ -339,12 +340,6 @@ def aggregate_and_promote_champions(results_base_path: Path, filter_by: Leadersh
 
         group["RR_Penalty"] = group.apply(rr_sample_penalty, axis=1)
         group["Score"] = group["Score"] * group["RR_Penalty"]
-
-        # base_score = (group["WinRate"] * 0.4) + (group["Norm_PnL"] * 0.4) + (group["Norm_RR"] * 0.2)
-        #
-        # # 4. Apply Confidence Multiplier
-        # confidence_mult = (group["Trades"] / 15).clip(upper=1.0)
-        # group["Score"] = base_score * confidence_mult
 
         # 5. Garbage Collection
         garbage_mask = (group["Trades"] < 5) | (group["WinRate"] < 30.0)

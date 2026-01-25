@@ -138,27 +138,6 @@ class BosOrderBlockStrategy(StrategyBase):
 
         return entry, sl
 
-    def calculate_trade_position(self, entry_price: float, sl: float, direction: BIAS) -> dict:
-        """Calculates Size and TP."""
-        r = abs(entry_price - sl)
-        if r == 0:
-            r = 0.25
-
-        risk_per_contract = r * self.point_value
-        if risk_per_contract <= 0:
-            risk_per_contract = 5.0
-
-        raw_size = int(self.risk / risk_per_contract)
-        max_contracts = 10
-        size = max(1, min(raw_size, max_contracts))
-
-        if direction == BIAS.LONG:
-            tp = entry_price + (r * self.tp_multiple)
-        else:
-            tp = entry_price - (r * self.tp_multiple)
-
-        return {"sl": sl, "tp": tp, "size": size}
-
     # -------------------------------------------------------------------------
     # ENTRY SEARCH
     # -------------------------------------------------------------------------
@@ -225,7 +204,10 @@ class BosOrderBlockStrategy(StrategyBase):
                 continue
 
             if dist < closest_dist:
-                pos = self.calculate_trade_position(entry, sl, trend_bias)
+
+                pos = self.calculate_trade_position(
+                    symbol=self.symbol, tp_multiple=self.tp_multiple, risk=self.risk, entry_price=entry, sl=sl, direction=trend_bias
+                )
 
                 # Gatekeeper
                 if pos["size"] <= 0:

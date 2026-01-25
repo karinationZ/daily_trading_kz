@@ -194,6 +194,46 @@ class StrategyBase(ABC):
         # 4. Compare (Both are now in the same timezone)
         return ts_local >= pre_session_start
 
+    def calculate_trade_position(self, symbol, tp_multiple, risk, entry_price: float, sl: float, direction: BIAS) -> dict:
+        """
+        Calculates Size and TP using a Volatility Floor to prevent over-leveraging on tight stops.
+        """
+        # 1. Calculate Real Chart Distance
+        chart_dist = abs(entry_price - sl)
+        if chart_dist == 0:
+            chart_dist = 0.25
+
+        # 2. Apply Safety Floor for Sizing Math
+        # This prevents huge size on tiny stops (e.g., 1-2 tick FVGs)
+        # We size AS IF the stop was at least 'hard_floor' wide.
+        hard_floor = self.HARD_MIN_DIST.get(symbol, 0.0)
+        effective_dist_for_sizing = max(chart_dist, hard_floor)
+
+        # 3. Calculate Risk Per Contract based on the Safe Distance
+        risk_per_contract = effective_dist_for_sizing * self.POINT_VALUE[symbol]
+        if risk_per_contract <= 0:
+            risk_per_contract = 5.0
+
+        # 4. Calculate Size
+        raw_size = int(risk / risk_per_contract)
+
+        # 5. Apply Hard Cap
+        max_contracts = 10
+        size = max(1, min(raw_size, max_contracts))
+
+        # 6. Log Warning if Capped (From Option 2 - Very useful for debugging)
+        if raw_size > max_contracts:
+            logger.warning(f"⚠️ RISK CAP: Math wanted {raw_size} contracts, capped at {size}.")
+
+        # 7. Calculate TP based on ACTUAL Chart Distance
+        # We use the real chart distance for TP to keep the Visual R:R accurate
+        if direction == BIAS.LONG:
+            tp = entry_price + (chart_dist * tp_multiple)
+        else:
+            tp = entry_price - (chart_dist * tp_multiple)
+
+        return {"sl": sl, "tp": tp, "size": size}
+
     async def manage_cache_event(self, cache_key: Tuple[str, str], event: str, current_time: datetime) -> bool:
         """Manage cache for a new event, return True if event is new."""
         if cache_key not in self.event_cache:

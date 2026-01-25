@@ -249,7 +249,9 @@ class ORBStrategy(StrategyBase):
 
         try:
             # 1. Calculate Standard Position (Limit)
-            pos = self.calculate_trade_position(entry, sl, direction)
+            pos = self.calculate_trade_position(
+                symbol=self.symbol, tp_multiple=self.tp_multiple, risk=self.risk, entry_price=entry, sl=sl, direction=direction
+            )
 
             # 2. CHECK: "Tap and Rip" Logic (Did we miss the Limit?)
             # If price is already running away (Current Close > Entry),
@@ -283,7 +285,9 @@ class ORBStrategy(StrategyBase):
 
             # 3. Recalculate Size if entering at Market (Maintain $ Risk)
             if use_market_entry:
-                pos = self.calculate_trade_position(final_entry, sl, direction)
+                pos = self.calculate_trade_position(
+                    symbol=self.symbol, tp_multiple=self.tp_multiple, risk=self.risk, entry_price=final_entry, sl=sl, direction=direction
+                )
                 self.log.info(f"⚡ TAP & RIP: Switching to Market Entry @ {final_entry:.2f} (Missed {entry:.2f})")
 
             # 4. Filter: Don't enter if TP is already passed (Late Entry)
@@ -365,40 +369,6 @@ class ORBStrategy(StrategyBase):
         if best_signal:
             self.processed_zone_ids.add(best_signal.metadata["zone_id"])
         return best_signal
-
-    def calculate_trade_position(self, entry_price: float, sl: float, direction: BIAS) -> dict:
-        """
-        Calculates position size with a HARD CAP to prevent over-leveraging on tight stops.
-        """
-        # 1. Calculate Stop Distance
-        r = abs(entry_price - sl)
-
-        # Safety: Prevent division by zero if SL is exactly on Entry
-        if r == 0:
-            r = 0.25
-
-        # 2. Calculate Risk per 1 Contract
-        risk_per_contract = r * self.point_value
-        if risk_per_contract <= 0:
-            risk_per_contract = 5.0  # Arbitrary small fallback to prevent crash
-
-        # 3. Calculate Raw Size (Pure Math)
-        raw_size = int(self.risk / risk_per_contract)
-        # 4. --- SAFETY CAP ---
-        max_contracts = 10
-        size = max(1, min(raw_size, max_contracts))
-
-        # 5. Calculate Take Profit
-        if direction == BIAS.LONG:
-            tp = entry_price + (r * self.tp_multiple)
-        else:
-            tp = entry_price - (r * self.tp_multiple)
-
-        # 6. Log Warning if Capped
-        if raw_size > max_contracts:
-            self.log.warning(f"⚠️ RISK CAP: Math wanted {raw_size} contracts, capped at {size}. " f"(Risk per contract: ${risk_per_contract:.2f})")
-
-        return {"sl": sl, "tp": tp, "size": size}
 
     def check_pending_validity(self, ohlc: pd.DataFrame):
         if not self.active_trade:
@@ -495,7 +465,7 @@ class ORBStrategy(StrategyBase):
             hit_sl_tp = hit_sl or hit_tp
 
             # OR Check if we hit the Session Hard Exit (e.g., 19:45 or 19:55)
-            # If we just filled but it's already cutoff time, we must EXIT at market price.
+            # If we just filled, but it's already cutoff time, we must EXIT at market price.
             is_cutoff_time = ts_now >= pending_cutoff
 
             if hit_sl_tp:

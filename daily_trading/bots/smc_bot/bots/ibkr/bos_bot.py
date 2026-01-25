@@ -9,50 +9,121 @@ from daily_trading.bots.smc_bot.strategy.BosOrderBlockStrategy import (
 from daily_trading.bots.smc_bot.strategy.StrategyBase import TradeStatus
 from daily_trading.settings import logger, TELEGRAM_MAIN_CHANNEL_CHAT_ID
 
-# Define your configuration here
-# --- MES ASIA | WinRate 70.0% | Score 88.6 | SUGGEST EXCLUDE (Weak Stats) | Low Sample (20 trades)
-# TRADER NOTE: Sample size < 25 is too risky for live money.
-# High win rate likely due to luck/low volatility in Asia.
-# ("MES", "ASIA"): {
-#     "swing_length": 50,
-#     "internal_length": 3,
-#     "entry_depth": 0.75,
-#     "tp_multiple": 2.0,
-#     "sl_buffer": 0.1
+# # 10. MES_ASIA - Score: 85.82 | WR: 68.42% | Edge: 35.09% | Trades: 19
+# {
+#     'name': 'MES_ASIA_sw50_int3_rr2.0_mit0.75_sl0.1',
+#     'symbol': 'MES',
+#     'tz_name': 'ASIA',
+#     'sw': 50,
+#     'int': 3,
+#     'rr': 2.0,
+#     'mit': 0.75,
+#     'sl_buffer_mult': 0.1
 # },
-# --- MNQ LONDON | WinRate 43.4% | Score 86.4 | CAUTION | Low WR (43.4%)
-# TRADER NOTE: 43% WR is psychologically hard to trade manually,
-# but math works (2.5R). Ensure bot can handle drawdown streaks.
-# ("MNQ", "LONDON"): {
-#     "swing_length": 12,
-#     "internal_length": 3,
-#     "entry_depth": 0.25,
-#     "tp_multiple": 2.5,
-#     "sl_buffer": 0.1
-# },
-CONFIG = {
-    # --- MBT LONDON | WinRate 54.72% | Score 107.4 | APPROVED | Consistent Performer
-    ("MBT", "LONDON"): {"swing_length": 45, "internal_length": 5, "entry_depth": 0.1, "tp_multiple": 1.5, "sl_buffer": 1.2},
-    # --- MES LONDON | WinRate 51.35% | Score 107.4 | APPROVED | Strong Edge
-    ("MES", "LONDON"): {"swing_length": 24, "internal_length": 3, "entry_depth": 0.1, "tp_multiple": 2.5, "sl_buffer": 0.1},
-    # --- MES NY | WinRate 62.22% | Score 100.4 | APPROVED | Solid Bread & Butter
-    ("MES", "NY"): {"swing_length": 8, "internal_length": 5, "entry_depth": 0.75, "tp_multiple": 1.2, "sl_buffer": 1.0},
-    # --- MGC ASIA | WinRate 58.0% | Score 93.5 | APPROVED | Decent Edge
-    ("MGC", "ASIA"): {"swing_length": 8, "internal_length": 3, "entry_depth": 0.75, "tp_multiple": 1.2, "sl_buffer": 0.1},
-    # --- MGC NY | WinRate 55.74% | Score 105.0 | APPROVED | Strong Edge
-    ("MGC", "NY"): {"swing_length": 24, "internal_length": 5, "entry_depth": 0.75, "tp_multiple": 2.0, "sl_buffer": 0.1},
-    # --- MNQ NY | WinRate 63.46% | Score 107.9 | APPROVED | High Confidence Sample
-    # TRADER NOTE: This is a Portfolio Anchor. High volume, proven edge.
-    ("MNQ", "NY"): {"swing_length": 12, "internal_length": 5, "entry_depth": 0.25, "tp_multiple": 1.2, "sl_buffer": 0.1},
-    # --- SIL ASIA | WinRate 80.95% | Score 109.1 | APPROVED | Strong Edge
-    # TRADER NOTE: The Stat Winner. Exceptional edge (35%+).
-    # Must trade this.
-    ("SIL", "ASIA"): {"swing_length": 8, "internal_length": 5, "entry_depth": 0.75, "tp_multiple": 1.2, "sl_buffer": 0.1},
-    # --- SIL LONDON | WinRate 59.52% | Score 101.3 | APPROVED | Strong Edge
-    ("SIL", "LONDON"): {"swing_length": 50, "internal_length": 5, "entry_depth": 0.5, "tp_multiple": 2.0, "sl_buffer": 0.1},
-    # --- SIL NY | WinRate 63.64% | Score 106.9 | APPROVED | Strong Edge
-    ("SIL", "NY"): {"swing_length": 50, "internal_length": 5, "entry_depth": 0.75, "tp_multiple": 1.5, "sl_buffer": 0.1},
-}
+
+# # 11. MNQ_LONDON - Score: 64.14 | WR: 58.33% | Edge: 29.76% | Trades: 24
+# {
+#     'name': 'MNQ_LONDON_sw50_int5_rr2.5_mit0.75_sl1.0',
+#     'symbol': 'MNQ',
+#     'tz_name': 'LONDON',
+#     'sw': 50,
+#     'int': 5,
+#     'rr': 2.5,
+#     'mit': 0.75,
+#     'sl_buffer_mult': 1.0
+# }
+CONFIG = [
+    # 1. MES_LONDON - Score: 112.96 | WR: 61.54% | Edge: 32.97% | Trades: 91
+    {
+        'name': 'MES_LONDON_sw8_int3_rr2.5_mit0.1_sl0.1',
+        'symbol': 'MES',
+        'tz_name': 'LONDON',
+        'sw': 8,
+        'int': 3,
+        'rr': 2.5,
+        'mit': 0.1,
+        'sl_buffer_mult': 0.1,
+    },
+    # 2. SIL_LONDON - Score: 111.99 | WR: 66.67% | Edge: 33.34% | Trades: 63
+    {
+        'name': 'SIL_LONDON_sw50_int5_rr2.0_mit0.25_sl0.1',
+        'symbol': 'SIL',
+        'tz_name': 'LONDON',
+        'sw': 50,
+        'int': 5,
+        'rr': 2.0,
+        'mit': 0.25,
+        'sl_buffer_mult': 0.1,
+    },
+    # 3. MNQ_NY - Score: 108.89 | WR: 51.06% | Edge: 22.49% | Trades: 94
+    {
+        'name': 'MNQ_NY_sw12_int5_rr2.5_mit0.1_sl0.1',
+        'symbol': 'MNQ',
+        'tz_name': 'NY',
+        'sw': 12,
+        'int': 5,
+        'rr': 2.5,
+        'mit': 0.1,
+        'sl_buffer_mult': 0.1,
+    },
+    # 4. MBT_LONDON - Score: 105.34 | WR: 57.14% | Edge: 17.14% | Trades: 49
+    {
+        'name': 'MBT_LONDON_sw45_int5_rr1.5_mit0.1_sl1.2',
+        'symbol': 'MBT',
+        'tz_name': 'LONDON',
+        'sw': 45,
+        'int': 5,
+        'rr': 1.5,
+        'mit': 0.1,
+        'sl_buffer_mult': 1.2,
+    },
+    # 5. SIL_ASIA - Score: 105.15 | WR: 83.33% | Edge: 37.88% | Trades: 36
+    {
+        'name': 'SIL_ASIA_sw8_int5_rr1.2_mit0.75_sl0.1',
+        'symbol': 'SIL',
+        'tz_name': 'ASIA',
+        'sw': 8,
+        'int': 5,
+        'rr': 1.2,
+        'mit': 0.75,
+        'sl_buffer_mult': 0.1,
+    },
+    # 6. SIL_NY - Score: 103.71 | WR: 68.97% | Edge: 28.97% | Trades: 58
+    {
+        'name': 'SIL_NY_sw50_int5_rr1.5_mit0.75_sl0.1',
+        'symbol': 'SIL',
+        'tz_name': 'NY',
+        'sw': 50,
+        'int': 5,
+        'rr': 1.5,
+        'mit': 0.75,
+        'sl_buffer_mult': 0.1,
+    },
+    # 7. MGC_ASIA - Score: 103.69 | WR: 65.12% | Edge: 19.67% | Trades: 43
+    {
+        'name': 'MGC_ASIA_sw8_int3_rr1.2_mit0.75_sl0.1',
+        'symbol': 'MGC',
+        'tz_name': 'ASIA',
+        'sw': 8,
+        'int': 3,
+        'rr': 1.2,
+        'mit': 0.75,
+        'sl_buffer_mult': 0.1,
+    },
+    # 8. MGC_NY - Score: 103.27 | WR: 66.67% | Edge: 33.34% | Trades: 57
+    {
+        'name': 'MGC_NY_sw24_int5_rr2.0_mit0.75_sl0.1',
+        'symbol': 'MGC',
+        'tz_name': 'NY',
+        'sw': 24,
+        'int': 5,
+        'rr': 2.0,
+        'mit': 0.75,
+        'sl_buffer_mult': 0.1,
+    },
+    # 9. MES_NY - Score: 101.98 | WR: 54.29% | Edge: 20.96% | Trades: 105
+    {'name': 'MES_NY_sw8_int5_rr2.0_mit0.5_sl0.5', 'symbol': 'MES', 'tz_name': 'NY', 'sw': 8, 'int': 5, 'rr': 2.0, 'mit': 0.5, 'sl_buffer_mult': 0.5},
+]
 
 
 class BosOrderBlockBot(SMCBotBase):
@@ -71,7 +142,9 @@ class BosOrderBlockBot(SMCBotBase):
 
     def _initialize_strategies(self):
         unique_symbols = set()
-        for (symbol, session_name), cfg in CONFIG.items():
+        for cfg in CONFIG:
+            symbol = cfg["symbol"]
+            session_name = cfg["tz_name"]
             if session_name == "NY":
                 tz = ZoneInfo("America/New_York")
             elif session_name == "LONDON":
@@ -83,12 +156,12 @@ class BosOrderBlockBot(SMCBotBase):
                     symbol=symbol,
                     timezone=tz,
                     main_tf="1h",
-                    swing_length=cfg["swing_length"],
-                    internal_length=cfg["internal_length"],
+                    swing_length=cfg["sw"],
+                    internal_length=cfg["int"],
                     risk=self.risk,
-                    tp_multiple=cfg["tp_multiple"],
-                    entry_depth=cfg["entry_depth"],
-                    sl_buffer_mult=cfg["sl_buffer"],
+                    tp_multiple=cfg["rr"],
+                    entry_depth=cfg["mit"],
+                    sl_buffer_mult=cfg["sl_buffer_mult"],
                     priority=1,
                 )
                 self.strategies.append(strategy)

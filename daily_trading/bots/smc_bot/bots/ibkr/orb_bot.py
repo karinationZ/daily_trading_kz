@@ -24,6 +24,7 @@ CONFIG = [
         'tick_buffer_mult': 0.05,
     },
     # MGC NY: Stats: PnL $3,056 | WR 69% | RR 2.0
+    # SW:28 | INT:3 | OFF:1 | ATR:2.3 | THR:0.25 | SL:0.12 | EB:0.0
     {
         'name': 'MGC_NY_sw28_int3_off1_atr2.3_rr2.0_thr0.25_eb0.02_sl0.12',
         'symbol': 'MGC',
@@ -31,7 +32,7 @@ CONFIG = [
         'sw': 28,
         'int': 3,
         'rr': 2.0,
-        'entry_buffer_mult': 0.02,
+        'entry_buffer_mult': 0.0,
         'sl_buffer_mult': 0.12,
         'off': 1,
         'atr': 2.3,

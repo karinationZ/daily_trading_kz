@@ -427,7 +427,7 @@ class BosOrderBlockStrategy(StrategyBase):
                         cancel_reason = "New BOS Detected"
 
             if should_cancel:
-                msg = f"🚫 CANCELLING PENDING ORDER | Reason: {cancel_reason}"
+                msg = f"🚫 CANCELLING PENDING ORDER | {cancel_reason}"
                 self.log.info(msg)
                 return SignalSummary(
                     direction="CANCELLED",

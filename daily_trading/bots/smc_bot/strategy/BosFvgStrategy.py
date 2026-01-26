@@ -557,7 +557,7 @@ class BosFvgStrategy(StrategyBase):
                     cancel_reason = "New BOS Detected"
 
             if should_cancel:
-                self.log.info(f"🚫 CANCELLING PENDING ORDER | Reason: {cancel_reason}")
+                self.log.info(f"🚫 CANCELLING PENDING ORDER | {cancel_reason}")
                 return SignalSummary(
                     direction="CANCELLED",
                     trade_signal=self.create_signal(TradeAction.CANCEL, ts_utc),

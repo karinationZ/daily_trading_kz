@@ -520,8 +520,9 @@ class SMCBotBase:
                 f"<b>{title}</b> | {strategy.log_tag}",
                 f"Action: {sig.direction.name} {sig.action.name}",
                 f"Price: {display_price:,.2f}",
-                f"Reason: {sig.reason}",
             ]
+            if sig.reason:
+                lines.append(f"Reason: {sig.reason}")
 
             # PnL Calculation (Exits Only)
             if sig.action == TradeAction.EXIT and display_price > 0:

@@ -544,7 +544,7 @@ class BosFvgStrategy(StrategyBase):
             # A. Time Cutoff
             if ts_now >= cutoff_ts:
                 should_cancel = True
-                cancel_reason = "CUTOFF"
+                cancel_reason = "End of Session"
 
             # B. Check for BOS Change (Trailing Entry Logic)
             # If HTF forms a NEW BOS, the old FVG might be outdated or trend accelerated.
@@ -554,10 +554,10 @@ class BosFvgStrategy(StrategyBase):
 
                 if current_trade_bos_ts and bos_time != current_trade_bos_ts:
                     should_cancel = True
-                    cancel_reason = "NEW_STRUCTURE"
+                    cancel_reason = "New BOS Detected"
 
             if should_cancel:
-                self.log.info(f"🚫 CANCELLING PENDING ENTRY | Reason: {cancel_reason}")
+                self.log.info(f"🚫 CANCELLING PENDING ORDER | Reason: {cancel_reason}")
                 return SignalSummary(
                     direction="CANCELLED",
                     trade_signal=self.create_signal(TradeAction.CANCEL, ts_utc),

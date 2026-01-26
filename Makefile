@@ -21,5 +21,5 @@ run_support_resistance_bot:
 	poetry run python3 daily_trading/bots/smc_bot/run_support_resistance_bot.py
 
 run_ibkr_bot:
-	@echo "Starting Master Bot..."
+	@echo "Starting IBKR Master Bot..."
 	poetry run python3 daily_trading/bots/smc_bot/run_ibkr_master_bot.py

@@ -362,7 +362,7 @@ class SMCBotBase:
             # 1. ANALYSIS & SIGNAL GENERATION
             # -----------------------------------------------------------------
             # The strategy analyzes price/indicators and returns a result.
-            analysis = strategy.analyze(*args, **kwargs)
+            analysis = await strategy.analyze(*args, **kwargs)
             sig = analysis.trade_signal
 
             # If no signal, just update the dashboard/log (optional) and return

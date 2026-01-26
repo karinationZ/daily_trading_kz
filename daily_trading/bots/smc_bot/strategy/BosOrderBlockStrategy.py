@@ -263,7 +263,7 @@ class BosOrderBlockStrategy(StrategyBase):
 
         return sig
 
-    def analyze(self, df_ltf: pd.DataFrame, df_htf: pd.DataFrame) -> SignalSummary:
+    async def analyze(self, df_ltf: pd.DataFrame, df_htf: pd.DataFrame) -> SignalSummary:
         curr = df_ltf.iloc[-1]
         ts_now = curr.name.tz_convert(self.timezone)
         ts_utc = curr.name.tz_convert("UTC")
@@ -400,7 +400,7 @@ class BosOrderBlockStrategy(StrategyBase):
                     self.log.info(f"🚀 LIMIT ORDER PLACED: {new_trade.direction.name} @ {new_trade.price:.2f}")
                     return SignalSummary(direction=new_trade.direction.name, trade_signal=new_trade)
             else:
-                logger.info(f"🚫~ ⏰No new entries allowed after {entry_cutoff.strftime('%H:%M')}")
+                logger.info(f"🚫~ ⏰No new entries allowed after {entry_cutoff.strftime('%H:%M')} UTC")
         # 4. PENDING MANAGEMENT (Cutoff & BOS Structure Update)
         if self.trade_status == TradeStatus.PENDING:
             should_cancel = False
@@ -409,7 +409,7 @@ class BosOrderBlockStrategy(StrategyBase):
             # A. Time Cutoff
             if ts_now >= cutoff_ts:
                 should_cancel = True
-                cancel_reason = "CUTOFF"
+                cancel_reason = "End Of Session"
 
             # B. Check for BOS Change (New BOS formed)
             else:
@@ -425,10 +425,10 @@ class BosOrderBlockStrategy(StrategyBase):
                     # We cancel this order so the next cycle can find the new, better zone.
                     if current_trade_bos_ts and latest_bos_ts != current_trade_bos_ts:
                         should_cancel = True
-                        cancel_reason = "NEW_STRUCTURE"
+                        cancel_reason = "New BOS Detected"
 
             if should_cancel:
-                msg = f"🚫 CANCELLING PENDING ENTRY | Reason: {cancel_reason}"
+                msg = f"🚫 CANCELLING PENDING ORDER | Reason: {cancel_reason}"
                 self.log.info(msg)
                 return SignalSummary(
                     direction="CANCELLED",

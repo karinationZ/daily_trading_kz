@@ -414,7 +414,7 @@ class ORBStrategy(StrategyBase):
 
         return sig
 
-    def analyze(self, ohlc: pd.DataFrame) -> SignalSummary:
+    async def analyze(self, ohlc: pd.DataFrame) -> SignalSummary:
         ts_now = ohlc.index[-1].tz_convert(self.timezone)
         s_info = SESSION_MAP[self.timezone.key]
         curr = ohlc.iloc[-1]
@@ -485,7 +485,7 @@ class ORBStrategy(StrategyBase):
                 return SignalSummary(direction="EXIT", trade_signal=signal)
 
             elif is_cutoff_time:
-                msg = "⏰ SESSION CUTOFF EXIT"
+                msg = "⏰ End Of Session"
                 self.log.info(msg)
                 exit_price = curr["close"]
                 # DETERMINE RESULT BASED ON PNL

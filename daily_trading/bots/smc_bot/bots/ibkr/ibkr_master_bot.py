@@ -126,7 +126,7 @@ class MasterBot:
                 if self.ib_client.ib.isConnected():
                     msg = "✅ IBKR Connection Verified / Restored."
                     logger.info(msg)
-                    await self.orb_bot.telegram_bot_debug.send_message(msg)
+                    await self.orb_bot.telegram_debug_channel.send_message(msg)
                     return True
             except Exception as e:
                 logger.warning(f"Reconnect attempt {i}/3 failed: {e}")
@@ -138,7 +138,7 @@ class MasterBot:
 
     async def run(self):
         logger.info("🚀 IBKR MASTER BOT STARTING...")
-        await self.orb_bot.telegram_bot_debug.send_message("🚀 IBKR MASTER BOT STARTING...")
+        await self.orb_bot.telegram_debug_channel.send_message("🚀 IBKR MASTER BOT STARTING...")
 
         # Initial Check
         is_connected = await self.ibkr_check_connection()
@@ -150,7 +150,7 @@ class MasterBot:
         if is_connected:
             try:
                 report = await self.ib_client.get_daily_summary()
-                await self.orb_bot.telegram_bot.send_message(report)
+                await self.orb_bot.telegram_main_channel.send_message(report)
             except Exception:
                 logger.error("Failed to fetch startup summary.")
 
@@ -175,7 +175,7 @@ class MasterBot:
                     if current_hour_int % 4 == 0 and current_hour_int != last_logged_hour_summary:
                         report = await self.ib_client.get_daily_summary()
                         logger.info(f"4H Summary:\n{report}")
-                        await self.orb_bot.telegram_bot.send_message(report)
+                        await self.orb_bot.telegram_main_channel.send_message(report)
                         last_logged_hour_summary = current_hour_int
 
                     # --- A. Data Fetching Phase ---
@@ -206,19 +206,19 @@ class MasterBot:
                     if blocked:
                         msg = f"🔒 Blocked Symbols: {blocked}"
                         logger.info(msg)
-                        # await self.orb_bot.telegram_bot_debug.send_message(msg)
+                        await self.orb_bot.telegram_debug_channel.send_message(msg)
 
                     if active_holdings:
                         pretty_pos = [f"{p.contract.symbol}: {p.position}" for p in active_holdings]
                         msg = f"💼 Active Holdings: {pretty_pos}"
                         logger.info(msg)
-                        await self.orb_bot.telegram_bot_debug.send_message(msg)
+                        await self.orb_bot.telegram_debug_channel.send_message(msg)
 
                     if orders:
                         pretty_orders = [f"{o.order.action} {o.order.totalQuantity} {o.contract.symbol}" for o in orders]
                         msg = f"⏳ Pending Orders: {pretty_orders}"
                         logger.info(msg)
-                        await self.orb_bot.telegram_bot_debug.send_message(msg)
+                        await self.orb_bot.telegram_debug_channel.send_message(msg)
 
                     # Pass State to Bots
                     await asyncio.gather(
@@ -235,7 +235,7 @@ class MasterBot:
                     if ny_now.hour != last_logged_hour:
                         msg = "💤 Market Closed. Sleeping..."
                         last_logged_hour = ny_now.hour
-                        await self.orb_bot.telegram_bot_debug.send_message(msg)
+                        await self.orb_bot.telegram_debug_channel.send_message(msg)
                         logger.info(msg)
                         await asyncio.sleep(60)
 

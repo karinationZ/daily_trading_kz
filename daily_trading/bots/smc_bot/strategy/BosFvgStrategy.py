@@ -4,6 +4,8 @@ from zoneinfo import ZoneInfo
 
 import pandas as pd
 
+from daily_trading.bots.smc_bot.bots.TelegramBot import TelegramBot
+
 # Detectors
 from daily_trading.bots.smc_bot.detectors.BosChochDetector import BosChochDetector
 from daily_trading.bots.smc_bot.detectors.DetectorsBase import BIAS
@@ -202,6 +204,9 @@ class BosFvgStrategy(StrategyBase):
         self.log_tag = f"BOS-FVG | {symbol}:{self.tz_short}"
         self.log = logger.bind(bot_id=self.log_tag)
 
+        telegram_chat_id = self.get_telegram_session_channel_id(self.timezone)
+        self.telegram_session_bot = TelegramBot(chat_id=telegram_chat_id)
+
         # Config
         self.risk = risk
         self.tp_multiple = tp_multiple
@@ -394,7 +399,7 @@ class BosFvgStrategy(StrategyBase):
 
         return sig
 
-    def analyze(self, df_ltf: pd.DataFrame, df_htf: pd.DataFrame) -> SignalSummary:
+    async def analyze(self, df_ltf: pd.DataFrame, df_htf: pd.DataFrame) -> SignalSummary:
         curr = df_ltf.iloc[-1]
         ts_now = curr.name.tz_convert(self.timezone)
         ts_utc = curr.name.tz_convert("UTC")
@@ -427,7 +432,9 @@ class BosFvgStrategy(StrategyBase):
                 self.trade_status = TradeStatus.FILLED
                 self.active_trade.entry_timestamp = ts_utc
                 just_filled = True
-                self.log.info(f"⚡ ORDER FILLED {self.symbol} @ {self.active_trade.price:.2f}")
+                msg = f"⚡ ORDER FILLED {self.symbol} @ {self.active_trade.price:.2f}"
+                self.log.info(msg)
+                await self.telegram_bot.send_message(msg)
 
         # ==================================================================
         # 2. EXIT CHECK (Stop Loss, Take Profit, Zombies, Cutoff)

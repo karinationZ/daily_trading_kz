@@ -3,7 +3,7 @@ import asyncio
 from daily_trading.bots.smc_bot.bots.SMCSupportResistanceBot import (
     SMCSupportResistanceBot,
 )
-from daily_trading.settings import TELEGRAM_MY_DEBUG_BOT_ID
+from daily_trading.settings import TELEGRAM_BOT_CHAT_ID
 
 
 async def main():
@@ -13,7 +13,7 @@ async def main():
         main_tf="15m",
         symbol_volume_threshold=30000000,
         debug=False,
-        telegram_chat_id=TELEGRAM_MY_DEBUG_BOT_ID,
+        telegram_chat_id=TELEGRAM_BOT_CHAT_ID,
     )
     await order_block_sweep_bot.run()
 

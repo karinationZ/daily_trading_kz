@@ -138,14 +138,6 @@ class IBKRClient:
                 "currency": "USD",
                 "active_months": [2, 4, 6, 8, 12],
             },
-            "SIL": {
-                "symbol": "SI",
-                "exchange": "COMEX",
-                "currency": "USD",
-                "multiplier": "1000",
-                "active_months": [3, 5, 7, 9, 12],
-                "min_days": 5,
-            },
             "MCL": {
                 "symbol": "MCL",
                 "exchange": "NYMEX",

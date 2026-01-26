@@ -4,6 +4,7 @@ from zoneinfo import ZoneInfo
 
 import pandas as pd
 
+from daily_trading.bots.smc_bot.bots.TelegramBot import TelegramBot
 from daily_trading.bots.smc_bot.detectors.BosChochDetector import BosChochDetector
 from daily_trading.bots.smc_bot.detectors.DetectorsBase import BIAS
 from daily_trading.bots.smc_bot.detectors.SupplyDemandZonesDetector import (
@@ -60,6 +61,9 @@ class BosOrderBlockStrategy(StrategyBase):
         self.log_tag = f"1H-BOS-OB | {symbol}:{self.tz_short}"
         self.log = logger.bind(bot_id=self.log_tag)
         self.ext_tag = f"{symbol}_{self.tz_short}_BOS"
+
+        telegram_chat_id = self.get_telegram_session_channel_id(self.timezone)
+        self.telegram_session_bot = TelegramBot(chat_id=telegram_chat_id)
 
         # Settings
         self.risk = risk
@@ -303,6 +307,7 @@ class BosOrderBlockStrategy(StrategyBase):
                 just_filled = True
                 msg = f"⚡ ORDER FILLED {self.symbol} @ {self.active_trade.price:.2f}"
                 self.log.info(f"⚡ ORDER FILLED {self.symbol} @ {self.active_trade.price:.2f}")
+                await self.telegram_session_bot.send_message(msg)
 
         # 2. EXIT CHECK
         if self.trade_status == TradeStatus.FILLED:

@@ -1,10 +1,10 @@
+import asyncio
 import os
 from pathlib import Path
 
 import numpy as np
 import pandas as pd
 import pytest
-import pytest_asyncio
 
 from daily_trading.bots.smc_bot.backtester.BacktestResultsViewer import BacktestResultsViewer
 from daily_trading.bots.smc_bot.bots.BaseBot import SMCBotBase, TimeZone
@@ -24,7 +24,8 @@ from daily_trading.bots.smc_bot.detectors.VolumeProfiler import VolumeProfiler
 from daily_trading.bots.smc_bot.strategy.ORBStrategy import ORBStrategy
 from daily_trading.bots.smc_bot.strategy.StrategyBase import SignalSummary
 from daily_trading.brokers.IBKRClient import IBKRClient  # Adjust import path as needed
-from daily_trading.settings import logger, PROJECT_DIR, TELEGRAM_MY_DEBUG_BOT_ID
+from daily_trading.settings import logger, PROJECT_DIR, TELEGRAM_ASIA_MONEY_MAKER_CHANNEL_ID, TELEGRAM_BOT_CHAT_ID, \
+    TELEGRAM_LONDON_MONEY_MAKER_CHANNEL_ID
 from daily_trading.technicals.AITradeAssistants.GeminiTradeAssistant import GEMINI_PRO, GeminiTradeAssistant, Ohlc
 from daily_trading.utils.common import load_data, merge_csv_no_dups
 
@@ -147,7 +148,7 @@ async def test_vol_prof():
     results = detector.calculate_volume_profile(ohlc, plot=True)
     fig = results["fig"]
     # fig.show()
-    bot = TelegramBot(chat_id=TELEGRAM_MY_DEBUG_BOT_ID)
+    bot = TelegramBot(chat_id=TELEGRAM_BOT_CHAT_ID)
 
     await bot.send_message(
         text="""🎯BOS + FVG Fill - CFXUSDT 2025-07-25 08:30
@@ -215,7 +216,7 @@ async def test_merge_ob_and_bos():
     fig = ob_detector.merge_bos_ob_plots(ohlc_15m, bos_signals, ob_signals=ob_signals)
     fig.show()
 
-    bot = TelegramBot(chat_id=TELEGRAM_MY_DEBUG_BOT_ID)
+    bot = TelegramBot(chat_id=TELEGRAM_BOT_CHAT_ID)
     await bot.send_message(text="TEST TEST Message", image=fig)
 
 
@@ -251,9 +252,12 @@ async def test_support_resistance_levels():
 
 @pytest.mark.asyncio
 async def test_telegram():
-    bot = TelegramBot(chat_id=TELEGRAM_MY_DEBUG_BOT_ID)
-    await bot.send_message(
-        text="<b>Bold text</b>")
+    ny = TelegramBot(chat_id="-1000000000000")
+    london = TelegramBot(chat_id=TELEGRAM_LONDON_MONEY_MAKER_CHANNEL_ID)
+    asia = TelegramBot(chat_id=TELEGRAM_ASIA_MONEY_MAKER_CHANNEL_ID)
+    await ny.send_message("🟢 Test Message from NY Money Maker Channel")
+    await london.send_message("🟢 Test Message from London Money Maker Channel")
+    await asia.send_message("🟢 Test Message from Asia Money Maker Channel")
 
 
 @pytest.mark.asyncio
@@ -422,42 +426,6 @@ def test_audit_pnl_and_exit_integrity():
         print(f"✅ PnL Verified: {symbol} {trade['direction']} | ${calc_pnl:.2f}")
 
 
-@pytest_asyncio.fixture(scope="module")
-async def ib_client():
-    """
-    Setup: Connects once before tests start.
-    Teardown: Disconnects after all tests finish.
-    """
-    # Use a unique client ID for testing to avoid conflicts with bots
-    client = IBKRClient(port=4002, client_id=1)
-    await client.connect()
-    yield client
-    client.disconnect()
-
-
-TEST_CASES = [
-    ("MNQ", "MNQ", "CME"),
-    ("MES", "MES", "CME"),
-    ("MBT", "MBT", "CME"),
-    ("MGC", "MGC", "COMEX"),
-    ("SIL", "SIL", "COMEX"),  # Input SIL -> Expect SIL on COMEX
-    ("MCL", "MCL", "NYMEX"),
-]
-
-
-@pytest.mark.asyncio
-@pytest.mark.parametrize("input_symbol, expected_root, expected_exchange", TEST_CASES)
-async def test_ibkr_contract_resolution(ib_client, input_symbol, expected_root, expected_exchange):
-    """
-    Verifies that we can resolve the contract, the symbol matches expectations,
-    and the expiration date is valid (in the future).
-    """
-    print(f"\nTesting: {input_symbol}...")
-    contract = await ib_client.get_futures_contract(input_symbol)
-    expiry_str = contract.lastTradeDateOrContractMonth
-    print(f"✅ PASS: {input_symbol} -> {contract.localSymbol} ({contract.exchange}) Exp: {expiry_str}")
-
-
 @pytest.mark.asyncio
 async def test_ibkr():
     """
@@ -473,3 +441,24 @@ async def test_ibkr():
     for s in ["MNQ", "MES", "MGC", "MBT", "SIL"]:
         ohlc = await client.get_klines(s, "5m")
         print(f"{s} OHLC:\n{ohlc.tail(2)}")
+
+
+@pytest.mark.asyncio
+async def test_panic_close():
+    client = IBKRClient(host=HOST, port=PORT, client_id=CLIENT_ID)
+    await client.connect()
+    await asyncio.sleep(2)
+    print("🔍 Scanning Positions...")
+    blocked = set()
+
+    # 2. Get Raw Positions from the internal IB instance
+    positions = await client.get_active_positions()
+    await client.get_open_orders()
+
+    # 2. Build Blocked Set
+    for pos in positions:
+        if pos.position != 0:
+            blocked.add(pos.contract.symbol)
+    # 7. Disconnect
+    client.disconnect()
+    print("👋 Disconnected.")

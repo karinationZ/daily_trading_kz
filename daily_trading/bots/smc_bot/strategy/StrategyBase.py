@@ -17,7 +17,13 @@ from daily_trading.bots.smc_bot.detectors.DetectorsBase import (
     Trend,
 )
 from daily_trading.bots.smc_bot.detectors.HighLowDetector import HighLowDetector
-from daily_trading.settings import logger, TELEGRAM_MAIN_CHANNEL_CHAT_ID
+from daily_trading.settings import (
+    logger,
+    TELEGRAM_ASIA_MONEY_MAKER_CHANNEL_ID,
+    TELEGRAM_LONDON_MONEY_MAKER_CHANNEL_ID,
+    TELEGRAM_MAIN_CHANNEL_CHAT_ID,
+    TELEGRAM_NY_MONEY_MAKER_CHANNEL_ID,
+)
 
 SESSION_MAP = {
     # NY: 9:30 AM - 4:00 PM EST
@@ -27,11 +33,11 @@ SESSION_MAP = {
         "end_hour": 16,
         "end_minute": 0,
     },
-    # LONDON: 8:00 AM - 2:30 PM London Time (Captures the Euro open + Pre-NY)
+    # LONDON: 8:00 AM - 2:30 PM London Time (Captures the Euro open)
     "Europe/London": {
         "start_hour": 8,
         "start_minute": 0,
-        "end_hour": 14,
+        "end_hour": 13,
         "end_minute": 30,
     },
     # ASIA (Tokyo): 9:00 AM - 3:00 PM JST
@@ -164,6 +170,16 @@ class StrategyBase(ABC):
         else:
             tz_short = "ASIA"
         return tz_short
+
+    def get_telegram_session_channel_id(self, timezone: ZoneInfo):
+        tz_short = self.get_tz_short(timezone)
+        if tz_short == "NY":
+            return TELEGRAM_NY_MONEY_MAKER_CHANNEL_ID
+        elif tz_short == "LONDON":
+            return TELEGRAM_LONDON_MONEY_MAKER_CHANNEL_ID
+        elif tz_short == "ASIA":
+            return TELEGRAM_ASIA_MONEY_MAKER_CHANNEL_ID
+        return None
 
     @staticmethod
     def is_pre_session_started(ts_now, timezone: ZoneInfo) -> bool:

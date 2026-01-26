@@ -4,6 +4,7 @@ from zoneinfo import ZoneInfo
 
 import pandas as pd
 
+from daily_trading.bots.smc_bot.bots.TelegramBot import TelegramBot
 from daily_trading.bots.smc_bot.detectors.DetectorsBase import BIAS
 from daily_trading.bots.smc_bot.detectors.ORBDetector import ORBDetector
 from daily_trading.bots.smc_bot.detectors.SupplyDemandZonesDetector import (
@@ -18,7 +19,9 @@ from daily_trading.bots.smc_bot.strategy.StrategyBase import (
     TradeSignal,
     TradeStatus,
 )
-from daily_trading.settings import logger
+from daily_trading.settings import (
+    logger,
+)
 
 
 class ORBStrategy(StrategyBase):
@@ -103,6 +106,9 @@ class ORBStrategy(StrategyBase):
 
         # Unique IBKR Tag
         self.ext_tag = f"{symbol}_{self.tz_short}_ORB"
+
+        telegram_chat_id = self.get_telegram_session_channel_id(self.timezone)
+        self.telegram_session_bot = TelegramBot(chat_id=telegram_chat_id)
 
         self.risk = risk
         self.tp_multiple = tp_multiple
@@ -451,6 +457,7 @@ class ORBStrategy(StrategyBase):
                 self.trade_status = TradeStatus.FILLED
                 msg = f"⚡ ORDER FILLED | {self.symbol}: {self.active_trade.direction.name} " f"@ {self.active_trade.price:.2f} | Time: {curr.name}"
                 self.log.info(msg)
+                await self.telegram_session_bot.send_message(msg)
 
         # 4. SESSION EXIT LOGIC (Evaluate both Active and Just-Filled trades)
         if self.trade_status == TradeStatus.FILLED:

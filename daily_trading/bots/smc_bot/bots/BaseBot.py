@@ -28,7 +28,6 @@ from daily_trading.settings import (
     logger,
     TELEGRAM_DEBUG_CHANNEL_ID,
     TELEGRAM_MAIN_CHANNEL_CHAT_ID,
-    TELEGRAM_MY_DEBUG_BOT_ID,
     USE_AI,
 )
 from daily_trading.technicals.AITradeAssistants.GeminiTradeAssistant import (
@@ -100,9 +99,8 @@ class SMCBotBase:
             self.is_shared_client = False
         self.static_symbols = symbols
         self.symbols = symbols
-        self.telegram_bot = TelegramBot(chat_id=telegram_chat_id)
-        self.telegram_bot_debug = TelegramBot(chat_id=TELEGRAM_DEBUG_CHANNEL_ID)
-        self.telegram_my_debug_bot = TelegramBot(chat_id=TELEGRAM_MY_DEBUG_BOT_ID)
+        self.telegram_main_channel = TelegramBot(chat_id=telegram_chat_id)
+        self.telegram_debug_channel = TelegramBot(chat_id=TELEGRAM_DEBUG_CHANNEL_ID)
         self.main_tf = main_tf
         self.volume_threshold = symbol_volume_threshold
         self.lookback_days = lookback_days
@@ -373,7 +371,7 @@ class SMCBotBase:
                 if not can_trade:
                     msg = f"🔒{symbol} is locked and used by another strategy. Skipping ENTER signal."
                     logger.info(f"🔒{symbol} is locked and used by another strategy. Skipping ENTER signal.")
-                    await self.telegram_bot.send_message(msg)
+                    await strategy.telegram_session_bot.send_message(msg)
                     return
 
             # -----------------------------------------------------------------
@@ -435,7 +433,7 @@ class SMCBotBase:
                     if abs(pos_size) > 0:
                         warn_msg = f"🚨 <b>CRITICAL FAILURE:</b> Position {pos_size} " f"stuck after EXIT signal. Force Closing."
                         logger.error(warn_msg)
-                        await self.telegram_bot.send_message(warn_msg)
+                        await strategy.telegram_session_bot.send_message(warn_msg)
                         await self.ib_client.cancel_all_orders(order_ref=strategy.ext_tag)
                         await self.ib_client.close_positions_smartly(sig.symbol)
                     else:
@@ -558,7 +556,7 @@ class SMCBotBase:
 
             # Send Message
             # Note: getattr(sig, 'fig', None) checks if a chart image was generated
-            await self.telegram_bot.send_message("\n".join(lines), getattr(sig, "fig", None))
+            await strategy.telegram_session_bot.send_message("\n".join(lines), getattr(sig, "fig", None))
 
             # -----------------------------------------------------------------
             # 5. DAILY SUMMARY (Optional)
@@ -569,7 +567,7 @@ class SMCBotBase:
                     await asyncio.sleep(4)
                     report = await self.ib_client.get_daily_summary()
                     if report:
-                        await self.telegram_bot.send_message(report)
+                        await strategy.telegram_session_bot.send_message(report)
                 except Exception:
                     pass
 
@@ -616,7 +614,7 @@ class SMCBotBase:
                     # IBKRClient usually logs errors, but we must stop the flow here.
                     err_msg = f" Order placed for {symbol} but not found in Active list. Likely Rejected."
                     strategy.log.error(err_msg)
-                    await self.telegram_bot.send_message(f"⚠️ <b>ORDER FAILED</b> | {strategy.log_tag}" f"\nReason: {err_msg}")
+                    await strategy.telegram_session_bot.send_message(f"⚠️ <b>ORDER FAILED</b> | {strategy.log_tag}" f"\nReason: {err_msg}")
                     return False
 
             # --- EXIT ---
@@ -645,7 +643,7 @@ class SMCBotBase:
 
         except Exception as e:
             strategy.log.error(f"EXECUTION FAILURE: {e}")
-            await self.telegram_bot.send_message(f"🚨 <b>EXECUTION ERROR</b> | {strategy.log_tag}\n{str(e)}")
+            await strategy.telegram_session_bot.send_message(f"🚨 <b>EXECUTION ERROR</b> | {strategy.log_tag}\n{str(e)}")
             return False
 
     @staticmethod
@@ -719,11 +717,7 @@ class SMCBotBase:
         action = f"Go {analysis.direction}." if analysis.direction != Trend.NEUTRAL.name else "Сидим в засаде"
         msg = f"{title} - {symbol} {current_candle_time}\n" f"Action: {action}\n" f"Trend: {analysis.trend}\n" f"SMC Events:\n• {events_str}"
         logger.info(msg)
-        is_success = await self.telegram_bot.send_message(msg, analysis.fig)
-
-        # # Send to my debug bot as well if symbol is in default_symbols like BTCUSDT, ETHUSDT, XAUTUSDT
-        # if symbol in self.default_symbols and action not in [Trend.NEUTRAL.name, "Сидим в засаде"]:
-        #     await self.telegram_my_debug_bot.send_message(msg, analysis.fig)
+        is_success = await self.telegram_main_channel.send_message(msg, analysis.fig)
 
         return is_success
 
@@ -882,7 +876,7 @@ class SMCBotBase:
                 is_success = await self.send_final_message(analysis, last_candle, symbol, title=analysis.title)
 
                 if formatted_ai_message and is_success:
-                    await self.telegram_bot.send_message(formatted_ai_message)
+                    await self.telegram_main_channel.send_message(formatted_ai_message)
 
             elif analysis.direction == GET_READY_ALERT:
                 await self.send_final_message(analysis, last_candle, symbol, title=analysis.title)
@@ -893,6 +887,6 @@ class SMCBotBase:
                 msg = f"{symbol}\n{self.strategy_name}\n" f"Action: Сидим в засаде\n" f"Trend: {analysis.trend}\n" f"SMC Events:\n • {events_str}\n"
                 logger.info(msg)
                 if send_non_signal:
-                    await self.telegram_bot_debug.send_message(msg, analysis.fig)
+                    await self.telegram_debug_channel.send_message(msg, analysis.fig)
         except Exception as e:
             logger.error(f"Error processing {symbol}: {e}")

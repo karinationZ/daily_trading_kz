@@ -451,7 +451,6 @@ class ORBStrategy(StrategyBase):
                 self.trade_status = TradeStatus.FILLED
                 msg = f"⚡ ORDER FILLED | {self.symbol}: {self.active_trade.direction.name} " f"@ {self.active_trade.price:.2f} | Time: {curr.name}"
                 self.log.info(msg)
-                await self.telegram_bot.send_message(msg)
 
         # 4. SESSION EXIT LOGIC (Evaluate both Active and Just-Filled trades)
         if self.trade_status == TradeStatus.FILLED:

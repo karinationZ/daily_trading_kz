@@ -303,7 +303,6 @@ class BosOrderBlockStrategy(StrategyBase):
                 just_filled = True
                 msg = f"⚡ ORDER FILLED {self.symbol} @ {self.active_trade.price:.2f}"
                 self.log.info(f"⚡ ORDER FILLED {self.symbol} @ {self.active_trade.price:.2f}")
-                await self.telegram_bot.send_message(msg)
 
         # 2. EXIT CHECK
         if self.trade_status == TradeStatus.FILLED:

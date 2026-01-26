@@ -185,7 +185,6 @@ class BosFvgStrategy(StrategyBase):
         symbol: str,
         timezone: ZoneInfo,
         main_tf="15m",  # LTF for Entry execution
-        htf="1h",  # HTF for Trend Bias
         risk: float = 150.0,
         tp_multiple: float = 2.0,
         fvg_mitigation_ratio: float = 0.5,  # 0.5 = Entry at 50% of FVG
@@ -197,7 +196,6 @@ class BosFvgStrategy(StrategyBase):
 
         self.symbol = symbol
         self.timezone = timezone
-        self.htf_name = htf
 
         # Logging
         self.tz_short = self.get_tz_short(self.timezone)
@@ -219,7 +217,7 @@ class BosFvgStrategy(StrategyBase):
 
         # --- DETECTORS ---
         # HTF: For Trend Bias
-        self.htf_bos_detector = BosChochDetector(main_tf=htf)
+        self.htf_bos_detector = BosChochDetector(main_tf="1h")
 
         # LTF: For Entry Signals
         self.ltf_fvg_detector = FvgDetector(main_tf=main_tf, pivot_period=5, fvg_threshold=0.5)

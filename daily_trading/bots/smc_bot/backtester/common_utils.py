@@ -42,15 +42,13 @@ def parse_params_from_results_csv_filename(filename: str) -> Optional[Dict[str, 
         _?results\.csv
     """
 
-    # --- PATTERN 3: Tap Zone (Simplified) ---
+    # --- PATTERN 3: MNQ_LONDON_rr1.2_mit0.75_sl0.1
     pattern_tap = r"""
         (?P<symbol>[A-Z0-9]+)_
         (?P<session>[A-Z]+)
-        _sw(?P<sw>\d+)
-        _int(?P<int>\d+)
         _rr(?P<rr>[\d.]+)
         _mit(?P<mit>[\d.]+)
-        _sl(?P<sl_atr>[\d.]+)
+        _sl(?P<sl>[\d.]+)
         _?results\.csv
     """
 
@@ -74,7 +72,8 @@ def parse_params_from_results_csv_filename(filename: str) -> Optional[Dict[str, 
                 "sl_atr": float(gd["sl_buffer"]),
                 "thr": thr_val,  # <--- Now correctly populated
                 "mit": None,
-                "description": (f"Symbol: {gd['symbol'].upper()} | {gd['session'].upper()} | " f"SW:{gd['sw']} THR:{thr_val} RR:{gd['rr']}"),
+                "description": (
+                    f"Symbol: {gd['symbol'].upper()} | {gd['session'].upper()} | " f"SW:{gd['sw']} THR:{thr_val} RR:{gd['rr']}"),
             }
         except ValueError:
             pass
@@ -85,8 +84,11 @@ def parse_params_from_results_csv_filename(filename: str) -> Optional[Dict[str, 
         gd = match.groupdict()
         try:
             mit_val = float(gd["mit"]) if gd.get("mit") else None
-            sl_val = float(gd["sl_atr"]) if gd.get("sl_atr") else None
-
+            sl_val = None
+            if gd.get("sl_atr"):
+                sl_val = float(gd["sl_atr"])
+            elif gd.get("sl"):
+                sl_val = float(gd["sl"])
             return {
                 "symbol": gd["symbol"].upper(),
                 "session": gd["session"].upper(),
@@ -96,7 +98,8 @@ def parse_params_from_results_csv_filename(filename: str) -> Optional[Dict[str, 
                 "sl_atr": sl_val,
                 "eb_mult": float(gd["eb_mult"]) if gd.get("eb_mult") else None,
                 "mit": mit_val,
-                "description": (f"Symbol: {gd['symbol'].upper()} | {gd['session'].upper()} | " f"SW:{gd['sw']} RR:{gd['rr']}"),
+                "description": (
+                    f"Symbol: {gd['symbol'].upper()} | {gd['session'].upper()} | " f"SW:{gd['sw']} RR:{gd['rr']}"),
             }
         except ValueError:
             pass
@@ -111,14 +114,15 @@ def parse_params_from_results_csv_filename(filename: str) -> Optional[Dict[str, 
                 "session": gd["session"].upper(),
                 "rr": float(gd["rr"]),
                 "mit": float(gd["mit"]),
-                "sl_atr": float(gd["sl_atr"]),
+                "sl_atr": float(gd["sl"]),
                 "sw": None,
                 "int": None,
                 "off": None,
                 "atr": None,
                 "thr": None,
                 "eb_mult": None,
-                "description": (f"Symbol: {gd['symbol'].upper()} | {gd['session'].upper()} | " f"RR:{gd['rr']} MIT:{gd['mit']} SL:{gd['sl_atr']}"),
+                "description": (
+                    f"Symbol: {gd['symbol'].upper()} | {gd['session'].upper()} | " f"RR:{gd['rr']} MIT:{gd['mit']} SL:{gd['sl']}"),
             }
         except ValueError:
             return None

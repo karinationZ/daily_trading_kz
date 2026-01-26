@@ -266,13 +266,13 @@ def aggregate_and_promote_champions(results_base_path: Path, filter_by: Leadersh
         "int",
         "mit",
         "sl_atr",
+        "Original_Filename",
         "AvgTrade",
         "config",
         "Norm_PnL",
         "Norm_RR",
         "Source_File",
         "Full_Path",
-        "Original_Filename",
     ]
     master_df = master_df.reindex(columns=columns_order)
 

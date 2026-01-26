@@ -72,8 +72,7 @@ def parse_params_from_results_csv_filename(filename: str) -> Optional[Dict[str, 
                 "sl_atr": float(gd["sl_buffer"]),
                 "thr": thr_val,  # <--- Now correctly populated
                 "mit": None,
-                "description": (
-                    f"Symbol: {gd['symbol'].upper()} | {gd['session'].upper()} | " f"SW:{gd['sw']} THR:{thr_val} RR:{gd['rr']}"),
+                "description": (f"Symbol: {gd['symbol'].upper()} | {gd['session'].upper()} | " f"SW:{gd['sw']} THR:{thr_val} RR:{gd['rr']}"),
             }
         except ValueError:
             pass
@@ -98,8 +97,7 @@ def parse_params_from_results_csv_filename(filename: str) -> Optional[Dict[str, 
                 "sl_atr": sl_val,
                 "eb_mult": float(gd["eb_mult"]) if gd.get("eb_mult") else None,
                 "mit": mit_val,
-                "description": (
-                    f"Symbol: {gd['symbol'].upper()} | {gd['session'].upper()} | " f"SW:{gd['sw']} RR:{gd['rr']}"),
+                "description": (f"Symbol: {gd['symbol'].upper()} | {gd['session'].upper()} | " f"SW:{gd['sw']} RR:{gd['rr']}"),
             }
         except ValueError:
             pass
@@ -121,8 +119,7 @@ def parse_params_from_results_csv_filename(filename: str) -> Optional[Dict[str, 
                 "atr": None,
                 "thr": None,
                 "eb_mult": None,
-                "description": (
-                    f"Symbol: {gd['symbol'].upper()} | {gd['session'].upper()} | " f"RR:{gd['rr']} MIT:{gd['mit']} SL:{gd['sl']}"),
+                "description": (f"Symbol: {gd['symbol'].upper()} | {gd['session'].upper()} | " f"RR:{gd['rr']} MIT:{gd['mit']} SL:{gd['sl']}"),
             }
         except ValueError:
             return None

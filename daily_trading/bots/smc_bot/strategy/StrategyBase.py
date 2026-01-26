@@ -17,7 +17,7 @@ from daily_trading.bots.smc_bot.detectors.DetectorsBase import (
     Trend,
 )
 from daily_trading.bots.smc_bot.detectors.HighLowDetector import HighLowDetector
-from daily_trading.settings import logger
+from daily_trading.settings import logger, TELEGRAM_MAIN_CHANNEL_CHAT_ID
 
 SESSION_MAP = {
     # NY: 9:30 AM - 4:00 PM EST
@@ -137,7 +137,7 @@ class StrategyBase(ABC):
         "SIL": 0.005,
     }
 
-    def __init__(self, main_tf: str, debug=False, telegram_chat_id=None, priority: int = 1):
+    def __init__(self, main_tf: str, debug=False, telegram_chat_id=TELEGRAM_MAIN_CHANNEL_CHAT_ID, priority: int = 1):
         """
         Initialize base strategy with Telegram bot and cache.
         """

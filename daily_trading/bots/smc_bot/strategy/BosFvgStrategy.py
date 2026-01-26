@@ -368,7 +368,7 @@ class BosFvgStrategy(StrategyBase):
     # MAIN LOOP
     # -------------------------------------------------------------------------
 
-    def create_signal(self, action: TradeAction, timestamp, custom_price: float = None) -> TradeSignal:
+    def create_signal(self, action: TradeAction, timestamp, custom_price: float = None, reason=None) -> TradeSignal:
         """Helper to create signals and manage state transitions."""
         report_price = custom_price if custom_price is not None else self.active_trade.price
 
@@ -380,6 +380,7 @@ class BosFvgStrategy(StrategyBase):
             sl=self.active_trade.sl,
             tp=self.active_trade.tp,
             size=self.active_trade.size,
+            reason=reason,
             timestamp=timestamp,
         )
 

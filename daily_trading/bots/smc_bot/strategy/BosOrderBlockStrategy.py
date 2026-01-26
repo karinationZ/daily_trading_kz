@@ -236,7 +236,7 @@ class BosOrderBlockStrategy(StrategyBase):
     # MAIN LOOP
     # -------------------------------------------------------------------------
 
-    def create_signal(self, action: TradeAction, timestamp, custom_price: float = None) -> TradeSignal:
+    def create_signal(self, action: TradeAction, timestamp, custom_price: float = None, reason=None) -> TradeSignal:
         report_price = custom_price if custom_price is not None else self.active_trade.price
         sig = TradeSignal(
             symbol=self.symbol,
@@ -246,6 +246,7 @@ class BosOrderBlockStrategy(StrategyBase):
             sl=self.active_trade.sl,
             tp=self.active_trade.tp,
             size=self.active_trade.size,
+            reason=reason,
             timestamp=timestamp,
         )
 
@@ -300,7 +301,9 @@ class BosOrderBlockStrategy(StrategyBase):
                 self.trade_status = TradeStatus.FILLED
                 self.active_trade.entry_timestamp = ts_utc
                 just_filled = True
+                msg = f"⚡ ORDER FILLED {self.symbol} @ {self.active_trade.price:.2f}"
                 self.log.info(f"⚡ ORDER FILLED {self.symbol} @ {self.active_trade.price:.2f}")
+                await self.telegram_bot.send_message(msg)
 
         # 2. EXIT CHECK
         if self.trade_status == TradeStatus.FILLED:
@@ -370,7 +373,7 @@ class BosOrderBlockStrategy(StrategyBase):
                 # if zone_id:
                 #     self.processed_zone_ids.add(zone_id)
 
-                sig = self.create_signal(TradeAction.EXIT, ts_utc, custom_price=exit_price)
+                sig = self.create_signal(TradeAction.EXIT, ts_utc, custom_price=exit_price, reason=exit_reason)
                 sig.trade_result = exit_type  # 'WIN' or 'LOSS'
                 sig.metadata["exit_reason"] = exit_reason
 
@@ -425,10 +428,11 @@ class BosOrderBlockStrategy(StrategyBase):
                         cancel_reason = "NEW_STRUCTURE"
 
             if should_cancel:
-                self.log.info(f"🚫 CANCELLING PENDING ENTRY | Reason: {cancel_reason}")
+                msg = f"🚫 CANCELLING PENDING ENTRY | Reason: {cancel_reason}"
+                self.log.info(msg)
                 return SignalSummary(
                     direction="CANCELLED",
-                    trade_signal=self.create_signal(TradeAction.CANCEL, ts_utc),
+                    trade_signal=self.create_signal(TradeAction.CANCEL, ts_utc, reason=msg),
                 )
 
         return SignalSummary(direction="NEUTRAL")

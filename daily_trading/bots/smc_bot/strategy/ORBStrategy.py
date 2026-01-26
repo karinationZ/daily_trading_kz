@@ -381,11 +381,11 @@ class ORBStrategy(StrategyBase):
             self.active_trade.direction == BIAS.SHORT and curr["low"] <= self.active_trade.tp
         ):
             self.log.info("🚫 Cancelling Pending: Price hit TP before Entry.")
-            return self.create_signal(TradeAction.CANCEL, ohlc.index[-1])
+            return self.create_signal(TradeAction.CANCEL, ohlc.index[-1], reason="Cancelling Pending Order: Price hit TP before Entry.")
 
         return None
 
-    def create_signal(self, action: TradeAction, timestamp, custom_price: float = None) -> TradeSignal:
+    def create_signal(self, action: TradeAction, timestamp, custom_price: float = None, reason=None) -> TradeSignal:
         """
         Creates a signal.
         """
@@ -401,6 +401,7 @@ class ORBStrategy(StrategyBase):
             sl=self.active_trade.sl,
             tp=self.active_trade.tp,
             size=self.active_trade.size,
+            reason=reason,
             timestamp=timestamp,
         )
 
@@ -448,9 +449,9 @@ class ORBStrategy(StrategyBase):
 
             if filled:
                 self.trade_status = TradeStatus.FILLED
-                self.log.info(
-                    f"⚡ ORDER FILLED | {self.symbol}: {self.active_trade.direction.name} " f"@ {self.active_trade.price:.2f} | Time: {curr.name}"
-                )
+                msg = f"⚡ ORDER FILLED | {self.symbol}: {self.active_trade.direction.name} " f"@ {self.active_trade.price:.2f} | Time: {curr.name}"
+                self.log.info(msg)
+                await self.telegram_bot.send_message(msg)
 
         # 4. SESSION EXIT LOGIC (Evaluate both Active and Just-Filled trades)
         if self.trade_status == TradeStatus.FILLED:
@@ -472,11 +473,10 @@ class ORBStrategy(StrategyBase):
                 # Determine actual exit price
                 exit_price = self.active_trade.sl if hit_sl else self.active_trade.tp
 
-                self.log.info(
-                    f"🎯 TRADE EXIT (HIT {'SL' if hit_sl else 'TP'}) | {self.symbol}: " f"Close: {curr['close']:.2f} | Target: {exit_price:.2f}"
-                )
+                msg = f"TRADE EXIT (HIT {'SL' if hit_sl else 'TP'})"
+                self.log.info(f"🎯 {msg} | {self.symbol}: " f"Close: {curr['close']:.2f} |" f" Target: {exit_price:.2f}")
 
-                signal = self.create_signal(TradeAction.EXIT, ohlc.index[-1], custom_price=exit_price)
+                signal = self.create_signal(TradeAction.EXIT, ohlc.index[-1], custom_price=exit_price, reason=msg)
                 signal.metadata["exit_type"] = ExitType.SL_TP_HIT
                 if hit_sl:
                     signal.trade_result = "LOSS"
@@ -485,7 +485,8 @@ class ORBStrategy(StrategyBase):
                 return SignalSummary(direction="EXIT", trade_signal=signal)
 
             elif is_cutoff_time:
-                self.log.info("⏰ SESSION CUTOFF EXIT")
+                msg = "⏰ SESSION CUTOFF EXIT"
+                self.log.info(msg)
                 exit_price = curr["close"]
                 # DETERMINE RESULT BASED ON PNL
                 pnl = exit_price - self.active_trade.price
@@ -493,7 +494,7 @@ class ORBStrategy(StrategyBase):
                     pnl = -pnl
 
                 res = "WIN" if pnl > 0 else "LOSS"
-                sig = self.create_signal(TradeAction.EXIT, curr.name, custom_price=exit_price)
+                sig = self.create_signal(TradeAction.EXIT, curr.name, custom_price=exit_price, reason=msg)
                 sig.metadata["exit_type"] = ExitType.MARKET_FORCE
                 sig.trade_result = res
                 return SignalSummary(direction="EXIT", trade_signal=sig)
@@ -503,10 +504,11 @@ class ORBStrategy(StrategyBase):
         # 5. PENDING ORDER CANCELLATION (Only if NOT filled)
         if self.trade_status == TradeStatus.PENDING:
             if ts_now >= pending_cutoff:
-                self.log.info(f"🚫 CANCELLING PENDING (Session End) {self.symbol}")
+                msg = f"🚫 CANCELLING PENDING (Session End) {self.symbol}"
+                self.log.info(msg)
                 return SignalSummary(
                     direction="CANCELLED",
-                    trade_signal=self.create_signal(TradeAction.CANCEL, ohlc.index[-1]),
+                    trade_signal=self.create_signal(TradeAction.CANCEL, ohlc.index[-1], reason=msg),
                 )
 
             # Check zone validity

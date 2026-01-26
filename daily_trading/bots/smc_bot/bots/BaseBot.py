@@ -189,13 +189,14 @@ class SMCBotBase:
 
         # 3. Symbol is occupied. Can we steal it?
         if current_lock.status == TradeStatus.PENDING and priority > current_lock.priority:
-            logger.info(
+            strategy.log.info(
                 f"⚡ OVERRIDE: {strategy.ext_tag} (P{priority}) kicking out {current_lock.strategy_tag}" f" (P{current_lock.priority}) on {symbol}"
             )
 
             # --- CRITICAL: CANCEL THE EXISTING ORDERS ---
             try:
                 # Cancel orders of the OLD strategy
+                strategy.log.info(f" cancelling orders for {current_lock.strategy_tag} on {symbol}")
                 await self.ib_client.cancel_all_orders(order_ref=current_lock.strategy_tag)
 
                 # Verify flatness (Tenacity retry handle implicit in wait_for_flat)
@@ -352,9 +353,9 @@ class SMCBotBase:
             strategy.log.info(f"♻️ RESTORED STATE: PENDING {direction.name} @ {entry_price}")
 
     async def run_strategy_cycle(self, strategy, *args, **kwargs):
-        can_trade = await self.acquire_lock(strategy)
-        if not can_trade:
-            return
+        # can_trade = await self.acquire_lock(strategy)
+        # if not can_trade:
+        #     return
         try:
             symbol = strategy.symbol
             # -----------------------------------------------------------------
@@ -367,6 +368,13 @@ class SMCBotBase:
             # If no signal, just update the dashboard/log (optional) and return
             if not sig:
                 return
+            if sig.action == TradeAction.ENTER:
+                can_trade = await self.acquire_lock(strategy)
+                if not can_trade:
+                    msg = f"🔒{symbol} is locked and used by another strategy. Skipping ENTER signal."
+                    logger.info(f"🔒{symbol} is locked and used by another strategy. Skipping ENTER signal.")
+                    await self.telegram_bot.send_message(msg)
+                    return
 
             # -----------------------------------------------------------------
             # 2. EXECUTION (The "Doer")
@@ -512,6 +520,7 @@ class SMCBotBase:
                 f"<b>{title}</b> | {strategy.log_tag}",
                 f"Action: {sig.direction.name} {sig.action.name}",
                 f"Price: {display_price:,.2f}",
+                f"Reason: {sig.reason}",
             ]
 
             # PnL Calculation (Exits Only)

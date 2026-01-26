@@ -6,7 +6,6 @@ from daily_trading.bots.smc_bot.bots.BaseBot import SMCBotBase
 from daily_trading.bots.smc_bot.strategy.BosOrderBlockStrategy import (
     BosOrderBlockStrategy,
 )
-from daily_trading.bots.smc_bot.strategy.StrategyBase import TradeStatus
 from daily_trading.settings import logger, TELEGRAM_MAIN_CHANNEL_CHAT_ID
 
 # # 10. MES_ASIA - Score: 85.82 | WR: 68.42% | Edge: 35.09% | Trades: 19
@@ -177,11 +176,7 @@ class BosOrderBlockBot(SMCBotBase):
         """
         tasks = []
         for strategy in self.strategies:
-            # --- 1. STATE RESTORATION ---
-            # Attempt to restore state from IBKR (in case of crash/restart)
-            self.sync_state(strategy, current_positions, open_orders)
-
-            # --- 2. CONFLICT CHECK ---
+            # CONFLICT CHECK OLD
             # If the strategy is ACTIVE (Restored), we allow it to run even if 'blocked'
             # (because it is blocked by itself).
 
@@ -204,7 +199,8 @@ class BosOrderBlockBot(SMCBotBase):
             is_session_started = strategy.is_pre_session_started(ts_now, strategy.timezone)
 
             if self.is_strategy_in_window(strategy) and is_session_started:
-                # 4. Run Logic
+                self.sync_state(strategy, current_positions, open_orders)
+                # Run Logic
                 tasks.append(self.run_strategy_cycle(strategy, df_5m, df_1h))
             else:
                 strategy.log.info(f"💤 {strategy.tz_short} Session has not started yet!")

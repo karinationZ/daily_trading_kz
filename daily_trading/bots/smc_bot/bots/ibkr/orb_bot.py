@@ -4,7 +4,6 @@ from zoneinfo import ZoneInfo
 
 from daily_trading.bots.smc_bot.bots.BaseBot import SMCBotBase
 from daily_trading.bots.smc_bot.strategy.ORBStrategy import ORBStrategy
-from daily_trading.bots.smc_bot.strategy.StrategyBase import TradeStatus
 from daily_trading.settings import logger, TELEGRAM_MAIN_CHANNEL_CHAT_ID
 
 CONFIG = [
@@ -116,11 +115,7 @@ class ORBBot(SMCBotBase):
         """
         tasks = []
         for strategy in self.strategies:
-            # --- 1. STATE RESTORATION ---
-            # Attempt to restore state from IBKR (in case of crash/restart)
-            self.sync_state(strategy, current_positions, open_orders)
-
-            # --- 2. CONFLICT CHECK ---
+            # CONFLICT CHECK (OLD) ---
             # If the strategy is ACTIVE (Restored), we allow it to run even if 'blocked'
             # (because it is blocked by itself).
 
@@ -141,6 +136,7 @@ class ORBBot(SMCBotBase):
                 is_session_started = strategy.is_pre_session_started(ts_now, strategy.timezone)
                 if self.is_strategy_in_window(strategy) and is_session_started:
                     # Call the EXISTING logic function
+                    self.sync_state(strategy, current_positions, open_orders)
                     tasks.append(self.run_strategy_cycle(strategy, df_5m))
                 else:
                     strategy.log.info(f"💤 {strategy.tz_short} Session has not started yet!")

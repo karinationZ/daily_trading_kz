@@ -33,7 +33,7 @@ class Backtester:
         self.journal: List[dict] = []  # Completed trade records
         self.active_record: Optional[dict] = None  # Currently open/pending ledger entry
 
-    def run(
+    async def run(
         self,
         main_tf: pd.DataFrame,
         ohlc_1h: Optional[pd.DataFrame] = None,
@@ -46,6 +46,7 @@ class Backtester:
         # 1. SETUP
         mode = "MTF" if ohlc_1h is not None else "STF"
         logger.info(f"🏁 {mode} Backtest | {self.strategy.symbol}")
+        self.strategy.debug = True
 
         # Standardize Data
         main_tf = self._prepare_data(main_tf)
@@ -108,9 +109,9 @@ class Backtester:
 
                     strategy_args["df_4h"] = window_4h
                 # -----------------------------
-                analysis = self.strategy.analyze(**strategy_args)
+                analysis = await self.strategy.analyze(**strategy_args)
             else:
-                analysis = self.strategy.analyze(window_main_tf)
+                analysis = await self.strategy.analyze(window_main_tf)
 
             # 3. RECORD KEEPING (The Accountant)
             if analysis.trade_signal:

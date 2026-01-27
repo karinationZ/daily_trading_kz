@@ -443,11 +443,14 @@ class ORBStrategy(StrategyBase):
         swing_zones, internal_zones = self.sd_detector.calculate(ohlc)
         self.zones = swing_zones + internal_zones
 
-        # 3. FILL LOGIC (High Priority)
-        # We check this before the cutoff logic to see if the 19:45 bar filled us
-        filled = False
-        if self.trade_status == TradeStatus.PENDING:
+        # ---------------------------------------------------------------------
+        # FILL SIMULATION (DEBUG / BACKTEST ONLY)
+        # ---------------------------------------------------------------------
+        # Only runs if we are PENDING and in DEBUG mode.
+        # In LIVE mode, 'run_strategy_cycle' updates the status by calling IBKR,
+        if self.trade_status == TradeStatus.PENDING and self.debug:
             is_long = self.active_trade.direction == BIAS.LONG
+            # Simple High/Low check for simulation
             if is_long:
                 filled = curr["low"] <= self.active_trade.price
             else:
@@ -455,9 +458,8 @@ class ORBStrategy(StrategyBase):
 
             if filled:
                 self.trade_status = TradeStatus.FILLED
-                msg = f"⚡ ORDER FILLED | {self.symbol}: {self.active_trade.direction.name} " f"@ {self.active_trade.price:.2f} | Time: {curr.name}"
+                msg = f"⚡ ORDER FILLED (SIM) | {self.symbol} @ {self.active_trade.price:.2f}"
                 self.log.info(msg)
-                await self.telegram_session_bot.send_message(msg)
 
         # 4. SESSION EXIT LOGIC (Evaluate both Active and Just-Filled trades)
         if self.trade_status == TradeStatus.FILLED:

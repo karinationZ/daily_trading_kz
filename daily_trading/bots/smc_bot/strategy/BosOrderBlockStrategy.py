@@ -290,8 +290,8 @@ class BosOrderBlockStrategy(StrategyBase):
 
         just_filled = False
 
-        # 1. FILL CHECK (Limit Orders)
-        if self.trade_status == TradeStatus.PENDING:
+        # 1. FILL SIMULATION (DEBUG / BACKTEST ONLY)
+        if self.trade_status == TradeStatus.PENDING and self.debug:
             is_long = self.active_trade.direction == BIAS.LONG
             filled = False
             if is_long:
@@ -305,9 +305,8 @@ class BosOrderBlockStrategy(StrategyBase):
                 self.trade_status = TradeStatus.FILLED
                 self.active_trade.entry_timestamp = ts_utc
                 just_filled = True
-                msg = f"⚡ ORDER FILLED {self.symbol} @ {self.active_trade.price:.2f}"
+                msg = f"⚡ ORDER FILLED BOS 1H-OB {self.symbol} @ {self.active_trade.price:.2f}"
                 self.log.info(f"⚡ ORDER FILLED {self.symbol} @ {self.active_trade.price:.2f}")
-                await self.telegram_session_bot.send_message(msg)
 
         # 2. EXIT CHECK
         if self.trade_status == TradeStatus.FILLED:

@@ -351,13 +351,10 @@ class SMCBotBase:
             strategy.log.info(f"♻️ RESTORED STATE: PENDING {direction.name} @ {entry_price}")
 
     async def run_strategy_cycle(self, strategy, *args, **kwargs):
-        # can_trade = await self.acquire_lock(strategy)
-        # if not can_trade:
-        #     return
         try:
             symbol = strategy.symbol
             # -----------------------------------------------------------------
-            # 1. ANALYSIS & SIGNAL GENERATION
+            # ANALYSIS & SIGNAL GENERATION
             # -----------------------------------------------------------------
             # The strategy analyzes price/indicators and returns a result.
             analysis = await strategy.analyze(*args, **kwargs)
@@ -366,6 +363,23 @@ class SMCBotBase:
             # If no signal, just update the dashboard/log (optional) and return
             if not sig:
                 return
+
+            # -----------------------------------------------------------------
+            # CHECK if we have orders filled (based on IBKR)
+            # -----------------------------------------------------------------
+            if strategy.trade_status == TradeStatus.PENDING:
+                # Ask IBKR: Do I have a position?
+                is_flat, pos_size = await self.ib_client.check_flatness(symbol)
+
+                if not is_flat:
+                    # ✅ WE ARE FILLED!
+                    strategy.trade_status = TradeStatus.FILLED
+                    # Log & Telegram
+                    fill_price = await self.ib_client.get_last_fill_price(symbol)
+                    msg = f"⚡ ORDER FILLED | {strategy.log_tag} @ {fill_price:.2f}"
+                    logger.info(msg)
+                    await strategy.telegram_session_bot.send_message(msg)
+
             if sig.action == TradeAction.ENTER:
                 can_trade = await self.acquire_lock(strategy)
                 if not can_trade:
@@ -375,7 +389,7 @@ class SMCBotBase:
                     return
 
             # -----------------------------------------------------------------
-            # 2. EXECUTION (The "Doer")
+            # EXECUTION (The "Doer")
             # -----------------------------------------------------------------
             try:
                 # This will raise Exception if order placement fails (e.g. Insufficient Funds)
@@ -521,6 +535,8 @@ class SMCBotBase:
             ]
             if sig.reason:
                 lines.append(f"Reason: {sig.reason}")
+            if sig.metadata:
+                lines.append(f"Metadata: {sig.metadata}")
 
             # PnL Calculation (Exits Only)
             if sig.action == TradeAction.EXIT and display_price > 0:

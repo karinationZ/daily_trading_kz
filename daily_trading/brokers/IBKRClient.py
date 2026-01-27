@@ -23,6 +23,13 @@ def is_not_flat(result):
     return not is_flat
 
 
+def return_last_value(retry_state):
+    """
+    return the result of the last attempt instead of raising a RetryError
+    """
+    return retry_state.outcome.result()
+
+
 class IBKRClient:
     """
     Refactored IBKR Client using ib_async (TWS/Gateway API).
@@ -274,7 +281,7 @@ class IBKRClient:
                 self.ib.cancelOrder(trade.order)
                 logger.info(f"Cancelled Order ID: {trade.order.orderId} (Ref: {trade.order.orderRef})")
 
-    @retry(retry=retry_if_result(is_not_flat), wait=wait_fixed(3), stop=stop_after_attempt(10))  # Stop after 1 minute (12 * 5s)
+    @retry(retry=retry_if_result(is_not_flat), wait=wait_fixed(3), stop=stop_after_attempt(10), retry_error_callback=return_last_value)
     async def wait_for_flat(self, symbol):
         # This will be retried automatically if is_flat is False
         is_flat, pos_size = await self.check_flatness(symbol)

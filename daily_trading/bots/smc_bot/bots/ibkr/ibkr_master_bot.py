@@ -171,10 +171,10 @@ class MasterBot:
                         if not self.is_market_open():
                             break
 
-                        # 4H Summary Logic
-                    if current_hour_int % 4 == 0 and current_hour_int != last_logged_hour_summary:
+                        # 1H Summary Logic
+                    if current_hour_int != last_logged_hour_summary:
                         report = await self.ib_client.get_daily_summary()
-                        logger.info(f"4H Summary:\n{report}")
+                        logger.info(f"1H Summary:\n{report}")
                         await self.orb_bot.telegram_main_channel.send_message(report)
                         last_logged_hour_summary = current_hour_int
 

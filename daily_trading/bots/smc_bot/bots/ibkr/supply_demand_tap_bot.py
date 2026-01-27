@@ -117,7 +117,7 @@ class SupplyDemandTapBot(SMCBotBase):
         for strategy in self.strategies:
             # --- 1. STATE RESTORATION ---
             # Attempt to restore state from IBKR (in case of crash/restart)
-            self.sync_state(strategy, current_positions, open_orders)
+            await self.sync_state(strategy, current_positions, open_orders)
 
             # --- 2. CONFLICT CHECK ---
             # If the strategy is ACTIVE (Restored), we allow it to run even if 'blocked'

@@ -1,4 +1,5 @@
 import asyncio
+import json
 import traceback
 from dataclasses import dataclass
 from datetime import datetime, timedelta
@@ -219,8 +220,7 @@ class SMCBotBase:
         # logger.info(f"🔒 {symbol} locked by {current_lock.strategy_tag}. Skipping.")
         return False
 
-    @staticmethod
-    def sync_state(strategy, current_positions: list, open_orders: list):
+    async def sync_state(self, strategy, current_positions: list, open_orders: list):
         """
         Restores self.active_trade and self.trade_status from IBKR data.
         """
@@ -245,33 +245,34 @@ class SMCBotBase:
                 # This belongs to another strategy (e.g., ORB vs BOS 1H) or is a manual trade.
                 # Do NOT adopt it.
                 return
+
             # We have a live trade. Reconstruct it.
-            direction = BIAS.LONG if my_pos.position > 0 else BIAS.SHORT
+            # CALCULATE DIRECTION
             size = abs(int(my_pos.position))
+            direction = BIAS.LONG if my_pos.position > 0 else BIAS.SHORT
+            direction_str = "LONG" if direction == BIAS.LONG else "SHORT"
             avg_price = my_pos.avgCost
 
-            # Try to find associated Bracket Orders (SL/TP)
-            sl_price = 0.0
-            tp_price = 0.0
+            # FETCH BRACKETS (The new robust method)
+            sl, tp = await self.ib_client.get_active_sl_tp(
+                symbol=strategy.symbol,
+                order_ref=strategy.ext_tag,
+                direction=direction_str
+            )
 
-            # Filter orders that belong to THIS strategy tag
-            my_active_orders = [o for o in open_orders if o.order.orderRef == strategy.ext_tag]
+            # LOG WARNINGS for missing SL/TP
+            # If IBKR returns 0.0 for TP (e.g., user cancelled it manually),
+            # set it to Infinity. This prevents the bot from thinking "Price > 0, Exit Now!"
+            if tp <= 0:
+                msg = f"⚠️ TP not found for {strategy.ext_tag}. Panic Close will be triggered."
+                strategy.log.warning(msg)
+                await strategy.telegram_session_bot.send_message(msg)
 
-            for trade in my_active_orders:
-                # IBKR 'lmtPrice' is 0 for Stop orders, use 'auxPrice'
-                price = trade.order.lmtPrice if trade.order.lmtPrice > 0 else trade.order.auxPrice
-
-                # Deduce if it's SL or TP based on price location vs Entry
-                if direction == BIAS.LONG:
-                    if price < avg_price:
-                        sl_price = price
-                    elif price > avg_price:
-                        tp_price = price
-                else:
-                    if price > avg_price:
-                        sl_price = price
-                    elif price < avg_price:
-                        tp_price = price
+            # If SL is missing, just log it. Bot can still run without SL (risky, but valid software state).
+            if sl <= 0:
+                msg = f"⚠️ SL not found for {strategy.ext_tag}."
+                strategy.log.warning(msg)
+                await strategy.telegram_session_bot.send_message(msg)
 
             # Rehydrate the TradeSignal object
             strategy.active_trade = TradeSignal(
@@ -536,7 +537,7 @@ class SMCBotBase:
             if sig.reason:
                 lines.append(f"Reason: {sig.reason}")
             if sig.metadata:
-                lines.append(f"Metadata: {sig.metadata}")
+                lines.append(f"Metadata: {json.dumps(sig.metadata, indent=1)}")
 
             # PnL Calculation (Exits Only)
             if sig.action == TradeAction.EXIT and display_price > 0:

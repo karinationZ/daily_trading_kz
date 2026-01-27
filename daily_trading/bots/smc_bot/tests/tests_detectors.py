@@ -446,19 +446,14 @@ async def test_ibkr():
 @pytest.mark.asyncio
 async def test_panic_close():
     client = IBKRClient(host=HOST, port=PORT, client_id=CLIENT_ID)
+    SYMBOL = "MES"
+    TAG = "TEST_PANIC_CLOSE_001"
+
+    # 1. CONNECT
     await client.connect()
     await asyncio.sleep(2)
-    print("🔍 Scanning Positions...")
-    blocked = set()
+    assert client.ib.isConnected(), "❌ Failed to connect"
+    logger.info("✅ Connected to IBKR")
 
-    # 2. Get Raw Positions from the internal IB instance
-    positions = await client.get_active_positions()
-    await client.get_open_orders()
-
-    # 2. Build Blocked Set
-    for pos in positions:
-        if pos.position != 0:
-            blocked.add(pos.contract.symbol)
-    # 7. Disconnect
-    client.disconnect()
-    print("👋 Disconnected.")
+    summary = await client.get_daily_summary()
+    print(summary)

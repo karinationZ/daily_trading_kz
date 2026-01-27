@@ -195,7 +195,8 @@ class IBKRClient:
 
         front_month = min(valid_contracts, key=lambda c: c.lastTradeDateOrContractMonth)
 
-        logger.info(f"✅ Resolved {symbol} -> {front_month.localSymbol} (Exp: {front_month.lastTradeDateOrContractMonth})")
+        logger.info(
+            f"✅ Resolved {symbol} -> {front_month.localSymbol} (Exp: {front_month.lastTradeDateOrContractMonth})")
         self._conid_cache[symbol] = front_month
         return front_month
 
@@ -223,13 +224,50 @@ class IBKRClient:
             return df
         return pd.DataFrame()
 
+    async def get_active_sl_tp(self, symbol: str, order_ref: str, direction: str) -> tuple[float, float]:
+        """
+        Retreives the active Stop Loss (auxPrice) and Take Profit (lmtPrice)
+        for a specific strategy tag and direction.
+
+        Returns: (sl_price, tp_price). Returns 0.0 if not found.
+        """
+        # 1. Force a refresh to ensure we see orders placed seconds ago
+        await self.ib.reqOpenOrdersAsync()
+        open_trades = self.ib.openTrades()
+
+        sl_price = 0.0
+        tp_price = 0.0
+
+        # We only look for closing orders (Opposite to position direction)
+        required_action = "SELL" if direction == "LONG" else "BUY"
+
+        for t in open_trades:
+            # 1. Strict Tag & Symbol Match
+            if t.contract.symbol != symbol or t.order.orderRef != order_ref:
+                continue
+
+            # 2. Action Match (Must be a closing order)
+            if t.order.action != required_action:
+                continue
+
+            # 3. Classify based on Order Type
+            # STOP LOSS (STP, TRAIL, STP LMT uses auxPrice)
+            if t.order.orderType in ['STP', 'TRAIL', 'STP LMT']:
+                sl_price = t.order.auxPrice
+
+            # TAKE PROFIT (LMT uses lmtPrice)
+            elif t.order.orderType == 'LMT':
+                tp_price = t.order.lmtPrice
+
+        return sl_price, tp_price
+
     async def place_limit_order(
-        self,
-        symbol: str,
-        quantity: int,
-        price: float,
-        side: str,
-        order_ref: str = "TradingBot",
+            self,
+            symbol: str,
+            quantity: int,
+            price: float,
+            side: str,
+            order_ref: str = "TradingBot",
     ):
         contract = await self.get_futures_contract(symbol)
         price = self.round_to_tick(price, symbol)
@@ -244,14 +282,14 @@ class IBKRClient:
         return trade
 
     async def place_bracket_order(
-        self,
-        symbol: str,
-        quantity: int,
-        entry: float,
-        sl: float,
-        tp: float,
-        direction: str,
-        order_ref: str = "TradingBot",
+            self,
+            symbol: str,
+            quantity: int,
+            entry: float,
+            sl: float,
+            tp: float,
+            direction: str,
+            order_ref: str = "TradingBot",
     ):
         """Natively handles Entry + SL + TP Bracket."""
         contract = await self.get_futures_contract(symbol)
@@ -281,7 +319,8 @@ class IBKRClient:
                 self.ib.cancelOrder(trade.order)
                 logger.info(f"Cancelled Order ID: {trade.order.orderId} (Ref: {trade.order.orderRef})")
 
-    @retry(retry=retry_if_result(is_not_flat), wait=wait_fixed(3), stop=stop_after_attempt(10), retry_error_callback=return_last_value)
+    @retry(retry=retry_if_result(is_not_flat), wait=wait_fixed(3), stop=stop_after_attempt(10),
+           retry_error_callback=return_last_value)
     async def wait_for_flat(self, symbol):
         # This will be retried automatically if is_flat is False
         is_flat, pos_size = await self.check_flatness(symbol)
@@ -374,6 +413,7 @@ class IBKRClient:
                 side = fill.execution.side
                 price = fill.execution.avgPrice
                 qty = fill.execution.shares
+                order_ref = fill.execution.orderRef
                 fill_time = fill.time.astimezone(tz)
 
                 if sym not in open_inventory:
@@ -403,6 +443,7 @@ class IBKRClient:
                             "exit_dt": fill_time,
                             "entry_price": match["price"],
                             "exit_price": price,
+                            "strategy_tag": order_ref
                         }
                     )
 
@@ -427,7 +468,8 @@ class IBKRClient:
 
                     time_diff = (next_t["exit_dt"] - current["exit_dt"]).total_seconds() / 60
 
-                    is_same_group = current["symbol"] == next_t["symbol"] and current["direction"] == next_t["direction"] and time_diff < 5.0
+                    is_same_group = current["symbol"] == next_t["symbol"] and current["direction"] == next_t[
+                        "direction"] and time_diff < 5.0
 
                     if is_same_group:
                         total_qty = current["qty"] + next_t["qty"]
@@ -458,7 +500,8 @@ class IBKRClient:
 
             # 5. Check Overnight
             positions = await self.ib.reqPositionsAsync()
-            actual_pos_map = {p.contract.symbol: p.position for p in positions if p.account == account_id and p.position != 0}
+            actual_pos_map = {p.contract.symbol: p.position for p in positions if
+                              p.account == account_id and p.position != 0}
 
             for sym, items in open_inventory.items():
                 calc_qty = sum([i["qty"] * (1 if i["side"] == "BOT" else -1) for i in items])
@@ -496,9 +539,10 @@ class IBKRClient:
                     t_entry = t["entry_dt"].strftime("%H:%M")
                     t_exit = t["exit_dt"].strftime("%H:%M")
 
+                    strategy_info = f" {t['strategy_tag']}" if t['strategy_tag'] else ""
                     header = f"{icon} {t['symbol']} {t['direction']} ({int(t['qty'])}) <b>${t['pnl']:+.2f}</b>"
                     details = f"   ⏳ {t_entry} @ {t['entry_price']:,.2f} ➜ {t_exit} {tz} @ {t['exit_price']:,.2f}"
-                    lines.append(f"{header}\n{details}")
+                    lines.append(f"\n{strategy_info} - {header}\n{details}\n")
             else:
                 lines.append("💤 No round-trip trades completed today.")
 

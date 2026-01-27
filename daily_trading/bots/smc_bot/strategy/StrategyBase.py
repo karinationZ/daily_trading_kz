@@ -30,7 +30,7 @@ SESSION_MAP = {
     "America/New_York": {
         "start_hour": 9,
         "start_minute": 30,
-        "end_hour": 16,
+        "end_hour": 17,
         "end_minute": 0,
     },
     # LONDON: 8:00 AM - 2:30 PM London Time (Captures the Euro open)
@@ -40,8 +40,8 @@ SESSION_MAP = {
         "end_hour": 13,
         "end_minute": 30,
     },
-    # ASIA (Tokyo): 9:00 AM - 3:00 PM JST
-    "Asia/Tokyo": {"start_hour": 9, "start_minute": 0, "end_hour": 15, "end_minute": 0},
+    # ASIA (Tokyo): 9:00 AM - 4:00 PM JST
+    "Asia/Tokyo": {"start_hour": 9, "start_minute": 0, "end_hour": 16, "end_minute": 0},
 }
 
 

@@ -22,8 +22,7 @@ from daily_trading.settings import logger, TELEGRAM_MAIN_CHANNEL_CHAT_ID
 
 CONFIG = [
     # MES_NY - Score: 101.98 | WR: 54.29% | Edge: 20.96% | Trades: 105
-    {'name': 'MES_NY_sw8_int5_rr2.0_mit0.5_sl0.5', 'symbol': 'MES', 'tz_name': 'NY', 'sw': 8, 'int': 5, 'rr': 2.0,
-     'mit': 0.5, 'sl_buffer_mult': 0.5},
+    {'name': 'MES_NY_sw8_int5_rr2.0_mit0.5_sl0.5', 'symbol': 'MES', 'tz_name': 'NY', 'sw': 8, 'int': 5, 'rr': 2.0, 'mit': 0.5, 'sl_buffer_mult': 0.5},
     # MES_LONDON - Score: 112.96 | WR: 61.54% | Edge: 32.97% | Trades: 91
     {
         'name': 'MES_LONDON_sw8_int3_rr2.5_mit0.1_sl0.1',
@@ -55,7 +54,7 @@ CONFIG = [
         'int': 5,
         'rr': 2.5,
         'mit': 0.75,
-        'sl_buffer_mult': 1.0
+        'sl_buffer_mult': 1.0,
     },
     # MGC_NY - Score: 103.27 | WR: 66.67% | Edge: 33.34% | Trades: 57
     {
@@ -80,9 +79,16 @@ CONFIG = [
         'sl_buffer_mult': 0.1,
     },
     # MGC_LONDON - Score: 80 | WR: 60 | Edge: 20% | Trades: 60
-    {'name': 'MGC_LONDON_sw24_int5_rr1.5_mit0.1_sl1.0',
-     'symbol': 'MGC', 'tz_name': 'LONDON',
-     'sw': 24, 'int': 5, 'rr': 1.5, 'mit': 0.1, 'sl_buffer_mult': 1.0},
+    {
+        'name': 'MGC_LONDON_sw24_int5_rr1.5_mit0.1_sl1.0',
+        'symbol': 'MGC',
+        'tz_name': 'LONDON',
+        'sw': 24,
+        'int': 5,
+        'rr': 1.5,
+        'mit': 0.1,
+        'sl_buffer_mult': 1.0,
+    },
     # MBT_LONDON - Score: 105.34 | WR: 57.14% | Edge: 17.14% | Trades: 49
     {
         'name': 'MBT_LONDON_sw45_int5_rr1.5_mit0.1_sl1.2',

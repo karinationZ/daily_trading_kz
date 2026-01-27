@@ -446,8 +446,6 @@ async def test_ibkr():
 @pytest.mark.asyncio
 async def test_panic_close():
     client = IBKRClient(host=HOST, port=PORT, client_id=CLIENT_ID)
-    SYMBOL = "MES"
-    TAG = "TEST_PANIC_CLOSE_001"
 
     # 1. CONNECT
     await client.connect()

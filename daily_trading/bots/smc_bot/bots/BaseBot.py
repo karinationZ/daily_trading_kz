@@ -254,11 +254,7 @@ class SMCBotBase:
             avg_price = my_pos.avgCost
 
             # FETCH BRACKETS (The new robust method)
-            sl, tp = await self.ib_client.get_active_sl_tp(
-                symbol=strategy.symbol,
-                order_ref=strategy.ext_tag,
-                direction=direction_str
-            )
+            sl, tp = await self.ib_client.get_active_sl_tp(symbol=strategy.symbol, order_ref=strategy.ext_tag, direction=direction_str)
 
             # LOG WARNINGS for missing SL/TP
             # If IBKR returns 0.0 for TP (e.g., user cancelled it manually),
@@ -280,8 +276,8 @@ class SMCBotBase:
                 symbol=strategy.symbol,
                 direction=direction,
                 price=avg_price,
-                sl=sl_price,
-                tp=tp_price,
+                sl=sl,
+                tp=tp,
                 size=size,
                 timestamp=pd.Timestamp.now(tz=strategy.timezone),
                 metadata={"zone_id": "RECOVERED"},  # We lose the original Zone ID, but that's acceptable
@@ -293,7 +289,7 @@ class SMCBotBase:
                 strategy_tag=strategy.ext_tag, status=strategy.trade_status, priority=getattr(strategy, "priority", 1), timestamp=datetime.now()
             )
 
-            strategy.log.info(f"♻️ RESTORED STATE: FILLED {direction.name} @ {avg_price} (SL:{sl_price} TP:{tp_price})")
+            strategy.log.info(f"♻️ RESTORED STATE: FILLED {direction.name} @ {avg_price} (SL:{sl} TP:{tp})")
             return
 
         # 3. Check for PENDING ORDERS (Limit Entry Waiting)
@@ -537,7 +533,8 @@ class SMCBotBase:
             if sig.reason:
                 lines.append(f"Reason: {sig.reason}")
             if sig.metadata:
-                lines.append(f"Metadata: {json.dumps(sig.metadata, indent=1)}")
+                meta_str = json.dumps(sig.metadata, indent=2, default=str)
+                lines.append(f"<pre>{meta_str}</pre>")
 
             # PnL Calculation (Exits Only)
             if sig.action == TradeAction.EXIT and display_price > 0:

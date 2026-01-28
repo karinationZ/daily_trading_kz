@@ -1,5 +1,5 @@
 import asyncio
-from datetime import datetime
+from datetime import datetime, timedelta
 from zoneinfo import ZoneInfo
 
 from daily_trading.bots.smc_bot.bots.ibkr.bos_bot import BosOrderBlockBot
@@ -155,7 +155,6 @@ class MasterBot:
                 logger.error("Failed to fetch startup summary.")
 
         while True:
-            await asyncio.sleep(1.0)
             try:
                 # 1. Time Check
                 ny_now = datetime.now(ZoneInfo("America/New_York"))
@@ -221,16 +220,17 @@ class MasterBot:
                         logger.info(msg)
                         await self.orb_bot.telegram_debug_channel.send_message(msg)
 
-                    # # Pass State to Bots
-                    # await asyncio.gather(
-                    #     self.bos_ob_bot.execute_cycle(market_data, blocked, positions, orders),
-                    #     self.orb_bot.execute_cycle(market_data, blocked, positions, orders),
-                    # )  # Breath
-                    await self.orb_bot.execute_cycle(market_data, blocked, positions, orders)
-                    await asyncio.sleep(1.0)
-                    await self.bos_ob_bot.execute_cycle(market_data, blocked, positions, orders)
+                    logger.info("🤖 Executing bots in parallel...")
+                    try:
+                        await asyncio.gather(
+                            self.orb_bot.execute_cycle(market_data, blocked, positions, orders),
+                            self.bos_ob_bot.execute_cycle(market_data, blocked, positions, orders),
+                        )
 
-                    # --- C. Wait for Next Candle ---
+                        logger.info("✅ Both bots completed successfully")
+                    except Exception as e:
+                        logger.error(f"❌ Bot execution error: {e}", exc_info=True)
+
                     await self.sleep_until_next_candle()
 
                 else:
@@ -252,18 +252,59 @@ class MasterBot:
                 await asyncio.sleep(60)
 
     async def sleep_until_next_candle(self):
-        """Waits for next 5m candle, but checks connection/signals every 1s."""
-        now = datetime.now()
-        minutes = 5 - (now.minute % 5)
-        seconds = (minutes * 60) - now.second
-        if seconds <= 0:
-            seconds = 300
+        """
+        Waits until the next 5-minute boundary (e.g., 11:10:00, 11:15:00, 11:20:00).
+        Aligns to clock time regardless of when bot started.
+        Checks connection every 10 seconds while waiting.
+        """
+        try:
+            now = datetime.now(ZoneInfo("America/New_York"))
 
-        target_time = datetime.now().timestamp() + seconds
-        logger.info(f"⏳ Waiting {seconds}s for next candle...")
+            # Calculate next 5-minute boundary
+            current_minute = now.minute
+            current_second = now.second
 
-        while datetime.now().timestamp() < target_time:
-            # 1. Sleep briefly to keep CPU at 0%
-            await asyncio.sleep(1.0)
-        await self.ibkr_check_connection()
-        return
+            # How many minutes until next 5-minute mark?
+            minutes_to_next = 5 - (current_minute % 5)
+            if minutes_to_next == 5 and current_second == 0:
+                # If we're exactly on a 5-minute mark, wait for next one
+                minutes_to_next = 5
+
+            # Calculate exact target time
+            target = now.replace(second=0, microsecond=0) + timedelta(minutes=minutes_to_next)
+
+            # How many seconds to wait?
+            wait_seconds = (target - now).total_seconds()
+
+            logger.info(f"⏳ Current time: {now.strftime('%H:%M:%S')}")
+            logger.info(f"⏰ Next candle: {target.strftime('%H:%M:%S')} (waiting {wait_seconds:.1f}s)")
+
+            # Wait with periodic connection checks
+            check_interval = 10  # Check connection every 10 seconds
+            elapsed = 0
+
+            while elapsed < wait_seconds:
+                # Calculate how long to sleep this iteration
+                remaining = wait_seconds - elapsed
+                sleep_time = min(check_interval, remaining)
+
+                if sleep_time > 0:
+                    await asyncio.sleep(sleep_time)
+                    elapsed += sleep_time
+
+                # Periodic connection check (but not on the last iteration)
+                if elapsed < wait_seconds:
+                    is_connected = await self.ibkr_check_connection()
+                    if not is_connected:
+                        logger.warning("⚠️ Connection lost during wait period")
+
+            # Final timestamp log
+            final_time = datetime.now(ZoneInfo("America/New_York"))
+            logger.info(f"🎯 Candle time reached! Current time: {final_time.strftime('%H:%M:%S.%f')[:-3]}")
+
+            return
+
+        except Exception as e:
+            logger.error(f"❌ Error in sleep_until_next_candle: {e}", exc_info=True)
+            # Fallback: sleep 5 minutes
+            await asyncio.sleep(300)

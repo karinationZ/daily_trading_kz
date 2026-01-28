@@ -544,56 +544,54 @@ class SMCBotBase:
                 strategy.trade_status = TradeStatus.FILLED
                 fill_price = await self.ib_client.get_last_fill_price(strategy.symbol)
                 msg = f"⚡ ORDER FILLED | {strategy.log_tag} @ {fill_price:.2f}"
-                logger.info(msg)
+                strategy.log.info(msg)
                 await strategy.telegram_session_bot.send_message(msg)
 
     async def run_strategy_cycle(self, strategy, *args, **kwargs):
         """
         Main orchestration loop. Logic is split into helper methods for readability.
         """
+        strategy.log.info(f"🔵 run_strategy_cycle({strategy.symbol}) STARTED")
         try:
-            # 1. ANALYSIS
+            # ANALYSIS
             analysis = await strategy.analyze(*args, **kwargs)
+            # STATUS CHECK (Did a pending order fill?)
+            await self._check_and_update_pending_status(strategy)
+
             sig = analysis.trade_signal
             if not sig:
                 return
 
-            # 2. STATUS CHECK (Did a pending order fill?)
-            await self._check_and_update_pending_status(strategy)
-
-            # 3. LOCK CHECK (Can we enter?)
             if sig.action == TradeAction.ENTER:
                 if not await self._is_symbol_available(strategy, sig.symbol):
                     return
 
-            # 4. EXECUTION & LOCK MANAGEMENT
-            try:
-                await self.handle_execution(strategy, analysis)
+            # EXECUTION & LOCK MANAGEMENT
+            await self.handle_execution(strategy, analysis)
 
-                # Update Locks on Success
-                if sig.action == TradeAction.ENTER:
-                    self.ACTIVE_SYMBOL_LOCKS[strategy.symbol] = LockInfo(
-                        strategy_tag=strategy.ext_tag, status=strategy.trade_status, priority=strategy.priority, timestamp=datetime.now()
-                    )
-                elif sig.action in [TradeAction.EXIT, TradeAction.CANCEL]:
-                    self.ACTIVE_SYMBOL_LOCKS.pop(strategy.symbol, None)
+            # Update Locks on Success
+            if sig.action == TradeAction.ENTER:
+                self.ACTIVE_SYMBOL_LOCKS[strategy.symbol] = LockInfo(
+                    strategy_tag=strategy.ext_tag, status=strategy.trade_status, priority=strategy.priority, timestamp=datetime.now()
+                )
+            elif sig.action in [TradeAction.EXIT, TradeAction.CANCEL]:
+                self.ACTIVE_SYMBOL_LOCKS.pop(strategy.symbol, None)
 
-            except Exception as exe_err:
-                strategy.log.error(f"Execution Aborted: {exe_err}")
+            # CLEANUP (Locks & Orphans) - CRITICAL SECTION
+            await self._finalize_locks_and_orphans(strategy)
 
-            finally:
-                # 5. CLEANUP (Locks & Orphans) - CRITICAL SECTION
-                await self._finalize_locks_and_orphans(strategy)
-
-            # 6. SAFETY NET (Post-Execution Validation)
+            # SAFETY NET
+            strategy.log.info("🛡️ Running safety checks...")
             await self._perform_post_execution_safety(strategy, sig)
 
-            # 7. TELEMETRY (Reporting)
+            # TELEMETRY
+            strategy.log.info("📤 Sending telemetry...")
             await self._send_trade_telemetry(strategy, sig)
 
+            strategy.log.info(f"🟢 run_strategy_cycle({strategy.symbol}) COMPLETED")
+
         except Exception as e:
-            logger.error(f"Strategy Cycle Error: {traceback.format_exc()}\n{e}")
-        await asyncio.sleep(1)
+            strategy.log.error(f"Strategy Cycle Error: {traceback.format_exc()}\n{e}")
 
     async def handle_execution(self, strategy, analysis: SignalSummary) -> bool:
 
@@ -663,7 +661,7 @@ class SMCBotBase:
                     # DO NOTHING. Trust the IBKR Bracket to execute.
                     # If we interfere, we might create orphan orders.
                     strategy.log.info(f"👀 PASSIVE EXIT DETECTED ({sig.trade_result}). Monitor Only.")
-                    is_flat, pos_size = await self.ib_client.wait_for_flat()
+                    is_flat, pos_size = await self.ib_client.wait_for_flat(strategy.symbol)
                     if not is_flat:
                         strategy.log.error(f"❌ EXIT FAILURE: Position still open after passive exit. Size: {pos_size}")
                         await strategy.telegram_session_bot.send_message(

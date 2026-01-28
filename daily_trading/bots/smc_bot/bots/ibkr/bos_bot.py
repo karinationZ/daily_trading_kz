@@ -160,18 +160,10 @@ class BosOrderBlockBot(SMCBotBase):
         Called by MasterBot.
         Needs both 5m and 1h data.
         """
+        logger.info(f"🔵 {self.__class__.__name__}.execute_cycle() STARTED [VERSION 2.0 WITH 120s TIMEOUT]")
+
         tasks = []
         for strategy in self.strategies:
-            # CONFLICT CHECK OLD
-            # If the strategy is ACTIVE (Restored), we allow it to run even if 'blocked'
-            # (because it is blocked by itself).
-
-            # If it is INACTIVE and blocked, we skip it.
-            # if strategy.symbol in blocked_symbols and strategy.trade_status == TradeStatus.NONE:
-            #     strategy.log.warning(f"Skipping {strategy.symbol} (Busy in another strategy)")
-            #     continue
-
-            # 2. Extract Data
             sym_data = market_data.get(strategy.symbol, {})
             df_5m = sym_data.get("5m")
             df_1h = sym_data.get("1h")
@@ -192,4 +184,24 @@ class BosOrderBlockBot(SMCBotBase):
                 strategy.log.info(f"💤 {strategy.tz_short} Session has not started yet!")
 
         if tasks:
-            await asyncio.gather(*tasks)
+            logger.info(f"🔧 Running {len(tasks)} strategy tasks...")
+            try:
+                results = await asyncio.wait_for(asyncio.gather(*tasks, return_exceptions=True), timeout=180)
+
+                # Check each result
+                for i, result in enumerate(results):
+                    if isinstance(result, Exception):
+                        logger.error(f"❌ Task {i} failed with exception: {result}", exc_info=result)
+                    else:
+                        logger.info(f"✅ Task {i} completed successfully")
+
+            except asyncio.TimeoutError:
+                logger.error(f"⏰ TIMEOUT: {self.__class__.__name__} tasks took longer than 3 min!")
+                raise
+            except Exception as e:
+                logger.error(f"❌ Unexpected error in gather: {e}", exc_info=True)
+                raise
+        else:
+            logger.info(f"⚪ No active strategies in {self.__class__.__name__}")
+
+        logger.info(f"🟢 {self.__class__.__name__}.execute_cycle() COMPLETED")

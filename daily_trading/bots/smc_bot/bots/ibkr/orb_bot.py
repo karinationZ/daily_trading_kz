@@ -113,18 +113,9 @@ class ORBBot(SMCBotBase):
          market_data: Dict structure { "MNQ": {"5m": df, "1h": df} }
          blocked_symbols: Set of symbols active in other bots (conflict prevention).
         """
+        logger.info(f"🔵 {self.__class__.__name__}.execute_cycle() STARTED")
         tasks = []
         for strategy in self.strategies:
-            # CONFLICT CHECK (OLD) ---
-            # If the strategy is ACTIVE (Restored), we allow it to run even if 'blocked'
-            # (because it is blocked by itself).
-
-            # If it is INACTIVE and blocked, we skip it.
-            # if strategy.symbol in blocked_symbols and strategy.trade_status == TradeStatus.NONE:
-            #     # Only log occasionally to avoid spam
-            #     strategy.log.warning(f"Skipping {strategy.symbol} (Busy in another strategy)")
-            #     continue
-
             # 2. Extract Data: ORBBot only needs "5m" data.
             sym_data = market_data.get(strategy.symbol, {})
             df_5m = sym_data.get("5m")
@@ -141,4 +132,18 @@ class ORBBot(SMCBotBase):
                 else:
                     strategy.log.info(f"💤 {strategy.tz_short} Session has not started yet!")
         if tasks:
-            await asyncio.gather(*tasks)
+            logger.info(f"🔧 Running {len(tasks)} strategy tasks...")
+            try:
+                # ADD TIMEOUT HERE
+                await asyncio.wait_for(asyncio.gather(*tasks), timeout=180.0)  # 3 minutes max per bot
+                logger.info(f"✅ All {len(tasks)} tasks completed")
+            except asyncio.TimeoutError:
+                logger.error(f"⏰ TIMEOUT: {self.__class__.__name__} tasks took longer than 3 minutes!")
+                raise
+            except Exception as e:
+                logger.error(f"❌ Error in {self.__class__.__name__} tasks: {e}", exc_info=True)
+                raise
+        else:
+            logger.info(f"⚪ No active strategies in {self.__class__.__name__}")
+
+        logger.info(f"🟢 {self.__class__.__name__}.execute_cycle() COMPLETED")

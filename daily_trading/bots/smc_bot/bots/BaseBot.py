@@ -455,6 +455,14 @@ class SMCBotBase:
                     # ✅ SUCCESS: We are flat (either on Pass 1 or Pass 2).
                     # ALWAYS run cleanup here to ensure no orphan orders remain.
                     await self.ib_client.cancel_all_orders(order_ref=strategy.ext_tag)
+                    # Double-check for orphan orders
+                    await asyncio.sleep(5.0)
+                    open_orders = await self.ib_client.get_open_orders()
+                    hanging_orders = [o for o in open_orders if o.order.orderRef == strategy.ext_tag]
+
+                    if hanging_orders:
+                        logger.error(f"⚠️ ORPHAN ORDERS DETECTED after Exit! Found {len(hanging_orders)}. Retrying cancel.")
+                        await self.ib_client.cancel_all_orders(order_ref=strategy.ext_tag)
 
             elif sig.action == TradeAction.ENTER:
                 # Wait 2s for the Bracket Order to register in the system

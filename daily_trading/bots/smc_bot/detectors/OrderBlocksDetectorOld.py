@@ -10,7 +10,7 @@ class OrderBlocksDetectorOld(DetectorsBase):
     def __init__(self, main_tf, left_bars=5, right_bars=5, tap_back_ratio=0.1):
         super().__init__(main_tf=main_tf, left_bars=left_bars, right_bars=right_bars)
         self.tap_back_ratio = tap_back_ratio
-        logger.debug(f"Initialized OrderBlocksDetector with main_tf={main_tf}, tap_back_ratio={tap_back_ratio}.")
+        logger.info(f"Initialized OrderBlocksDetector with main_tf={main_tf}, tap_back_ratio={tap_back_ratio}.")
 
     def detect_order_block(self, ohlc: pd.DataFrame) -> list:
         """
@@ -23,7 +23,7 @@ class OrderBlocksDetectorOld(DetectorsBase):
         Returns:
         - List of dicts: {"type": str, "top": float, "bottom": float, "time": Timestamp, "index": int, "breaker": bool, "break_loc": Timestamp/None}
         """
-        logger.debug(f"Detecting Order Blocks (OB) on OHLC data with {len(ohlc)} rows")
+        logger.info(f"Detecting Order Blocks (OB) on OHLC data with {len(ohlc)} rows")
         ohlc = self.validate_data(ohlc)
         pivot_highs, pivot_lows = self.calculate_pivots(ohlc)
         bullish_ob = []
@@ -54,7 +54,7 @@ class OrderBlocksDetectorOld(DetectorsBase):
                                     "break_loc": None,
                                 }
                                 bullish_ob.append(ob_item)
-                                logger.debug(f"Bullish OB detected at {ohlc.index[j]}: top={ob_item['top']:.6f}, bottom={ob_item['bottom']:.6f}")
+                                logger.info(f"Bullish OB detected at {ohlc.index[j]}: top={ob_item['top']:.6f}, bottom={ob_item['bottom']:.6f}")
                                 break
 
             # Detect bearish OB: last bullish candle before breaking swing low
@@ -75,7 +75,7 @@ class OrderBlocksDetectorOld(DetectorsBase):
                                     "break_loc": None,
                                 }
                                 bearish_ob.append(ob_item)
-                                logger.debug(f"Bearish OB detected at {ohlc.index[j]}: top={ob_item['top']:.6f}, bottom={ob_item['bottom']:.6f}")
+                                logger.info(f"Bearish OB detected at {ohlc.index[j]}: top={ob_item['top']:.6f}, bottom={ob_item['bottom']:.6f}")
                                 break
 
         # Process mitigation
@@ -86,7 +86,7 @@ class OrderBlocksDetectorOld(DetectorsBase):
                 # Check exit (close above top)
                 if not ob["breaker"] and ohlc["close"].iloc[i] > ob["top"]:
                     ob["exited"] = True
-                    logger.debug(f"Bullish OB exited at {ohlc.index[i]}: top={ob['top']:.6f}, close={ohlc['close'].iloc[i]:.6f}")
+                    logger.info(f"Bullish OB exited at {ohlc.index[i]}: top={ob['top']:.6f}, close={ohlc['close'].iloc[i]:.6f}")
                 # Check 10% tap-back after exit
                 elif ob.get("exited", False):
                     block_size = ob["top"] - ob["bottom"]
@@ -94,7 +94,7 @@ class OrderBlocksDetectorOld(DetectorsBase):
                     if ohlc["low"].iloc[i] <= tap_threshold:
                         ob["breaker"] = True
                         ob["break_loc"] = ohlc.index[i]
-                        logger.debug(
+                        logger.info(
                             f"Bullish OB mitigated at {ohlc.index[i]}: top={ob['top']:.6f}, bottom={ob['bottom']:.6f}, tap_threshold={tap_threshold:.6f}"
                         )
                         break
@@ -106,7 +106,7 @@ class OrderBlocksDetectorOld(DetectorsBase):
                 # Check exit (close below bottom)
                 if not ob["breaker"] and ohlc["close"].iloc[i] < ob["bottom"]:
                     ob["exited"] = True
-                    logger.debug(f"Bearish OB exited at {ohlc.index[i]}: bottom={ob['bottom']:.6f}, close={ohlc['close'].iloc[i]:.6f}")
+                    logger.info(f"Bearish OB exited at {ohlc.index[i]}: bottom={ob['bottom']:.6f}, close={ohlc['close'].iloc[i]:.6f}")
                 # Check 10% tap-back after exit
                 elif ob.get("exited", False):
                     block_size = ob["top"] - ob["bottom"]
@@ -114,19 +114,19 @@ class OrderBlocksDetectorOld(DetectorsBase):
                     if ohlc["high"].iloc[i] >= tap_threshold:
                         ob["breaker"] = True
                         ob["break_loc"] = ohlc.index[i]
-                        logger.debug(
+                        logger.info(
                             f"Bearish OB mitigated at {ohlc.index[i]}: top={ob['top']:.6f}, bottom={ob['bottom']:.6f}, tap_threshold={tap_threshold:.6f}"
                         )
                         break
             # Remove if latest close is beyond block
             if ob["breaker"] and ohlc["close"].iloc[-1] < ob["bottom"]:
                 bearish_ob.remove(ob)
-                logger.debug(f"Bearish OB removed: bottom={ob['bottom']:.6f}, current_price={ohlc['close'].iloc[-1]:.6f}")
+                logger.info(f"Bearish OB removed: bottom={ob['bottom']:.6f}, current_price={ohlc['close'].iloc[-1]:.6f}")
 
         # Remove bullish OBs if latest close is beyond block
         bullish_ob = [ob for ob in bullish_ob if not (ob["breaker"] and ohlc["close"].iloc[-1] > ob["top"])]
         order_blocks = bullish_ob + bearish_ob
-        logger.debug(f"Detected {len(order_blocks)} OBs: {len(bullish_ob)} bullish, {len(bearish_ob)} bearish")
+        logger.info(f"Detected {len(order_blocks)} OBs: {len(bullish_ob)} bullish, {len(bearish_ob)} bearish")
         return order_blocks
 
     def calculate_order_blocks(self, ohlc, plot=True):
@@ -135,11 +135,11 @@ class OrderBlocksDetectorOld(DetectorsBase):
         if plot:
             fig = self._plot_order_blocks(ohlc, order_blocks)
 
-        logger.debug(f"OB: {order_blocks}")
+        logger.info(f"OB: {order_blocks}")
         return {"fig": fig, "order_blocks": order_blocks}
 
     def _plot_order_blocks(self, ohlc, order_blocks):
-        logger.debug("Generating Plotly figure for Order Blocks")
+        logger.info("Generating Plotly figure for Order Blocks")
 
         ohlc = self.validate_data(ohlc)
         # Limit to last X rows
@@ -210,8 +210,8 @@ class OrderBlocksDetectorOld(DetectorsBase):
             end_time = ob["break_loc"] if ob["breaker"] else ohlc.index[-1]
             if ob["breaker"] and end_time not in ohlc.index:
                 end_time = ohlc.index[ohlc.index.get_loc(end_time, method="nearest")]
-                logger.debug(f"Adjusted end_time to nearest OHLC index: {end_time} for OB at {ob['time']}")
-            logger.debug(
+                logger.info(f"Adjusted end_time to nearest OHLC index: {end_time} for OB at {ob['time']}")
+            logger.info(
                 f"Adding OB rectangle: x0={ob['time']}, x1={end_time}, y0={ob['bottom']:.6f}, y1={ob['top']:.6f}, "
                 f"fillcolor={fillcolor}, line_color={line_color}, line_dash={line_dash}"
             )
@@ -247,7 +247,7 @@ class OrderBlocksDetectorOld(DetectorsBase):
             row=1,
             col=1,
         )
-        logger.debug("Plotly figure generated successfully")
+        logger.info("Plotly figure generated successfully")
         return fig
 
     def merge_bos_ob_plots(
@@ -270,7 +270,7 @@ class OrderBlocksDetectorOld(DetectorsBase):
         Returns:
         - go.Figure: Combined Plotly figure with interrupted BOS lines and OB rectangles
         """
-        logger.debug("Generating combined BOS and OB Plotly figure")
+        logger.info("Generating combined BOS and OB Plotly figure")
         ohlc_15m = ohlc_15m.sort_index()
 
         # Limit to last plot_tail rows
@@ -304,12 +304,12 @@ class OrderBlocksDetectorOld(DetectorsBase):
                 for s in bos_signals
                 if (s["time"] >= min_ob_time and s["time"] <= max_ob_time) or (s["fractal_time"] >= min_ob_time and s["fractal_time"] <= max_ob_time)
             ]
-            logger.debug(
+            logger.info(
                 f"Filtered {len(bos_signals)} BOS signals to {len(filtered_bos_signals)} within expanded time window: {min_ob_time} to {max_ob_time}"
             )
         else:
             filtered_bos_signals = bos_signals  # If no OB signals, include all BOS signals
-            logger.debug("No OB signals, including all BOS signals")
+            logger.info("No OB signals, including all BOS signals")
 
         # Add BOS/CHoCH signals with interrupted lines and centered text
         for signal in filtered_bos_signals:
@@ -391,9 +391,9 @@ class OrderBlocksDetectorOld(DetectorsBase):
                     end_time = ob["break_loc"] if ob["breaker"] else ohlc_15m.index[-1]
                     if ob["breaker"] and end_time not in ohlc_15m.index:
                         end_time = ohlc_15m.index[ohlc_15m.index.get_indexer([end_time], method="nearest")[0]]
-                        logger.debug(f"Adjusted end_time to nearest OHLC index: {end_time} for OB at {ob['time']}")
+                        logger.info(f"Adjusted end_time to nearest OHLC index: {end_time} for OB at {ob['time']}")
 
-                    logger.debug(
+                    logger.info(
                         f"Adding OB rectangle: x0={ob['time']}, x1={end_time}, y0={ob['bottom']:.6f}, y1={ob['top']:.6f}, "
                         f"fillcolor={fillcolor}, line_color={line_color}, line_dash={line_dash}"
                     )
@@ -434,5 +434,5 @@ class OrderBlocksDetectorOld(DetectorsBase):
             col=1,
         )
 
-        logger.debug("Combined BOS and OB figure generated successfully")
+        logger.info("Combined BOS and OB figure generated successfully")
         return fig

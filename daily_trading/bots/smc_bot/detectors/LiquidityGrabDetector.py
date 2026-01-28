@@ -47,7 +47,7 @@ class LiquidityGrabDetector(DetectorsBase):
         self.sellside_liqs = []
         self.last_buyside_grab = -cooldown - 1
         self.last_sellside_grab = -cooldown - 1
-        logger.debug(
+        logger.info(
             f"Initialized LiquidityGrabDetector with main_tf={main_tf}, pivot_length={pivot_length}, "
             f"wick_body_ratio={wick_body_ratio}, liq_zone_count={liq_zone_count}, cooldown={cooldown}, "
             f"volume_threshold={volume_threshold}, left_bars={left_bars}, right_bars={right_bars}"
@@ -127,7 +127,7 @@ class LiquidityGrabDetector(DetectorsBase):
                             }
                         )
                         self.last_buyside_grab = i
-                        logger.debug(
+                        logger.info(
                             f"Bullish Liquidity Grab detected: level={cur_liq:.6f}, time={ohlc.index[i]}, volume={ohlc['volume'].iloc[i]:.2f}, size={grab_size}"
                         )
                     liqs_to_remove.append(cur_liq)
@@ -158,7 +158,7 @@ class LiquidityGrabDetector(DetectorsBase):
                                 }
                             )
                             self.last_sellside_grab = i
-                            logger.debug(
+                            logger.info(
                                 f"Bearish Liquidity Grab detected: level={cur_liq:.6f}, time={ohlc.index[i]}, volume={ohlc['volume'].iloc[i]:.2f}, size={grab_size}"
                             )
                         liqs_to_remove.append(cur_liq)
@@ -190,7 +190,7 @@ class LiquidityGrabDetector(DetectorsBase):
             - fig (go.Figure): Plotly figure with candlesticks and grab signals (if plot=True).
             - signals (list): List of detected liquidity grab signals.
         """
-        logger.debug(
+        logger.info(
             f"Starting liquidity grab calculation with pivot_length={self.pivot_length}, "
             f"wick_body_ratio={self.wick_body_ratio}, liq_zone_count={self.liq_zone_count}, cooldown={self.cooldown}"
         )
@@ -210,7 +210,7 @@ class LiquidityGrabDetector(DetectorsBase):
         if plot:
             fig = self._plot_grabs(ohlc, signals)
 
-        logger.debug(
+        logger.info(
             f"Detected {len(signals)} liquidity grabs: {sum(1 for s in signals if s['bias'] == BULLISH)} bullish, "
             f"{sum(1 for s in signals if s['bias'] == BEARISH)} bearish"
         )
@@ -231,7 +231,7 @@ class LiquidityGrabDetector(DetectorsBase):
         ohlc = ohlc.tail(self.plot_tail)
         symbol = ohlc["symbol"].iloc[0] if "symbol" in ohlc.columns else "Unknown"
 
-        logger.debug("Generating Plotly figure for liquidity grabs")
+        logger.info("Generating Plotly figure for liquidity grabs")
         ohlc = self.validate_data(ohlc)
         fig = make_subplots(
             rows=1,
@@ -297,5 +297,5 @@ class LiquidityGrabDetector(DetectorsBase):
             margin=dict(t=100, b=100, l=50, r=50),
         )
         fig.update_xaxes(title_text="Time", row=1, col=1)
-        logger.debug("Plotly figure generated successfully")
+        logger.info("Plotly figure generated successfully")
         return fig

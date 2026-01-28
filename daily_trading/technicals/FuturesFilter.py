@@ -61,7 +61,7 @@ class FuturesFilter:
                 logger.error(error_msg)
                 raise ValueError(error_msg)
 
-            logger.debug(f"{symbol} prev day data: High={prev_day_high}, Low={prev_day_low}, Time={prev_day_timestamp}")
+            logger.info(f"{symbol} prev day data: High={prev_day_high}, Low={prev_day_low}, Time={prev_day_timestamp}")
 
             start = today_midnight.timestamp() * 1000
             first_candle_data = self.cl.get_klines(symbol=symbol, interval=INTERVAL, limit=1, end_time=int(start))[0]

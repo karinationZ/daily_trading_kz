@@ -22,7 +22,7 @@ class FakeBreakoutDetector(DetectorsBase):
         - lower_tf (str): Lower timeframe for analysis (e.g., '15m', '1h', '4h').
         """
         super().__init__(main_tf=main_tf)
-        logger.debug(f"Initialized FalseBreakoutDetector with lower_tf={main_tf}, length={self.length}")
+        logger.info(f"Initialized FalseBreakoutDetector with lower_tf={main_tf}, length={self.length}")
 
     def calculate_false_breakouts(self, ohlc, plot=True):
         """
@@ -57,7 +57,7 @@ class FakeBreakoutDetector(DetectorsBase):
             "false_breakouts": false_breakouts,
             "alert_conditions": alert_conditions,
         }
-        logger.debug(f"Completed false breakout detection: {len(false_breakouts)} false breakouts found.")
+        logger.info(f"Completed false breakout detection: {len(false_breakouts)} false breakouts found.")
         return results
 
     def identify_false_breakouts_logic(self, ohlc, pivot_high_points, pivot_low_points):
@@ -92,7 +92,7 @@ class FakeBreakoutDetector(DetectorsBase):
                 pivot_idx = ohlc.index.get_loc(pivot_time)
                 window = ohlc.iloc[pivot_idx + 1 : pivot_idx + 1 + LOOKAHEAD_CANDLES]
             except KeyError:
-                logger.debug(f"Pivot time {pivot_time} not found in OHLC data, skipping")
+                logger.info(f"Pivot time {pivot_time} not found in OHLC data, skipping")
                 continue
 
             for candle_time, candle in window.iterrows():
@@ -102,7 +102,7 @@ class FakeBreakoutDetector(DetectorsBase):
 
                 # Skip if candle range is too small
                 if candle_range < min_range:
-                    logger.debug(f"Skipping candle at time {candle_time}, range={candle_range:.6f} < min_range={min_range:.6f}")
+                    logger.info(f"Skipping candle at time {candle_time}, range={candle_range:.6f} < min_range={min_range:.6f}")
                     continue
 
                 # Check for valid breakout (price exceeds pivot level + threshold)
@@ -124,7 +124,7 @@ class FakeBreakoutDetector(DetectorsBase):
                                 "candle_range": candle_range,
                             }
                         )
-                        logger.debug(
+                        logger.info(
                             f"Detected bearish false breakout at time {candle_time}, "
                             f"high={candle['high']:.6f}, close={candle['close']:.6f}, "
                             f"pivot_level={pivot_level:.6f}, wick_ratio={wick_ratio:.2f}, "
@@ -133,7 +133,7 @@ class FakeBreakoutDetector(DetectorsBase):
                         break
                     # If it closed above, it's a valid breakout - move to next pivot
                     elif candle["close"] >= pivot_level:
-                        logger.debug(
+                        logger.info(
                             f"Valid bearish breakout at time {candle_time}, "
                             f"high={candle['high']:.6f}, close={candle['close']:.6f}, "
                             f"pivot_level={pivot_level:.6f}"
@@ -148,7 +148,7 @@ class FakeBreakoutDetector(DetectorsBase):
                 pivot_idx = ohlc.index.get_loc(pivot_time)
                 window = ohlc.iloc[pivot_idx + 1 : pivot_idx + 1 + LOOKAHEAD_CANDLES]
             except KeyError:
-                logger.debug(f"Pivot time {pivot_time} not found in OHLC data, skipping")
+                logger.info(f"Pivot time {pivot_time} not found in OHLC data, skipping")
                 continue
 
             for candle_time, candle in window.iterrows():
@@ -158,7 +158,7 @@ class FakeBreakoutDetector(DetectorsBase):
 
                 # Skip if candle range is too small
                 if candle_range < min_range:
-                    logger.debug(f"Skipping candle at time {candle_time}, range={candle_range:.6f} < min_range={min_range:.6f}")
+                    logger.info(f"Skipping candle at time {candle_time}, range={candle_range:.6f} < min_range={min_range:.6f}")
                     continue
 
                 # Check for valid breakout (price falls below pivot level - threshold)
@@ -180,7 +180,7 @@ class FakeBreakoutDetector(DetectorsBase):
                                 "candle_range": candle_range,
                             }
                         )
-                        logger.debug(
+                        logger.info(
                             f"Detected bullish false breakout at time {candle_time}, "
                             f"low={candle['low']:.6f}, close={candle['close']:.6f}, "
                             f"pivot_level={pivot_level:.6f}, wick_ratio={wick_ratio:.2f}, "
@@ -189,14 +189,14 @@ class FakeBreakoutDetector(DetectorsBase):
                         break
                     # If it closed below, it's a valid breakout - move to next pivot
                     elif candle["close"] <= pivot_level:
-                        logger.debug(
+                        logger.info(
                             f"Valid bullish breakout at time {candle_time}, "
                             f"low={candle['low']:.6f}, close={candle['close']:.6f}, "
                             f"pivot_level={pivot_level:.6f}"
                         )
                         break
 
-        logger.debug(f"Identified {len(false_breakouts)} false breakouts.")
+        logger.info(f"Identified {len(false_breakouts)} false breakouts.")
         return false_breakouts
 
     def plot_false_breakouts(self, ohlc, false_breakouts):
@@ -210,7 +210,7 @@ class FakeBreakoutDetector(DetectorsBase):
         Returns:
         - go.Figure: Plotly figure with candlesticks and labeled false breakouts.
         """
-        logger.debug("Generating Plotly figure for false breakouts")
+        logger.info("Generating Plotly figure for false breakouts")
         symbol = ohlc["symbol"].iloc[0] if "symbol" in ohlc.columns else "Unknown"
 
         fig = make_subplots(
@@ -286,5 +286,5 @@ class FakeBreakoutDetector(DetectorsBase):
             yaxis=dict(title="Price"),
         )
         fig.update_xaxes(title_text="Time", row=1, col=1)
-        logger.debug("Plotly figure for false breakouts generated successfully")
+        logger.info("Plotly figure for false breakouts generated successfully")
         return fig

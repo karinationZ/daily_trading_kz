@@ -28,7 +28,7 @@ class LiquiditySweepDetector(DetectorsBase):
         super().__init__(main_tf=main_tf, left_bars=left_bars, right_bars=right_bars)
         self.sweep_window = sweep_window
         self.volume_threshold = volume_threshold
-        logger.debug(
+        logger.info(
             f"Initialized LiquiditySweepDetector with lower_tf={main_tf}, sweep_window={sweep_window}, "
             f"volume_threshold={volume_threshold}, length={self.length}, left_bars={left_bars}, right_bars={right_bars}"
         )
@@ -64,7 +64,7 @@ class LiquiditySweepDetector(DetectorsBase):
                             "volume": volume,
                         }
                     )
-                    logger.debug(f"Bullish Sweep detected: level={lower['value']:.6f}, time={ohlc.index[i + sweep_window]}, volume={volume:.2f}")
+                    logger.info(f"Bullish Sweep detected: level={lower['value']:.6f}, time={ohlc.index[i + sweep_window]}, volume={volume:.2f}")
 
         if upper["value"] is not None and i < len(ohlc) - sweep_window:
             break_indices = [j for j in range(i + 1, i + sweep_window + 1) if ohlc["high"].iloc[j] > upper["value"]]
@@ -81,7 +81,7 @@ class LiquiditySweepDetector(DetectorsBase):
                             "volume": volume,
                         }
                     )
-                    logger.debug(f"Bearish Sweep detected: level={upper['value']:.6f}, time={ohlc.index[i + sweep_window]}, volume={volume:.2f}")
+                    logger.info(f"Bearish Sweep detected: level={upper['value']:.6f}, time={ohlc.index[i + sweep_window]}, volume={volume:.2f}")
 
         return signals
 
@@ -98,7 +98,7 @@ class LiquiditySweepDetector(DetectorsBase):
             - fig (go.Figure): Plotly figure with candlesticks and sweep signals (if plot=True).
             - signals (list): List of detected sweep signals.
         """
-        logger.debug(
+        logger.info(
             f"Starting liquidity sweep calculation with sweep_window={self.sweep_window}, "
             f"volume_threshold={self.volume_threshold}, length={self.length}"
         )
@@ -132,7 +132,7 @@ class LiquiditySweepDetector(DetectorsBase):
         if plot:
             fig = self._plot_sweeps(ohlc, signals, pivot_high_points, pivot_low_points)
 
-        logger.debug(
+        logger.info(
             f"Detected {len(signals)} liquidity sweeps: {sum(1 for s in signals if s['bias'] == BULLISH)} bullish, "
             f"{sum(1 for s in signals if s['bias'] == BEARISH)} bearish"
         )
@@ -155,7 +155,7 @@ class LiquiditySweepDetector(DetectorsBase):
         ohlc = ohlc.tail(self.plot_tail)
         symbol = ohlc["symbol"].iloc[0] if "symbol" in ohlc.columns else "Unknown"
 
-        logger.debug("Generating Plotly figure for liquidity sweeps")
+        logger.info("Generating Plotly figure for liquidity sweeps")
         ohlc = self.validate_data(ohlc)
         fig = make_subplots(
             rows=1,
@@ -220,5 +220,5 @@ class LiquiditySweepDetector(DetectorsBase):
             margin=dict(t=100, b=100, l=50, r=50),
         )
         fig.update_xaxes(title_text="Time", row=1, col=1)
-        logger.debug("Plotly figure generated successfully")
+        logger.info("Plotly figure generated successfully")
         return fig

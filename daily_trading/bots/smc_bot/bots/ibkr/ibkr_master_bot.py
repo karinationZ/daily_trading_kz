@@ -155,6 +155,7 @@ class MasterBot:
                 logger.error("Failed to fetch startup summary.")
 
         while True:
+            await asyncio.sleep(1.0)
             try:
                 # 1. Time Check
                 ny_now = datetime.now(ZoneInfo("America/New_York"))
@@ -257,5 +258,5 @@ class MasterBot:
         if seconds <= 0:
             seconds = 300
 
-        logger.debug(f"⏳ Waiting {seconds}s for next candle...")
+        logger.info(f"⏳ Waiting {seconds}s for next candle...")
         await asyncio.sleep(seconds)

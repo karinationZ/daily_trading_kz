@@ -24,7 +24,7 @@ class BitUnixDivergentAssetsFinder:
         tickers = self.client.get_tickers(all_symbols)  # Assume async
         high_volume_symbols = [(ticker["symbol"], float(ticker["quoteVol"])) for ticker in tickers if float(ticker["quoteVol"]) >= threshold]
         high_volume_symbols.sort(key=lambda x: x[1])
-        logger.debug(f"High volume symbols: {len(high_volume_symbols)}")
+        logger.info(f"High volume symbols: {len(high_volume_symbols)}")
         return high_volume_symbols
 
     @staticmethod
@@ -152,12 +152,12 @@ class BitUnixDivergentAssetsFinder:
                         "inverse_correlated",
                     ]
                 )
-        logger.debug(f"Results saved to {full_path}")
+        logger.info(f"Results saved to {full_path}")
         return full_path
 
 
 if __name__ == "__main__":
-    logger.debug("Searching for assets that move most independently of Bitcoin.")
+    logger.info("Searching for assets that move most independently of Bitcoin.")
     finder = BitUnixDivergentAssetsFinder()
 
     # Run async method
@@ -169,7 +169,7 @@ if __name__ == "__main__":
     for asset in results["non_correlated"]:
         logger.info(f"{asset['symbol']}: Correlation = {asset['correlation']:.3f} | Volume: {asset['volume']:.2f}")
 
-    logger.debug("\nInverse-correlated assets (correlation below -0.7):")
-    logger.debug(f"Found {len(results['inverse_correlated'])} inverse_correlated asset(s)")
+    logger.info("\nInverse-correlated assets (correlation below -0.7):")
+    logger.info(f"Found {len(results['inverse_correlated'])} inverse_correlated asset(s)")
     for asset in results["inverse_correlated"]:
-        logger.debug(f"{asset['symbol']}: Correlation = {asset['correlation']:.3f} | Volume: {asset['volume']:.2f}")
+        logger.info(f"{asset['symbol']}: Correlation = {asset['correlation']:.3f} | Volume: {asset['volume']:.2f}")

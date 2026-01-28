@@ -63,7 +63,7 @@ class BosChochDetector(DetectorsBase):
         self.Major_HighType = None
         self.Major_LowType = None
 
-        logger.debug(f"Initialized BosChochDetector: {main_tf} | L:{left_bars} R:{right_bars}")
+        logger.info(f"Initialized BosChochDetector: {main_tf} | L:{left_bars} R:{right_bars}")
 
     def detect_signals_optimized(
         self,

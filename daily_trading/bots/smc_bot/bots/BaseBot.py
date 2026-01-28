@@ -593,6 +593,7 @@ class SMCBotBase:
 
         except Exception as e:
             logger.error(f"Strategy Cycle Error: {traceback.format_exc()}\n{e}")
+        await asyncio.sleep(1)
 
     async def handle_execution(self, strategy, analysis: SignalSummary) -> bool:
 
@@ -643,7 +644,7 @@ class SMCBotBase:
                 is_flat, pos_size = await self.ib_client.check_flatness(symbol)
 
                 if is_flat:
-                    strategy.log.info(f"✅ Position already closed (likely by Bracket). Syncing state.")
+                    strategy.log.info("✅ Position already closed (likely by Bracket). Syncing state.")
                     # Even if flat, run cancel_all to ensure the OTHER side of the bracket is gone
                     # (e.g. SL hit, ensure TP is cancelled)
                     await self.ib_client.cancel_all_orders(order_ref=strategy.ext_tag)
@@ -691,7 +692,7 @@ class SMCBotBase:
         seconds_to_sleep = (minutes_to_sleep * 60) - now.second
         if seconds_to_sleep <= 0:
             seconds_to_sleep = interval_minutes * 60
-        logger.debug(f"SYNC: Waiting {seconds_to_sleep}s for next candle.")
+        logger.info(f"SYNC: Waiting {seconds_to_sleep}s for next candle.")
         await asyncio.sleep(seconds_to_sleep)
 
     @staticmethod

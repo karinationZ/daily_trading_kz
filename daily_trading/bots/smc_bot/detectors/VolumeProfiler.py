@@ -27,7 +27,7 @@ class VolumeProfiler:
         self.price_bins = price_bins
         self.va_percent = va_percent
         self.plot_tail = 200
-        logger.debug(
+        logger.info(
             f"Initialized VolumeProfileCollector with main_tf={main_tf}, num_bars={num_bars}, price_bins={price_bins}, va_percent={va_percent}"
         )
 
@@ -186,7 +186,7 @@ class VolumeProfiler:
             "va_high": va_high,
             "va_low": va_low,
         }
-        logger.debug(f"Completed volume profile calculation: {len(volume_profile)} price levels, POC at {poc_level}")
+        logger.info(f"Completed volume profile calculation: {len(volume_profile)} price levels, POC at {poc_level}")
         return results
 
     def _plot_volume_profile(
@@ -216,7 +216,7 @@ class VolumeProfiler:
         Returns:
         - go.Figure: Plotly figure with candlesticks and volume profile.
         """
-        logger.debug("Generating Plotly figure for volume profile")
+        logger.info("Generating Plotly figure for volume profile")
         ohlc = ohlc.sort_index().tail(self.plot_tail)
         symbol = ohlc["symbol"].iloc[0] if "symbol" in ohlc.columns else "Unknown"
 
@@ -314,5 +314,5 @@ class VolumeProfiler:
             row=1,
             col=1,
         )
-        logger.debug("Plotly figure generated successfully")
+        logger.info("Plotly figure generated successfully")
         return fig

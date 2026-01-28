@@ -40,7 +40,7 @@ class LiquidityPoolDetector(DetectorsBase):
         self.show_liquidity = show_liquidity
         self.threshold = threshold
         self.threshold_lower = threshold_lower
-        logger.debug(
+        logger.info(
             f"Initialized LiquidityPoolDetector with lower_tf={main_tf}, left_bars={left_bars}, "
             f"right_bars={right_bars}, show_swing={show_swing}, threshold={threshold}, "
             f"threshold_lower={threshold_lower}"
@@ -72,7 +72,7 @@ class LiquidityPoolDetector(DetectorsBase):
                     "fractal_time": upper["loc"],
                 }
             )
-            logger.debug(f"Buy-side Liquidity Raid detected: level={upper['value']:.6f}, time={ohlc.index[i]}")
+            logger.info(f"Buy-side Liquidity Raid detected: level={upper['value']:.6f}, time={ohlc.index[i]}")
 
         # Sell-side liquidity raid (price crosses below swing low)
         if lower["value"] is not None and ohlc["low"].iloc[i] < lower["value"]:
@@ -85,7 +85,7 @@ class LiquidityPoolDetector(DetectorsBase):
                     "fractal_time": lower["loc"],
                 }
             )
-            logger.debug(f"Sell-side Liquidity Raid detected: level={lower['value']:.6f}, time={ohlc.index[i]}")
+            logger.info(f"Sell-side Liquidity Raid detected: level={lower['value']:.6f}, time={ohlc.index[i]}")
 
         return signals
 
@@ -103,7 +103,7 @@ class LiquidityPoolDetector(DetectorsBase):
             - signals (list): List of detected liquidity pool and raid signals.
             - swing_signals (list): List of swing high/low creation signals.
         """
-        logger.debug(
+        logger.info(
             f"Starting liquidity pool calculation, left_bars={self.left_bars}, "
             f"right_bars={self.right_bars}, show_swing={self.show_swing}, show_liquidity={self.show_liquidity}"
         )
@@ -119,10 +119,10 @@ class LiquidityPoolDetector(DetectorsBase):
         # Generate swing creation signals
         for pivot in pivot_high_points:
             swing_signals.append({"type": "SwingHigh", "time": pivot["time"], "level": pivot["level"]})
-            logger.debug(f"Swing High detected: level={pivot['level']:.6f}, time={pivot['time']}")
+            logger.info(f"Swing High detected: level={pivot['level']:.6f}, time={pivot['time']}")
         for pivot in pivot_low_points:
             swing_signals.append({"type": "SwingLow", "time": pivot["time"], "level": pivot["level"]})
-            logger.debug(f"Swing Low detected: level={pivot['level']:.6f}, time={pivot['time']}")
+            logger.info(f"Swing Low detected: level={pivot['level']:.6f}, time={pivot['time']}")
 
         # Generate liquidity pool signals
         for pivot in pivot_high_points:
@@ -137,7 +137,7 @@ class LiquidityPoolDetector(DetectorsBase):
                     "index": pivot["index"],
                 }
             )
-            logger.debug(
+            logger.info(
                 f"Buy-side Liquidity Pool detected: high={pivot['level'] * self.threshold:.6f}, low={pivot['level']:.6f}, time={pivot['time']}"
             )
         for pivot in pivot_low_points:
@@ -152,7 +152,7 @@ class LiquidityPoolDetector(DetectorsBase):
                     "index": pivot["index"],
                 }
             )
-            logger.debug(
+            logger.info(
                 f"Sell-side Liquidity Pool detected: high={pivot['level']:.6f}, low={pivot['level'] * self.threshold_lower:.6f}, time={pivot['time']}"
             )
 
@@ -165,7 +165,7 @@ class LiquidityPoolDetector(DetectorsBase):
         if plot:
             fig = self._plot_liquidity_pools(ohlc, pivot_high_points, pivot_low_points, signals)
 
-        logger.debug(
+        logger.info(
             f"Detected {len(signals)} signals: {sum(1 for s in signals if s['bias'] == BULLISH)} bullish, "
             f"{sum(1 for s in signals if s['bias'] == BEARISH)} bearish; "
             f"{len(swing_signals)} swing signals"
@@ -185,11 +185,11 @@ class LiquidityPoolDetector(DetectorsBase):
         Returns:
         - go.Figure: Plotly figure with candlesticks, pivots, liquidity pools, and signals.
         """
-        logger.debug("Generating Plotly figure for liquidity pools")
+        logger.info("Generating Plotly figure for liquidity pools")
         ohlc = ohlc.sort_index()
 
         # Log sample of index values for debugging
-        logger.debug(f"Sample ohlc.index values: {ohlc.index[-5:].tolist()}")
+        logger.info(f"Sample ohlc.index values: {ohlc.index[-5:].tolist()}")
 
         # Limit to last 200 rows
         ohlc = ohlc.tail(self.plot_tail)
@@ -369,5 +369,5 @@ class LiquidityPoolDetector(DetectorsBase):
             dtick=7200000,
             tickangle=45,
         )
-        logger.debug("Plotly figure generated successfully")
+        logger.info("Plotly figure generated successfully")
         return fig

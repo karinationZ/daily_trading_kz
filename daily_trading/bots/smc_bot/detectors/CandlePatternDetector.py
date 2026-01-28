@@ -135,7 +135,7 @@ class CandlePatternDetector(DetectorsBase):
         Returns:
         - tuple: (trend (int), pattern_name (str)) - Trend is 1 (Bullish), -1 (Bearish), or 0 (Neutral).
         """
-        logger.debug("Detecting single-candle pattern")
+        logger.info("Detecting single-candle pattern")
         if not all(col in df for col in ["open", "high", "low", "close"]):
             logger.error("Missing required columns in DataFrame")
             return Trend.NEUTRAL, "None"
@@ -177,11 +177,11 @@ class CandlePatternDetector(DetectorsBase):
                 config,
             )
             if value > 0:
-                logger.debug(f"Detected {pattern} (Bullish)")
+                logger.info(f"Detected {pattern} (Bullish)")
                 return Trend.BULLISH, pattern
             elif value < 0:
-                logger.debug(f"Detected {pattern} (Bearish)")
+                logger.info(f"Detected {pattern} (Bearish)")
                 return Trend.BEARISH, pattern
 
-        logger.debug("No pattern detected (Neutral)")
+        logger.info("No pattern detected (Neutral)")
         return Trend.NEUTRAL, "None"

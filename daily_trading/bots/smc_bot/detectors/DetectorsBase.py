@@ -67,12 +67,12 @@ class DetectorsBase:
         self.Major_LowIndex = None
         self.Major_HighType = None
         self.Major_LowType = None
-        logger.debug(f"Initialized SMCBase with lower_tf={main_tf}, length={self.length}, " f"left_bars={left_bars}, right_bars={right_bars}")
+        logger.info(f"Initialized SMCBase with lower_tf={main_tf}, length={self.length}, " f"left_bars={left_bars}, right_bars={right_bars}")
         self.plot_tail = plot_tail
         self.atr_length_buffer = atr_length_buffer
 
     def calculate_pivots(self, ohlc):
-        logger.debug(
+        logger.info(
             f"Starting pivot calculation with " f"left_bars={self.left_bars}, " f"right_bars={self.right_bars} on OHLC data with {len(ohlc)} rows"
         )
 
@@ -224,7 +224,7 @@ class DetectorsBase:
                 self.Major_HighType = major_high["type"]
                 self.Major_LowType = major_low["type"]
 
-        logger.debug(f"Detected {len(pivot_high_points)} swing highs and {len(pivot_low_points)} swing lows")
+        logger.info(f"Detected {len(pivot_high_points)} swing highs and {len(pivot_low_points)} swing lows")
         return pivot_high_points, pivot_low_points
 
     def reset_pivot_arrays(self):
@@ -429,7 +429,7 @@ class DetectorsBase:
 
         # Debug logging for Impulse candles
         if range_to_atr > 1.5:
-            logger.debug(f"Impulse {range_to_atr:.1f}x ATR. Req: {min_wick_ratio:.2f}, Act: {wick_ratio:.2f}")
+            logger.info(f"Impulse {range_to_atr:.1f}x ATR. Req: {min_wick_ratio:.2f}, Act: {wick_ratio:.2f}")
 
         # 5. Directional Logic
         # We only care about momentum AGAINST our direction.

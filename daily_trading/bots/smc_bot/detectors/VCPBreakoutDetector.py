@@ -46,7 +46,7 @@ class VCPBreakoutDetector(DetectorsBase):
         self.swing_detector = HighLowDetector("1h")  # 1H for swing highs/lows
         self.levels_detector = LevelsDetector(main_tf="4h", pivot_length=5, strength=3)  # 4H for levels
         self.volume_profiler = VolumeProfiler("1h")  # 1H for volume analysis
-        logger.debug(
+        logger.info(
             f"Initialized VCPBreakoutDetector: tf={main_tf}, min_swings={min_swings}, "
             f"contraction_ratio={contraction_ratio}, volume_decrease_ratio={volume_decrease_ratio}"
         )
@@ -104,8 +104,8 @@ class VCPBreakoutDetector(DetectorsBase):
             ranges.append(range_val)
 
         # Log the selected swings and ranges for debugging
-        logger.debug(f"Selected swings: {[s for s in recent_swings[-self.min_swings * 2:]]}")
-        logger.debug(f"Calculated ranges: {ranges}")
+        logger.info(f"Selected swings: {[s for s in recent_swings[-self.min_swings * 2:]]}")
+        logger.info(f"Calculated ranges: {ranges}")
 
         # Check if ranges are contracting
         if len(ranges) < 2:
@@ -324,7 +324,7 @@ class VCPBreakoutDetector(DetectorsBase):
         )
         fig.update_yaxes(title_text="Price", row=1, col=1)
         fig.update_yaxes(title_text="Price", row=2, col=1)
-        logger.debug("VCP plot generated successfully")
+        logger.info("VCP plot generated successfully")
         return fig
 
     def calculate_vcp_breakout(

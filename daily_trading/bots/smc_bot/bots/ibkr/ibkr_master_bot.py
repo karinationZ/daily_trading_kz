@@ -189,7 +189,7 @@ class MasterBot:
                             if sym not in market_data:
                                 market_data[sym] = {}
                             market_data[sym]["5m"] = df
-                        await asyncio.sleep(0.1)
+                        await asyncio.sleep(2.0)
 
                     # Fetch 1h Data
                     for sym in self.symbols_1h:
@@ -198,7 +198,7 @@ class MasterBot:
                             if sym not in market_data:
                                 market_data[sym] = {}
                             market_data[sym]["1h"] = df
-                        await asyncio.sleep(0.1)
+                        await asyncio.sleep(2.0)
 
                     # --- B. Execution Phase ---
                     positions, orders, blocked = await self.get_account_state()
@@ -221,11 +221,14 @@ class MasterBot:
                         logger.info(msg)
                         await self.orb_bot.telegram_debug_channel.send_message(msg)
 
-                    # Pass State to Bots
-                    await asyncio.gather(
-                        self.bos_ob_bot.execute_cycle(market_data, blocked, positions, orders),
-                        self.orb_bot.execute_cycle(market_data, blocked, positions, orders),
-                    )
+                    # # Pass State to Bots
+                    # await asyncio.gather(
+                    #     self.bos_ob_bot.execute_cycle(market_data, blocked, positions, orders),
+                    #     self.orb_bot.execute_cycle(market_data, blocked, positions, orders),
+                    # )  # Breath
+                    await self.orb_bot.execute_cycle(market_data, blocked, positions, orders)
+                    await asyncio.sleep(1.0)
+                    await self.bos_ob_bot.execute_cycle(market_data, blocked, positions, orders)
 
                     # --- C. Wait for Next Candle ---
                     await self.sleep_until_next_candle()
@@ -248,15 +251,19 @@ class MasterBot:
                 logger.error(f"MASTER LOOP CRITICAL ERROR: {e}")
                 await asyncio.sleep(60)
 
-    @staticmethod
-    async def sleep_until_next_candle():
-        """Syncs the loop to the 5-minute candle close."""
+    async def sleep_until_next_candle(self):
+        """Waits for next 5m candle, but checks connection/signals every 1s."""
         now = datetime.now()
-        # Calculate seconds remaining until next 5m mark
         minutes = 5 - (now.minute % 5)
         seconds = (minutes * 60) - now.second
         if seconds <= 0:
             seconds = 300
 
+        target_time = datetime.now().timestamp() + seconds
         logger.info(f"⏳ Waiting {seconds}s for next candle...")
-        await asyncio.sleep(seconds)
+
+        while datetime.now().timestamp() < target_time:
+            # 1. Sleep briefly to keep CPU at 0%
+            await asyncio.sleep(1.0)
+        await self.ibkr_check_connection()
+        return

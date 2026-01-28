@@ -72,10 +72,6 @@ class DetectorsBase:
         self.atr_length_buffer = atr_length_buffer
 
     def calculate_pivots(self, ohlc):
-        logger.info(
-            f"Starting pivot calculation with " f"left_bars={self.left_bars}, " f"right_bars={self.right_bars} on OHLC data with {len(ohlc)} rows"
-        )
-
         if len(ohlc) < self.left_bars + self.right_bars + 1:
             logger.error(f"OHLC data too short ({len(ohlc)} rows) for pivot calculation")
             return [], []
@@ -224,7 +220,6 @@ class DetectorsBase:
                 self.Major_HighType = major_high["type"]
                 self.Major_LowType = major_low["type"]
 
-        logger.info(f"Detected {len(pivot_high_points)} swing highs and {len(pivot_low_points)} swing lows")
         return pivot_high_points, pivot_low_points
 
     def reset_pivot_arrays(self):

@@ -520,9 +520,9 @@ class SMCBotBase:
                 priority=getattr(strategy, 'priority', 1),
                 timestamp=datetime.now(),
             )
-
-        # B. Kill Orphans (The Safety Fix)
-        await self.cleanup_orphaned_orders(strategy)
+        #
+        # # B. Kill Orphans (The Safety Fix)
+        # await self.cleanup_orphaned_orders(strategy)
 
     async def _is_symbol_available(self, strategy, symbol):
         """Checks if the symbol is available for trading."""

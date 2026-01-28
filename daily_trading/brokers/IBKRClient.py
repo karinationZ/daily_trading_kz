@@ -310,23 +310,22 @@ class IBKRClient:
         """Natively handles Entry + SL + TP Bracket."""
         contract = await self.get_futures_contract(symbol)
 
-        is_crypto = symbol in ["MBT", "MET", "BTC", "ETH"]
-
-        # Crypto set flag to False. Otherwise, True.
-        use_rth = not is_crypto
-
         side = "BUY" if direction.upper() == "LONG" else "SELL"
         entry = self.round_to_tick(entry, symbol)
         sl = self.round_to_tick(sl, symbol)
         tp = self.round_to_tick(tp, symbol)
 
-        # ib_async utility to create the three order objects
-        brackets = self.ib.bracketOrder(side, quantity, limitPrice=entry, stopLossPrice=sl, takeProfitPrice=tp, outsideRth=use_rth)
+        # Create bracket orders WITHOUT outsideRth (it's ignored anyway)
+        brackets = self.ib.bracketOrder(
+            side, quantity, limitPrice=entry, stopLossPrice=sl, takeProfitPrice=tp, outsideRth=False  # Set to False for all futures to avoid warning
+        )
 
         trades = []
         for ord in brackets:
             ord.orderRef = order_ref
-            ord.outsideRth = use_rth
+            ord.outsideRth = False  # Doesn't matter for futures, but avoids warning
+            ord.tif = "GTC"  # Good-Til-Cancelled (works across sessions)
+            # Alternative: ord.tif = "GTD" with ord.goodTillDate for specific expiry
             trade = self.ib.placeOrder(contract, ord)
             trades.append(trade)
 

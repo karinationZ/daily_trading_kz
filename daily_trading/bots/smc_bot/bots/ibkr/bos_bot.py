@@ -22,8 +22,10 @@ from daily_trading.settings import logger, TELEGRAM_MAIN_CHANNEL_CHAT_ID
 
 CONFIG = [
     # MES_NY - Score: 101.98 | WR: 54.29% | Edge: 20.96% | Trades: 105
+    # SW:8 | INT:5 | MIT:0.5 | SL:0.5
     {'name': 'MES_NY_sw8_int5_rr2.0_mit0.5_sl0.5', 'symbol': 'MES', 'tz_name': 'NY', 'sw': 8, 'int': 5, 'rr': 2.0, 'mit': 0.5, 'sl_buffer_mult': 0.5},
     # MES_LONDON - Score: 112.96 | WR: 61.54% | Edge: 32.97% | Trades: 91
+    # SW:8 | INT:3 | MIT:0.1 | SL:0.1
     {
         'name': 'MES_LONDON_sw8_int3_rr2.5_mit0.1_sl0.1',
         'symbol': 'MES',
@@ -34,18 +36,20 @@ CONFIG = [
         'mit': 0.1,
         'sl_buffer_mult': 0.1,
     },
-    # MNQ_NY - Score: 108.89 | WR: 51.06% | Edge: 22.49% | Trades: 94
+    # MNQ_NY - Score: 101 | WR: 54.74% | Edge: 21.4% | Trades: 95
+    # SW:50 | INT:5 | MIT:0.1 | SL:0.5
     {
-        'name': 'MNQ_NY_sw12_int5_rr2.5_mit0.1_sl0.1',
+        'name': 'MNQ_NY_sw50_int5_rr2.0_mit0.1_sl0.5',
         'symbol': 'MNQ',
         'tz_name': 'NY',
-        'sw': 12,
+        'sw': 50,
         'int': 5,
-        'rr': 2.5,
+        'rr': 2.0,
         'mit': 0.1,
-        'sl_buffer_mult': 0.1,
+        'sl_buffer_mult': 0.5,
     },
     # MNQ_LONDON - Score: 64.14 | WR: 58.33% | Edge: 29.76% | Trades: 24
+    # SW:50 | INT:5 | MIT:0.75 | SL:1.0
     {
         'name': 'MNQ_LONDON_sw50_int5_rr2.5_mit0.75_sl1.0',
         'symbol': 'MNQ',
@@ -56,18 +60,20 @@ CONFIG = [
         'mit': 0.75,
         'sl_buffer_mult': 1.0,
     },
-    # MGC_NY - Score: 103.27 | WR: 66.67% | Edge: 33.34% | Trades: 57
+    # MGC_NY - Score: 93.8 | WR: 71.43% | Edge: 31.4% | Trades: 70
+    # SW:12 | INT:3 | MIT:0.75 | SL:1.0
     {
-        'name': 'MGC_NY_sw24_int5_rr2.0_mit0.75_sl0.1',
+        'name': 'MGC_NY_sw12_int3_rr1.5_mit0.75_sl1.0',
         'symbol': 'MGC',
         'tz_name': 'NY',
-        'sw': 24,
-        'int': 5,
-        'rr': 2.0,
+        'sw': 12,
+        'int': 3,
+        'rr': 1.5,
         'mit': 0.75,
-        'sl_buffer_mult': 0.1,
+        'sl_buffer_mult': 1.0,
     },
     # MGC_ASIA - Score: 103.69 | WR: 65.12% | Edge: 19.67% | Trades: 43
+    # SW:8 | INT:3 | MIT:0.75 | SL:0.1
     {
         'name': 'MGC_ASIA_sw8_int3_rr1.2_mit0.75_sl0.1',
         'symbol': 'MGC',
@@ -78,18 +84,20 @@ CONFIG = [
         'mit': 0.75,
         'sl_buffer_mult': 0.1,
     },
-    # MGC_LONDON - Score: 80 | WR: 60 | Edge: 20% | Trades: 60
+    # MGC_LONDON - Score: 80 | WR: 58| Edge: 18% | Trades: 43
+    # SW:24 | INT:3 | MIT:0.5 | SL:1.5
     {
-        'name': 'MGC_LONDON_sw24_int5_rr1.5_mit0.1_sl1.0',
+        'name': 'MGC_LONDON_sw24_int3_rr1.5_mit0.5_sl1.5',
         'symbol': 'MGC',
         'tz_name': 'LONDON',
         'sw': 24,
-        'int': 5,
+        'int': 3,
         'rr': 1.5,
-        'mit': 0.1,
-        'sl_buffer_mult': 1.0,
+        'mit': 0.5,
+        'sl_buffer_mult': 1.5,
     },
     # MBT_LONDON - Score: 105.34 | WR: 57.14% | Edge: 17.14% | Trades: 49
+    # SW:45 | INT:5 | MIT:0.1 | SL:1.2
     {
         'name': 'MBT_LONDON_sw45_int5_rr1.5_mit0.1_sl1.2',
         'symbol': 'MBT',

@@ -5,13 +5,9 @@ from zoneinfo import ZoneInfo
 import pandas as pd
 
 from daily_trading.bots.smc_bot.bots.TelegramBot import TelegramBot
-
-# Detectors
 from daily_trading.bots.smc_bot.detectors.BosChochDetector import BosChochDetector
 from daily_trading.bots.smc_bot.detectors.DetectorsBase import BIAS
 from daily_trading.bots.smc_bot.detectors.FvgDetector import FvgDetector
-
-# Assuming FvgDetector exists in your codebase based on the context
 from daily_trading.bots.smc_bot.strategy.StrategyBase import (
     ExitType,
 )
@@ -25,142 +21,6 @@ from daily_trading.bots.smc_bot.strategy.StrategyBase import (
 )
 from daily_trading.settings import logger
 
-CONFIG = {
-    # ==========================================================================
-    # GROUP 1: BITCOIN (MBT) — "THE TREND BEAST"
-    # Logic: Deep Entry (0.95) + Tight Stop (1.2) = Maximum PnL.
-    # Bitcoin respects the deep FVG fill perfectly before continuing.
-    # ==========================================================================
-    # MBT NY (Row 3: $17,258 PnL | 58% WR)
-    ("MBT", "NY"): {
-        "htf": "1h",
-        "ltf": "5m",
-        "fvg_mitigation_ratio": 0.95,
-        "tp_multiple": 1.2,
-        "sl_buffer_mult": 1.2,  # Validated Winner
-    },
-    # MBT LONDON/ASIA (Row 5 & 6: ~$11k PnL)
-    ("MBT", "LONDON"): {
-        "htf": "1h",
-        "ltf": "5m",
-        "fvg_mitigation_ratio": 0.95,
-        "tp_multiple": 1.2,
-        "sl_buffer_mult": 1.2,
-    },
-    ("MBT", "ASIA"): {
-        "htf": "1h",
-        "ltf": "5m",
-        "fvg_mitigation_ratio": 0.95,
-        "tp_multiple": 1.2,
-        "sl_buffer_mult": 1.2,
-    },
-    # ==========================================================================
-    # GROUP 2: SILVER (SIL) — "THE AGGRESSIVE RUNNER"
-    # Logic: NY prefers shallower entry (0.75) than London/Asia (0.95).
-    # All sessions prefer tight stops (1.2).
-    # ==========================================================================
-    # SIL NY (Row 4: $15,518 PnL)
-    ("SIL", "NY"): {
-        "htf": "1h",
-        "ltf": "5m",
-        "fvg_mitigation_ratio": 0.75,  # NY moves faster, 0.75 fills more often
-        "tp_multiple": 1.2,
-        "sl_buffer_mult": 1.2,
-    },
-    # SIL LONDON/ASIA (Row 1/2: ~$11k PnL)
-    # Note: These had RR 2.0 in the screenshot, but 43% WR.
-    # Row 16 (RR 1.2) had 55% WR and similar PnL. We prefer RR 1.2 for consistency.
-    ("SIL", "LONDON"): {
-        "htf": "1h",
-        "ltf": "5m",
-        "fvg_mitigation_ratio": 0.95,
-        "tp_multiple": 1.2,
-        "sl_buffer_mult": 1.2,
-    },
-    ("SIL", "ASIA"): {
-        "htf": "1h",
-        "ltf": "5m",
-        "fvg_mitigation_ratio": 0.95,
-        "tp_multiple": 1.2,
-        "sl_buffer_mult": 1.2,
-    },
-    # ==========================================================================
-    # GROUP 3: MES (S&P 500) — "THE PRECISION SCALP"
-    # Logic: Deep Entry (0.95) + Tight Stop (1.2) is the clear winner across board.
-    # ==========================================================================
-    # MES NY (Row 8: $14,094 PnL)
-    ("MES", "NY"): {
-        "htf": "1h",
-        "ltf": "5m",
-        "fvg_mitigation_ratio": 0.95,
-        "tp_multiple": 1.2,
-        "sl_buffer_mult": 1.2,
-    },
-    # MES ASIA/LONDON (Row 10/11: $6,905 PnL)
-    ("MES", "ASIA"): {
-        "htf": "1h",
-        "ltf": "5m",
-        "fvg_mitigation_ratio": 0.95,
-        "tp_multiple": 1.2,
-        "sl_buffer_mult": 1.5,
-    },
-    ("MES", "LONDON"): {
-        "htf": "1h",
-        "ltf": "5m",
-        "fvg_mitigation_ratio": 0.95,
-        "tp_multiple": 1.2,
-        "sl_buffer_mult": 1.5,
-    },
-    # ==========================================================================
-    # GROUP 4: MNQ (NASDAQ) — "THE SPLIT PERSONALITY"
-    # Logic: London/Asia need 0.75 Entry. NY allows 0.95 Deep Entry.
-    # ==========================================================================
-    # MNQ LONDON (Row 7: $6,528 PnL)
-    ("MNQ", "LONDON"): {
-        "htf": "1h",
-        "ltf": "5m",
-        "fvg_mitigation_ratio": 0.75,  # Speed required
-        "tp_multiple": 1.2,
-        "sl_buffer_mult": 1.5,
-    },
-    # MNQ NY (Row 14: $9,159 PnL)
-    ("MNQ", "NY"): {
-        "htf": "1h",
-        "ltf": "5m",
-        "fvg_mitigation_ratio": 0.95,  # Deep value works in NY
-        "tp_multiple": 1.2,
-        "sl_buffer_mult": 1.2,  # Tight stop
-    },
-    # ==========================================================================
-    # GROUP 5: MGC (GOLD) — "THE MOMENTUM REVERSAL"
-    # Logic: Data shows Gold prefers SHALLOW entry (0.25) in London/Asia.
-    # This contradicts the "Deep" logic of indices. Gold trends harder.
-    # ==========================================================================
-    # MGC LONDON/ASIA (Row 12/13: $9,214 PnL)
-    ("MGC", "LONDON"): {
-        "htf": "1h",
-        "ltf": "5m",
-        "fvg_mitigation_ratio": 0.25,  # Aggressive Entry
-        "tp_multiple": 1.2,
-        "sl_buffer_mult": 1.2,
-    },
-    ("MGC", "ASIA"): {
-        "htf": "1h",
-        "ltf": "5m",
-        "fvg_mitigation_ratio": 0.25,
-        "tp_multiple": 1.2,
-        "sl_buffer_mult": 1.2,
-    },
-    # MGC NY (Row 17: $6,320 PnL)
-    ("MGC", "NY"): {
-        "htf": "1h",
-        "ltf": "5m",
-        "fvg_mitigation_ratio": 0.95,  # NY Gold chops more, needs deep entry
-        "tp_multiple": 1.2,
-        "sl_buffer_mult": 1.2,
-    },
-}
-
 
 class BosFvgStrategy(StrategyBase):
     """
@@ -172,7 +32,7 @@ class BosFvgStrategy(StrategyBase):
 
     LOGIC:
     1. HTF (e.g., 1H): Identify Trend Bias via Break of Structure (BOS).
-    2. LTF (e.g., 15m): Identify "Fresh" Fair Value Gaps (FVG) matching the bias.
+    2. LTF (e.g., 5m): Identify "Fresh" Fair Value Gaps (FVG) matching the bias.
     3. ENTRY: Limit Order inside the FVG (at `fvg_mitigation_ratio`).
     4. EXIT: SL outside FVG, Fixed RR TP.
 
@@ -186,7 +46,7 @@ class BosFvgStrategy(StrategyBase):
         self,
         symbol: str,
         timezone: ZoneInfo,
-        main_tf="15m",  # LTF for Entry execution
+        main_tf="5m",  # LTF for Entry execution
         risk: float = 150.0,
         tp_multiple: float = 2.0,
         fvg_mitigation_ratio: float = 0.5,  # 0.5 = Entry at 50% of FVG
@@ -223,7 +83,6 @@ class BosFvgStrategy(StrategyBase):
         # --- DETECTORS ---
         # HTF: For Trend Bias
         self.htf_bos_detector = BosChochDetector(main_tf="1h")
-
         # LTF: For Entry Signals
         self.ltf_fvg_detector = FvgDetector(main_tf=main_tf, pivot_period=5, fvg_threshold=0.5)
 

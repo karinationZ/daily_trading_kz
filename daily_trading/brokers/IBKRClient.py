@@ -112,46 +112,28 @@ class IBKRClient:
         return self.ib.openTrades()
 
     async def get_futures_contract(self, symbol: str) -> Contract | None:
-        """Resolves the front-month futures contract."""
+        """Resolves the front-month futures contract with AGGRESSIVE Physical Delivery Safety."""
         if symbol in self._conid_cache:
             return self._conid_cache[symbol]
 
         contract_map = {
-            # Standard Quarterly Rotation (Rolls ~1-2 weeks early) -> Keep 10 days buffer
-            "MNQ": {
-                "symbol": "MNQ",
-                "exchange": "CME",
-                "currency": "USD",
-                "active_months": [3, 6, 9, 12],
-            },
-            "MES": {
-                "symbol": "MES",
-                "exchange": "CME",
-                "currency": "USD",
-                "active_months": [3, 6, 9, 12],
-            },
-            # [FIX] Monthly Rotation -> Liquidity stays late. Reduce buffer to 2 days.
-            "MBT": {
-                "symbol": "MBT",
-                "exchange": "CME",
-                "currency": "USD",
-                "active_months": range(1, 13),
-                "min_days": 2,
-            },
-            # Gold/Silver/Oil -> Monthly/Bi-Monthly -> Standard 10 days usually ok, but 5 is safer for MGC/SIL
+            # --- CASH SETTLED (Indices) ---
+            "MNQ": {"symbol": "MNQ", "exchange": "CME", "currency": "USD", "active_months": [3, 6, 9, 12], "min_days": 8, "physical_delivery": False},
+            "MES": {"symbol": "MES", "exchange": "CME", "currency": "USD", "active_months": [3, 6, 9, 12], "min_days": 8, "physical_delivery": False},
+            "MBT": {"symbol": "MBT", "exchange": "CME", "currency": "USD", "active_months": range(1, 13), "min_days": 2, "physical_delivery": False},
+            # --- PHYSICAL DELIVERY (Commodities) ---
+            # FIX: First Notice Day is often the last day of the PREVIOUS month.
+            # Using Feb 1st - 3 days = Jan 29th is TOO LATE.
+            # We use Feb 1st - 8 days = Jan 24th. This ensures we are out well before FND.
             "MGC": {
                 "symbol": "MGC",
                 "exchange": "COMEX",
                 "currency": "USD",
                 "active_months": [2, 4, 6, 8, 12],
+                "min_days": 8,
+                "physical_delivery": True,
             },
-            "MCL": {
-                "symbol": "MCL",
-                "exchange": "NYMEX",
-                "currency": "USD",
-                "active_months": range(1, 13),
-                "min_days": 5,
-            },
+            "MCL": {"symbol": "MCL", "exchange": "NYMEX", "currency": "USD", "active_months": range(1, 13), "min_days": 8, "physical_delivery": True},
         }
 
         target = contract_map.get(symbol)
@@ -174,28 +156,63 @@ class IBKRClient:
 
         target_mult = target.get("multiplier")
         active_months = target.get("active_months")
-        # [FIX] Use specific buffer or default to 10
-        min_days = target.get("min_days", 10)
+        min_days = target.get("min_days", 7)
+        is_physical = target.get("physical_delivery", False)
 
         for d in details:
             if target_mult and d.contract.multiplier != target_mult:
                 continue
 
-            exp_date = datetime.strptime(d.contract.lastTradeDateOrContractMonth, "%Y%m%d")
+            # Parse the Expiration String (YYYYMMDD)
+            exp_str = d.contract.lastTradeDateOrContractMonth
+            exp_date = datetime.strptime(exp_str, "%Y%m%d")
 
             if active_months and exp_date.month not in active_months:
                 continue
 
-            # [FIX] Use dynamic buffer
-            if exp_date > today + timedelta(days=min_days):
+            # --- SAFETY LOGIC ---
+            if is_physical:
+                # PHYSICAL: Calculate deadline relative to the Start of Delivery Month
+                # Example: Feb '26 contract -> Starts Feb 1st.
+                # Buffer 8 days: Feb 1 - 8 days = Jan 24th.
+                # Since Today (Jan 28) > Jan 24, this contract is INVALID.
+                delivery_month_start = exp_date.replace(day=1)
+                deadline = delivery_month_start - timedelta(days=min_days)
+            else:
+                # CASH SETTLED: Relative to actual expiration day
+                deadline = exp_date - timedelta(days=min_days)
+
+            # Check if we are safely before the deadline
+            if today < deadline:
                 valid_contracts.append(d.contract)
 
         if not valid_contracts:
-            raise RuntimeError(f"No valid liquid front-month contracts found for {symbol} (Buffer: {min_days} days)")
+            # If no contract is found, it usually means our buffer is too aggressive
+            # or the next month isn't loaded.
+            # In this case, we fallback to finding the contract with the furthest expiration
+            # that is still "Frontish" (e.g. within next 4 months) to ensure we get the April contract.
+            logger.warning(f"⚠️ No contracts passed strict buffer {min_days}d. Searching for next available month...")
 
+            future_contracts = []
+            for d in details:
+                exp_date = datetime.strptime(d.contract.lastTradeDateOrContractMonth, "%Y%m%d")
+                if exp_date > today + timedelta(days=25):  # Look for contracts at least ~1 month out
+                    if active_months and exp_date.month not in active_months:
+                        continue
+                    future_contracts.append(d.contract)
+
+            if future_contracts:
+                valid_contracts = future_contracts
+
+        if not valid_contracts:
+            raise RuntimeError(f"No valid liquid front-month contracts found for {symbol} (Physical={is_physical})")
+
+        # Pick the nearest valid contract (which should now be April, since Feb is excluded)
         front_month = min(valid_contracts, key=lambda c: c.lastTradeDateOrContractMonth)
 
         logger.info(f"✅ Resolved {symbol} -> {front_month.localSymbol} (Exp: {front_month.lastTradeDateOrContractMonth})")
+
+        # Clear cache if we just switched contracts to force update
         self._conid_cache[symbol] = front_month
         return front_month
 
@@ -293,18 +310,23 @@ class IBKRClient:
         """Natively handles Entry + SL + TP Bracket."""
         contract = await self.get_futures_contract(symbol)
 
+        is_crypto = symbol in ["MBT", "MET", "BTC", "ETH"]
+
+        # Crypto set flag to False. Otherwise, True.
+        use_rth = not is_crypto
+
         side = "BUY" if direction.upper() == "LONG" else "SELL"
         entry = self.round_to_tick(entry, symbol)
         sl = self.round_to_tick(sl, symbol)
         tp = self.round_to_tick(tp, symbol)
 
         # ib_async utility to create the three order objects
-        brackets = self.ib.bracketOrder(side, quantity, limitPrice=entry, stopLossPrice=sl, takeProfitPrice=tp)
+        brackets = self.ib.bracketOrder(side, quantity, limitPrice=entry, stopLossPrice=sl, takeProfitPrice=tp, outsideRth=use_rth)
 
         trades = []
         for ord in brackets:
             ord.orderRef = order_ref
-            ord.outsideRth = True
+            ord.outsideRth = use_rth
             trade = self.ib.placeOrder(contract, ord)
             trades.append(trade)
 

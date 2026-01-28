@@ -153,8 +153,8 @@ class StrategyBase(ABC):
         self.event_cache = {}  # Cache: {(symbol, timeframe): {'events': list, 'last_updated': datetime}}
         self.debug = debug
         logger.info(f"StrategyBase initialized with {main_tf}")
-        if not self.debug:
-            logger.warning("Debug Mode is Off. Internal Telegram messages will not be sent.")
+        if self.debug is True:
+            logger.warning("Debug Mode is ON!")
 
         self.bos_signals = None
         self.recent_bos_signal = None

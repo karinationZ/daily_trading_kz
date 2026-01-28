@@ -347,254 +347,252 @@ class SMCBotBase:
             )
             strategy.log.info(f"♻️ RESTORED STATE: PENDING {direction.name} @ {entry_price}")
 
+    async def cleanup_orphaned_orders(self, strategy):
+        """
+        Checks for orders that exist when the strategy believes it is FLAT.
+        """
+        # 1. Only run this check if we think we are not in a trade
+        if strategy.trade_status != TradeStatus.NONE:
+            return
+
+        # 2. Get all open orders from IBKR
+        open_orders = await self.ib_client.get_open_orders()
+
+        # 3. Filter for orders belonging to THIS strategy
+        # We assume 'orderRef' matches strategy.ext_tag
+        my_orders = [o for o in open_orders if o.order.orderRef == strategy.ext_tag]
+
+        if my_orders:
+            logger.warning(f"🧹 ORPHAN CHECK: Found {len(my_orders)} hanging orders for {strategy.symbol} while Status=NONE. Purging.")
+
+            # 4. Log what we are killing for debugging
+            for o in my_orders:
+                logger.info(f"   -> Killing Orphan: {o.order.action} {o.order.totalQuantity} @ {o.order.lmtPrice or o.order.auxPrice}")
+
+            # 5. Nuke them
+            await self.ib_client.cancel_all_orders(order_ref=strategy.ext_tag)
+            await strategy.telegram_session_bot.send_message(
+                f"🧹 <b>ORPHAN CLEANUP</b> | Removed {len(my_orders)} hanging orders for {strategy.symbol}."
+            )
+
+    async def _send_trade_telemetry(self, strategy, sig):
+        """Constructs and sends the Telegram report."""
+        if sig.action not in [TradeAction.ENTER, TradeAction.EXIT, TradeAction.CANCEL]:
+            return
+
+        real_fill_price = 0.0
+        debug_note = ""
+
+        # --- GATHER DATA ---
+        if sig.action == TradeAction.EXIT:
+            real_fill_price = await self.ib_client.get_last_fill_price(sig.symbol)
+            # Calc Slippage
+            target_ref = sig.price
+            if real_fill_price > 0 and target_ref > 0:
+                diff = real_fill_price - target_ref
+                if abs(diff) > 0.5:
+                    debug_note = f"\n💸 <b>Slippage/Diff:</b> {diff:+.2f} pts"
+
+        elif sig.action == TradeAction.ENTER:
+            # Verify Brackets
+            bracket = await self.ib_client.get_active_bracket_levels(sig.symbol, strategy.ext_tag, sig.direction.name)
+            if not bracket["found"]:
+                await asyncio.sleep(3.0)  # One retry
+                bracket = await self.ib_client.get_active_bracket_levels(sig.symbol, strategy.ext_tag, sig.direction.name)
+                if not bracket["found"]:
+                    debug_note = "\n⚠️ <b>Warning:</b> Bracket orders not seen in API yet."
+            else:
+                if abs(bracket["sl"] - sig.sl) > 0.5:
+                    debug_note = f"\n⚠️ <b>SL Mismatch:</b> Bot {sig.sl} vs Broker {bracket['sl']}"
+
+        # --- BUILD MESSAGE ---
+        title = sig.action.name
+        if sig.action == TradeAction.EXIT:
+            res = getattr(sig, "trade_result", "N/A")
+            icon = "🟢" if res == "WIN" else "🔴"
+            title = f"{icon} EXIT ({res})"
+        elif sig.action == TradeAction.ENTER:
+            title = "🚀 ENTER"
+        elif sig.action == TradeAction.CANCEL:
+            title = "🗑️ CANCEL"
+
+        display_price = real_fill_price if (sig.action == TradeAction.EXIT and real_fill_price > 0) else sig.price
+
+        lines = [
+            f"<b>{title}</b> | {strategy.log_tag}",
+            f"Action: {sig.direction.name} {sig.action.name}",
+            f"Price: {display_price:,.2f}",
+        ]
+        if sig.reason:
+            lines.append(f"Reason: {sig.reason}")
+        if sig.metadata:
+            lines.append(f"<pre>{json.dumps(sig.metadata, indent=2, default=str)}</pre>")
+
+        # Calc PnL
+        if sig.action == TradeAction.EXIT and display_price > 0:
+            entry_price = sig.metadata.get("entry_price", 0) or (strategy.active_trade.price if strategy.active_trade else 0)
+            if entry_price > 0:
+                points = (display_price - entry_price) if sig.direction == BIAS.LONG else (entry_price - display_price)
+                multiplier = getattr(strategy, "point_value", 1.0)
+                cash_pnl = points * sig.size * multiplier
+                pnl_emoji = "🤑" if cash_pnl > 0 else "🔻"
+                lines.append(f"{pnl_emoji} <b>PnL: ${cash_pnl:,.2f}</b> ({points:+.2f} pts)")
+
+        if sig.action == TradeAction.ENTER:
+            lines.append(f"Bracket: SL {sig.sl:,.2f} | TP {sig.tp:,.2f}")
+            lines.append(f"Size: {sig.size}")
+
+        if debug_note:
+            lines.append(debug_note)
+        lines.append(f"<i>{sig.timestamp.strftime('%H:%M:%S')} UTC</i>")
+
+        # --- SEND ---
+        await strategy.telegram_session_bot.send_message("\n".join(lines), getattr(sig, "fig", None))
+
+        # --- DAILY SUMMARY (Optional Side Effect) ---
+        if sig.action == TradeAction.EXIT:
+            try:
+                await asyncio.sleep(4)
+                report = await self.ib_client.get_daily_summary()
+                if report:
+                    await strategy.telegram_session_bot.send_message(report)
+            except Exception as e:
+                strategy.log.error(f"Failed to send daily summary: {e}")
+
+    async def _perform_post_execution_safety(self, strategy, sig):
+        """
+        Validates that Exits actually exited and Entries actually entered.
+        Handle retries and force-closes.
+        """
+        # --- A. EXIT VALIDATION ---
+        if sig.action == TradeAction.EXIT:
+            exit_type = sig.metadata.get("exit_type", ExitType.SL_TP_HIT)
+            await asyncio.sleep(5.0)  # Wait for broker
+
+            # Check 1
+            is_flat, pos_size = await self.ib_client.check_flatness(sig.symbol)
+
+            # Check 2 (Retry if Passive Exit)
+            if not is_flat and exit_type == ExitType.SL_TP_HIT:
+                logger.warning(f"⚠️ Exit (SL_TP_HIT) - Flatness Check Failed for {sig.symbol}. Retrying...")
+                is_flat, pos_size = await self.ib_client.wait_for_flat(strategy.symbol)
+
+            # Final Decision
+            if not is_flat:
+                if abs(pos_size) > 0:
+                    warn_msg = f"🚨 <b>CRITICAL FAILURE:</b> Position {pos_size} stuck after EXIT signal. Force Closing."
+                    logger.error(warn_msg)
+                    await strategy.telegram_session_bot.send_message(warn_msg)
+                    await self.ib_client.cancel_all_orders(order_ref=strategy.ext_tag)
+                    await self.ib_client.close_positions_smartly(sig.symbol)
+                else:
+                    # False alarm (API quirk), just clear orders
+                    await self.ib_client.cancel_all_orders(order_ref=strategy.ext_tag)
+            else:
+                # Success: Flat. Double check for hanging orders.
+                await self.ib_client.cancel_all_orders(order_ref=strategy.ext_tag)
+                await asyncio.sleep(5.0)
+                open_orders = await self.ib_client.get_open_orders()
+                hanging_orders = [o for o in open_orders if o.order.orderRef == strategy.ext_tag]
+
+                if hanging_orders:
+                    logger.error(f"⚠️ ORPHAN ORDERS DETECTED after Exit! Found {len(hanging_orders)}. Retrying cancel.")
+                    await self.ib_client.cancel_all_orders(order_ref=strategy.ext_tag)
+
+        # --- B. ENTRY VALIDATION ---
+        elif sig.action == TradeAction.ENTER:
+            # Wait for Bracket Order to register
+            await asyncio.sleep(2.0)
+
+    async def _finalize_locks_and_orphans(self, strategy):
+        """Syncs locks and ensures no orphan orders remain. Runs in 'finally' block."""
+        # A. Sync Locks
+        if strategy.trade_status == TradeStatus.NONE:
+            # Release lock if we hold it
+            current = self.ACTIVE_SYMBOL_LOCKS.get(strategy.symbol)
+            if current and current.strategy_tag == strategy.ext_tag:
+                self.ACTIVE_SYMBOL_LOCKS.pop(strategy.symbol, None)
+        else:
+            # Update/Confirm lock
+            self.ACTIVE_SYMBOL_LOCKS[strategy.symbol] = LockInfo(
+                strategy_tag=strategy.ext_tag,
+                status=strategy.trade_status,
+                priority=getattr(strategy, 'priority', 1),
+                timestamp=datetime.now(),
+            )
+
+        # B. Kill Orphans (The Safety Fix)
+        await self.cleanup_orphaned_orders(strategy)
+
+    async def _is_symbol_available(self, strategy, symbol):
+        """Checks if the symbol is available for trading."""
+        can_trade = await self.acquire_lock(strategy)
+        if not can_trade:
+            msg = f"🔒{strategy.ext_tag} | {symbol} is locked and used by another strategy. Skipping ENTER signal."
+            logger.info(msg)
+            await strategy.telegram_session_bot.send_message(msg)
+            return False
+        return True
+
+    async def _check_and_update_pending_status(self, strategy):
+        """Checks if a PENDING trade has actually been filled at the broker."""
+        if strategy.trade_status == TradeStatus.PENDING:
+            is_flat, pos_size = await self.ib_client.check_flatness(strategy.symbol)
+
+            if not is_flat:
+                # ✅ WE ARE FILLED!
+                strategy.trade_status = TradeStatus.FILLED
+                fill_price = await self.ib_client.get_last_fill_price(strategy.symbol)
+                msg = f"⚡ ORDER FILLED | {strategy.log_tag} @ {fill_price:.2f}"
+                logger.info(msg)
+                await strategy.telegram_session_bot.send_message(msg)
+
     async def run_strategy_cycle(self, strategy, *args, **kwargs):
+        """
+        Main orchestration loop. Logic is split into helper methods for readability.
+        """
         try:
-            symbol = strategy.symbol
-            # -----------------------------------------------------------------
-            # ANALYSIS & SIGNAL GENERATION
-            # -----------------------------------------------------------------
-            # The strategy analyzes price/indicators and returns a result.
+            # 1. ANALYSIS
             analysis = await strategy.analyze(*args, **kwargs)
             sig = analysis.trade_signal
-
-            # If no signal, just update the dashboard/log (optional) and return
             if not sig:
                 return
 
-            # -----------------------------------------------------------------
-            # CHECK if we have orders filled (based on IBKR)
-            # -----------------------------------------------------------------
-            if strategy.trade_status == TradeStatus.PENDING:
-                # Ask IBKR: Do I have a position?
-                is_flat, pos_size = await self.ib_client.check_flatness(symbol)
+            # 2. STATUS CHECK (Did a pending order fill?)
+            await self._check_and_update_pending_status(strategy)
 
-                if not is_flat:
-                    # ✅ WE ARE FILLED!
-                    strategy.trade_status = TradeStatus.FILLED
-                    # Log & Telegram
-                    fill_price = await self.ib_client.get_last_fill_price(symbol)
-                    msg = f"⚡ ORDER FILLED | {strategy.log_tag} @ {fill_price:.2f}"
-                    logger.info(msg)
-                    await strategy.telegram_session_bot.send_message(msg)
-
+            # 3. LOCK CHECK (Can we enter?)
             if sig.action == TradeAction.ENTER:
-                can_trade = await self.acquire_lock(strategy)
-                if not can_trade:
-                    msg = f"🔒{symbol} is locked and used by another strategy. Skipping ENTER signal."
-                    logger.info(f"🔒{symbol} is locked and used by another strategy. Skipping ENTER signal.")
-                    await strategy.telegram_session_bot.send_message(msg)
+                if not await self._is_symbol_available(strategy, sig.symbol):
                     return
 
-            # -----------------------------------------------------------------
-            # EXECUTION (The "Doer")
-            # -----------------------------------------------------------------
+            # 4. EXECUTION & LOCK MANAGEMENT
             try:
-                # This will raise Exception if order placement fails (e.g. Insufficient Funds)
                 await self.handle_execution(strategy, analysis)
 
-                # Manage Locks based on action
+                # Update Locks on Success
                 if sig.action == TradeAction.ENTER:
-                    # Update the central lock with full info
-                    self.ACTIVE_SYMBOL_LOCKS[symbol] = LockInfo(
+                    self.ACTIVE_SYMBOL_LOCKS[strategy.symbol] = LockInfo(
                         strategy_tag=strategy.ext_tag, status=strategy.trade_status, priority=strategy.priority, timestamp=datetime.now()
                     )
                 elif sig.action in [TradeAction.EXIT, TradeAction.CANCEL]:
-                    self.ACTIVE_SYMBOL_LOCKS.pop(symbol, None)
+                    self.ACTIVE_SYMBOL_LOCKS.pop(strategy.symbol, None)
 
             except Exception as exe_err:
                 strategy.log.error(f"Execution Aborted: {exe_err}")
 
             finally:
-                # SYNC LOCK STATE (THE CLEANUP)
-                if strategy.trade_status == TradeStatus.NONE:
-                    # If strategy is neutral (or just finished a trade), RELEASE the lock.
-                    # Only release if WE are the ones holding it (don't delete someone else's lock)
-                    current = self.ACTIVE_SYMBOL_LOCKS.get(strategy.symbol)
-                    if current and current.strategy_tag == strategy.ext_tag:
-                        self.ACTIVE_SYMBOL_LOCKS.pop(strategy.symbol, None)
-                else:
-                    # If PENDING or FILLED, UPDATE/CONFIRM the lock
-                    self.ACTIVE_SYMBOL_LOCKS[strategy.symbol] = LockInfo(
-                        strategy_tag=strategy.ext_tag,
-                        status=strategy.trade_status,
-                        priority=getattr(strategy, 'priority', 1),
-                        timestamp=datetime.now(),
-                    )
+                # 5. CLEANUP (Locks & Orphans) - CRITICAL SECTION
+                await self._finalize_locks_and_orphans(strategy)
 
-            # -----------------------------------------------------------------
-            # 3. POST-EXECUTION WAIT & MONITOR (The "Safety Net")
-            # -----------------------------------------------------------------
+            # 6. SAFETY NET (Post-Execution Validation)
+            await self._perform_post_execution_safety(strategy, sig)
 
-            # --- A. WAIT FOR BROKER ---
-            if sig.action == TradeAction.EXIT:
-                exit_type = sig.metadata.get("exit_type", ExitType.SL_TP_HIT)
-                await asyncio.sleep(5.0)
+            # 7. TELEMETRY (Reporting)
+            await self._send_trade_telemetry(strategy, sig)
 
-                # --- B. CHECK FLATNESS (Pass 1) ---
-                is_flat, pos_size = await self.ib_client.check_flatness(sig.symbol)
-
-                # --- C. RETRY LOGIC (Pass 2) ---
-                # If not flat and it was a Passive exit, force refresh and try again
-                if not is_flat and exit_type == ExitType.SL_TP_HIT:
-                    logger.warning(f"⚠️ Exit (SL_TP_HIT) - Flatness Check Failed for {sig.symbol}. Retrying...")
-                    is_flat, pos_size = await self.ib_client.wait_for_flat(strategy.symbol)
-
-                # --- D. FINAL DECISION ---
-                if not is_flat:
-                    if abs(pos_size) > 0:
-                        warn_msg = f"🚨 <b>CRITICAL FAILURE:</b> Position {pos_size} " f"stuck after EXIT signal. Force Closing."
-                        logger.error(warn_msg)
-                        await strategy.telegram_session_bot.send_message(warn_msg)
-                        await self.ib_client.cancel_all_orders(order_ref=strategy.ext_tag)
-                        await self.ib_client.close_positions_smartly(sig.symbol)
-                    else:
-                        # False alarm
-                        await self.ib_client.cancel_all_orders(order_ref=strategy.ext_tag)
-
-                else:
-                    # ✅ SUCCESS: We are flat (either on Pass 1 or Pass 2).
-                    # ALWAYS run cleanup here to ensure no orphan orders remain.
-                    await self.ib_client.cancel_all_orders(order_ref=strategy.ext_tag)
-                    # Double-check for orphan orders
-                    await asyncio.sleep(5.0)
-                    open_orders = await self.ib_client.get_open_orders()
-                    hanging_orders = [o for o in open_orders if o.order.orderRef == strategy.ext_tag]
-
-                    if hanging_orders:
-                        logger.error(f"⚠️ ORPHAN ORDERS DETECTED after Exit! Found {len(hanging_orders)}. Retrying cancel.")
-                        await self.ib_client.cancel_all_orders(order_ref=strategy.ext_tag)
-
-            elif sig.action == TradeAction.ENTER:
-                # Wait 2s for the Bracket Order to register in the system
-                await asyncio.sleep(2.0)
-
-            # -----------------------------------------------------------------
-            # 4. REPORTING (Telemetry)
-            # -----------------------------------------------------------------
-
-            # ADD HERE TELEGRAM LOG that TRADE has been filled: if strategy.trade_status = TradeStatus.FILLED
-            if sig.action not in [
-                TradeAction.ENTER,
-                TradeAction.EXIT,
-                TradeAction.CANCEL,
-            ]:
-                return
-
-            real_fill_price = 0.0
-            debug_note = ""
-
-            # --- A. EXIT REPORTING ---
-            if sig.action == TradeAction.EXIT:
-                # Try to get the actual price we got filled at
-                real_fill_price = await self.ib_client.get_last_fill_price(sig.symbol)
-
-                # Check for Slippage (Difference between Signal Price and Actual Fill)
-                # Note: sig.price might be the TP target, but real_fill_price includes slippage.
-                sig.metadata.get("entry_price", 0)
-                target_ref = sig.price
-
-                # Only calc slippage if we have valid numbers and it wasn't a huge jump (data error)
-                if real_fill_price > 0 and target_ref > 0:
-                    diff = real_fill_price - target_ref
-                    # Filter out noise (0.25 ticks)
-                    if abs(diff) > 0.5:
-                        debug_note = f"\n💸 <b>Slippage/Diff:</b> {diff:+.2f} pts"
-
-            # --- B. ENTRY REPORTING (Restored) ---
-            elif sig.action == TradeAction.ENTER:
-                # Verify that the Broker actually created the Bracket Orders correctly
-                bracket = await self.ib_client.get_active_bracket_levels(sig.symbol, strategy.ext_tag, sig.direction.name)
-
-                if not bracket["found"]:
-                    # Retry once after short wait
-                    await asyncio.sleep(3.0)
-                    bracket = await self.ib_client.get_active_bracket_levels(sig.symbol, strategy.ext_tag, sig.direction.name)
-                    if not bracket["found"]:
-                        # This means the order might have failed or hasn't appeared yet
-                        debug_note = "\n⚠️ <b>Warning:</b> Bracket orders not seen in API yet."
-                else:
-                    # Verify SL matches strategy logic
-                    if abs(bracket["sl"] - sig.sl) > 0.5:  # Allow small float diff
-                        debug_note = f"\n⚠️ <b>SL Divergence:</b> Strat {sig.sl} vs Broker {bracket['sl']}"
-
-            # --- C. BUILD TELEGRAM MESSAGE ---
-
-            # Title Generation
-            title = sig.action.name
-            if sig.action == TradeAction.EXIT:
-                res = getattr(sig, "trade_result", "N/A")
-                icon = "🟢" if res == "WIN" else "🔴"
-                title = f"{icon} EXIT ({res})"
-            elif sig.action == TradeAction.ENTER:
-                title = "🚀 ENTER"
-            elif sig.action == TradeAction.CANCEL:
-                title = "🗑️ CANCEL"
-
-            # Price Display (Use Real Fill for Exits if available)
-            display_price = real_fill_price if (sig.action == TradeAction.EXIT and real_fill_price > 0) else sig.price
-
-            lines = [
-                f"<b>{title}</b> | {strategy.log_tag}",
-                f"Action: {sig.direction.name} {sig.action.name}",
-                f"Price: {display_price:,.2f}",
-            ]
-            if sig.reason:
-                lines.append(f"Reason: {sig.reason}")
-            if sig.metadata:
-                meta_str = json.dumps(sig.metadata, indent=2, default=str)
-                lines.append(f"<pre>{meta_str}</pre>")
-
-            # PnL Calculation (Exits Only)
-            if sig.action == TradeAction.EXIT and display_price > 0:
-                # Retrieve the Entry Price stored in metadata
-                entry_price = sig.metadata.get("entry_price", 0)
-                # Fallback: If not in metadata, try to find it from the strategy logic (less reliable)
-                if entry_price == 0 and strategy.active_trade:
-                    entry_price = strategy.active_trade.price
-
-                if entry_price > 0:
-                    if sig.direction == BIAS.LONG:
-                        points = display_price - entry_price
-                    else:
-                        points = entry_price - display_price
-
-                    multiplier = getattr(strategy, "point_value", 1.0)
-                    cash_pnl = points * sig.size * multiplier
-
-                    pnl_emoji = "🤑" if cash_pnl > 0 else "🔻"
-                    lines.append(f"{pnl_emoji} <b>PnL: ${cash_pnl:,.2f}</b> ({points:+.2f} pts)")
-
-            # Entry Details
-            if sig.action == TradeAction.ENTER:
-                lines.append(f"Bracket: SL {sig.sl:,.2f} | TP {sig.tp:,.2f}")
-                lines.append(f"Size: {sig.size}")
-
-            # Append Debug Notes & Timestamp
-            if debug_note:
-                lines.append(debug_note)
-
-            time_str = sig.timestamp.strftime("%H:%M:%S")
-            lines.append(f"<i>{time_str} UTC</i>")
-
-            # Send Message
-            # Note: getattr(sig, 'fig', None) checks if a chart image was generated
-            await strategy.telegram_session_bot.send_message("\n".join(lines), getattr(sig, "fig", None))
-
-            # -----------------------------------------------------------------
-            # 5. DAILY SUMMARY (Optional)
-            # -----------------------------------------------------------------
-            if sig.action == TradeAction.EXIT:
-                try:
-                    # Wait a moment for PnL to register in the account ledger
-                    await asyncio.sleep(4)
-                    report = await self.ib_client.get_daily_summary()
-                    if report:
-                        await strategy.telegram_session_bot.send_message(report)
-                except Exception:
-                    pass
-
-        except Exception:
-            logger.error(f"Strategy Cycle Error: {traceback.format_exc()}")
+        except Exception as e:
+            logger.error(f"Strategy Cycle Error: {traceback.format_exc()}\n{e}")
 
     async def handle_execution(self, strategy, analysis: SignalSummary) -> bool:
 
@@ -641,6 +639,15 @@ class SMCBotBase:
 
             # --- EXIT ---
             elif sig.action == TradeAction.EXIT:
+                # Check if IBKR already closed it for us (The Bracket worked)
+                is_flat, pos_size = await self.ib_client.check_flatness(symbol)
+
+                if is_flat:
+                    strategy.log.info(f"✅ Position already closed (likely by Bracket). Syncing state.")
+                    # Even if flat, run cancel_all to ensure the OTHER side of the bracket is gone
+                    # (e.g. SL hit, ensure TP is cancelled)
+                    await self.ib_client.cancel_all_orders(order_ref=strategy.ext_tag)
+                    return True
 
                 if exit_type == ExitType.MARKET_FORCE:
                     # CASE A: TIME CUTOFF
@@ -655,6 +662,14 @@ class SMCBotBase:
                     # DO NOTHING. Trust the IBKR Bracket to execute.
                     # If we interfere, we might create orphan orders.
                     strategy.log.info(f"👀 PASSIVE EXIT DETECTED ({sig.trade_result}). Monitor Only.")
+                    is_flat, pos_size = await self.ib_client.wait_for_flat()
+                    if not is_flat:
+                        strategy.log.error(f"❌ EXIT FAILURE: Position still open after passive exit. Size: {pos_size}")
+                        await strategy.telegram_session_bot.send_message(
+                            f"🚨 <b>EXIT FAILURE</b> | {strategy.log_tag}" f"\nPosition still open after TP/SL Hit. Size: {pos_size}. Force closing."
+                        )
+                        await self.ib_client.cancel_all_orders(order_ref=strategy.ext_tag)
+                        return False
 
             # --- CANCEL (Pending Entry) ---
             elif sig.action == TradeAction.CANCEL:

@@ -13,21 +13,8 @@ from ib_async import (
     MarketOrder,
     util,
 )
-from tenacity import retry, retry_if_result, stop_after_attempt, wait_fixed
 
 from daily_trading.settings import logger
-
-
-def is_not_flat(result):
-    is_flat, _ = result
-    return not is_flat
-
-
-def return_last_value(retry_state):
-    """
-    return the result of the last attempt instead of raising a RetryError
-    """
-    return retry_state.outcome.result()
 
 
 class IBKRClient:
@@ -98,17 +85,12 @@ class IBKRClient:
         """Returns currently open positions."""
         return await self.ib.reqPositionsAsync()
 
-    async def get_open_orders(self) -> List[Any]:
+    def get_open_orders(self) -> List[Any]:
         """
         Returns a list of active 'Trade' objects (wrapping Order + Contract).
         We return Trades (instead of raw Orders) so the MasterBot
         can access 'trade.contract.symbol'.
         """
-        # 1. Force a refresh from TWS to ensure we capture orders
-        # that might have been placed before this bot started.
-        await self.ib.reqOpenOrdersAsync()
-
-        # 2. Return the list of Trade objects tracked by the client
         return self.ib.openTrades()
 
     async def get_futures_contract(self, symbol: str) -> Contract | None:
@@ -248,7 +230,6 @@ class IBKRClient:
         Returns: (sl_price, tp_price). Returns 0.0 if not found.
         """
         # 1. Force a refresh to ensure we see orders placed seconds ago
-        await self.ib.reqOpenOrdersAsync()
         open_trades = self.ib.openTrades()
 
         sl_price = 0.0
@@ -317,7 +298,13 @@ class IBKRClient:
 
         # Create bracket orders WITHOUT outsideRth (it's ignored anyway)
         brackets = self.ib.bracketOrder(
-            side, quantity, limitPrice=entry, stopLossPrice=sl, takeProfitPrice=tp, outsideRth=False  # Set to False for all futures to avoid warning
+            side,
+            quantity,
+            limitPrice=entry,
+            stopLossPrice=sl,
+            takeProfitPrice=tp,
+            outsideRth=False,
+            # Set to False for all futures to avoid warning
         )
 
         trades = []
@@ -338,12 +325,6 @@ class IBKRClient:
             if order_ref is None or trade.order.orderRef == order_ref:
                 self.ib.cancelOrder(trade.order)
                 logger.info(f"Cancelled Order ID: {trade.order.orderId} (Ref: {trade.order.orderRef})")
-
-    @retry(retry=retry_if_result(is_not_flat), wait=wait_fixed(3), stop=stop_after_attempt(10), retry_error_callback=return_last_value)
-    async def wait_for_flat(self, symbol):
-        # This will be retried automatically if is_flat is False
-        is_flat, pos_size = await self.check_flatness(symbol)
-        return is_flat, pos_size
 
     async def diagnostic_market_data(self, symbol: str):
         contract = await self.get_futures_contract(symbol)
@@ -578,7 +559,6 @@ class IBKRClient:
         Fetches ACTUAL live StopLoss and TakeProfit prices from IBKR.
         Uses direction to distinguish between Entry Limit and TP Limit orders.
         """
-        await self.ib.reqOpenOrdersAsync()
         open_trades = self.ib.openTrades()
 
         sl_price = 0.0
@@ -626,12 +606,13 @@ class IBKRClient:
         # Return average price of that fill
         return last_exec.execution.avgPrice
 
-    async def check_flatness(self, symbol: str) -> (bool, float):
+    def check_flatness(self, symbol: str) -> (bool, float):
         """
-        Returns (True, 0.0) if flat, or (False, size) if position exists.
+        NON-BLOCKING: Uses the internal ib_async cache.
+        Returns (True, 0.0) if flat.
         """
-        # Force refresh
-        positions = await self.ib.reqPositionsAsync()
+        # Use .positions() (the cache) instead of .reqPositionsAsync() (the network)
+        positions = self.ib.positions()
 
         for p in positions:
             if p.contract.symbol == symbol and p.position != 0:

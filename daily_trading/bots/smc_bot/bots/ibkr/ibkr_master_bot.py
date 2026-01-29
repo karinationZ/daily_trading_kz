@@ -188,7 +188,6 @@ class MasterBot:
                             if sym not in market_data:
                                 market_data[sym] = {}
                             market_data[sym]["5m"] = df
-                        await asyncio.sleep(2.0)
 
                     # Fetch 1h Data
                     for sym in self.symbols_1h:
@@ -197,7 +196,6 @@ class MasterBot:
                             if sym not in market_data:
                                 market_data[sym] = {}
                             market_data[sym]["1h"] = df
-                        await asyncio.sleep(2.0)
 
                     # --- B. Execution Phase ---
                     positions, orders, blocked = await self.get_account_state()
@@ -221,11 +219,26 @@ class MasterBot:
                         await self.orb_bot.telegram_debug_channel.send_message(msg)
 
                     logger.info("🤖 Executing bots in parallel...")
+
+                    await asyncio.gather(self.ib_client.ib.reqPositionsAsync(), self.ib_client.ib.reqOpenOrdersAsync())
+
+                    # 2. Get the actual objects from the refreshed cache
+                    fresh_positions = self.ib_client.ib.positions()
+                    fresh_orders = self.ib_client.ib.openTrades()
+
+                    logger.info("🤖 Executing bots in parallel...")
                     try:
-                        await asyncio.gather(
-                            self.orb_bot.execute_cycle(market_data, blocked, positions, orders),
-                            self.bos_ob_bot.execute_cycle(market_data, blocked, positions, orders),
-                        )
+                        # 1. RUN ORB FIRST
+                        # This will run its 3 strategies in parallel internally
+                        logger.info("📊 Starting ORB Bot Cycle...")
+                        await self.orb_bot.execute_cycle(market_data, blocked, fresh_positions, fresh_orders)
+
+                        # 2. RUN BOS SECOND
+                        # It will only start after ORB has finished its analysis and lock acquisition
+                        logger.info("📊 Starting BOS Bot Cycle...")
+                        await self.bos_ob_bot.execute_cycle(market_data, blocked, fresh_positions, fresh_orders)
+
+                        logger.info("✅ Both bots completed sequentially")
 
                         logger.info("✅ Both bots completed successfully")
                     except Exception as e:

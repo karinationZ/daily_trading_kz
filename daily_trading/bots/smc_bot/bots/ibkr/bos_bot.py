@@ -1,4 +1,5 @@
 import asyncio
+import traceback
 from typing import List
 from zoneinfo import ZoneInfo
 
@@ -161,9 +162,9 @@ class BosOrderBlockBot(SMCBotBase):
         Needs both 5m and 1h data.
         """
         logger.info(f"🔵 {self.__class__.__name__}.execute_cycle() STARTED [VERSION 2.0 WITH 120s TIMEOUT]")
-
         tasks = []
         for strategy in self.strategies:
+
             sym_data = market_data.get(strategy.symbol, {})
             df_5m = sym_data.get("5m")
             df_1h = sym_data.get("1h")
@@ -177,9 +178,8 @@ class BosOrderBlockBot(SMCBotBase):
             is_session_started = strategy.is_pre_session_started(ts_now, strategy.timezone)
 
             if self.is_strategy_in_window(strategy) and is_session_started:
-                await self.sync_state(strategy, current_positions, open_orders)
-                # Run Logic
-                tasks.append(self.run_strategy_cycle(strategy, df_5m, df_1h))
+                coro = self.run_strategy_cycle(strategy, df_5m, df_1h, current_positions=current_positions, open_orders=open_orders)
+                tasks.append(asyncio.wait_for(coro, timeout=45))
             else:
                 strategy.log.info(f"💤 {strategy.tz_short} Session has not started yet!")
 
@@ -191,7 +191,15 @@ class BosOrderBlockBot(SMCBotBase):
                 # Check each result
                 for i, result in enumerate(results):
                     if isinstance(result, Exception):
-                        logger.error(f"❌ Task {i} failed with exception: {result}", exc_info=result)
+                        # 1. Identify WHICH strategy failed
+                        strategy_name = self.strategies[i].symbol if i < len(self.strategies) else "Unknown"
+
+                        # 2. Extract the full stack trace as a string
+                        tb_lines = traceback.format_exception(type(result), result, result.__traceback__)
+                        tb_text = "".join(tb_lines)
+
+                        # 3. Log the full text clearly
+                        logger.error(f"❌ STRATEGY FAILURE: {strategy_name} (Task {i})\n{tb_text}")
                     else:
                         logger.info(f"✅ Task {i} completed successfully")
 

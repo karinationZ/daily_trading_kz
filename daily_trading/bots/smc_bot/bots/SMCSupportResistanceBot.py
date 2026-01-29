@@ -2,7 +2,7 @@ import asyncio
 import traceback
 
 from daily_trading.bots.smc_bot.bots.BaseBot import SMCBotBase
-from daily_trading.bots.smc_bot.strategy.SupportResistanceStrategy import (
+from daily_trading.bots.smc_bot.strategy.old.SupportResistanceStrategy import (
     SupportResistanceStrategy,
 )
 from daily_trading.settings import logger

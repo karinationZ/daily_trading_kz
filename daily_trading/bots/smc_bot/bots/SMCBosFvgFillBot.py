@@ -2,7 +2,7 @@ import asyncio
 import traceback
 
 from daily_trading.bots.smc_bot.bots.BaseBot import SMCBotBase
-from daily_trading.bots.smc_bot.strategy.BosFvgFillStrategy_old import (
+from daily_trading.bots.smc_bot.strategy.old.BosFvgFillStrategy_old import (
     BosFvgFillStrategy,
 )
 from daily_trading.settings import logger, TELEGRAM_MAIN_CHANNEL_CHAT_ID

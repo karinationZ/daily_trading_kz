@@ -1,4 +1,5 @@
 import asyncio
+import traceback
 from typing import List
 from zoneinfo import ZoneInfo
 
@@ -114,6 +115,7 @@ class ORBBot(SMCBotBase):
          blocked_symbols: Set of symbols active in other bots (conflict prevention).
         """
         logger.info(f"🔵 {self.__class__.__name__}.execute_cycle() STARTED")
+
         tasks = []
         for strategy in self.strategies:
             # 2. Extract Data: ORBBot only needs "5m" data.
@@ -127,21 +129,35 @@ class ORBBot(SMCBotBase):
                 is_session_started = strategy.is_pre_session_started(ts_now, strategy.timezone)
                 if self.is_strategy_in_window(strategy) and is_session_started:
                     # Call the EXISTING logic function
-                    await self.sync_state(strategy, current_positions, open_orders)
-                    tasks.append(self.run_strategy_cycle(strategy, df_5m))
+                    coro = self.run_strategy_cycle(strategy, df_5m, current_positions=current_positions, open_orders=open_orders)
+                    tasks.append(asyncio.wait_for(coro, timeout=30))  # Each strategy gets 30s max
                 else:
                     strategy.log.info(f"💤 {strategy.tz_short} Session has not started yet!")
         if tasks:
             logger.info(f"🔧 Running {len(tasks)} strategy tasks...")
             try:
-                # ADD TIMEOUT HERE
-                await asyncio.wait_for(asyncio.gather(*tasks), timeout=180.0)  # 3 minutes max per bot
-                logger.info(f"✅ All {len(tasks)} tasks completed")
+                results = await asyncio.wait_for(asyncio.gather(*tasks, return_exceptions=True), timeout=180)
+
+                # Check each result
+                for i, result in enumerate(results):
+                    if isinstance(result, Exception):
+                        # 1. Identify WHICH strategy failed
+                        strategy_name = self.strategies[i].symbol if i < len(self.strategies) else "Unknown"
+
+                        # 2. Extract the full stack trace as a string
+                        tb_lines = traceback.format_exception(type(result), result, result.__traceback__)
+                        tb_text = "".join(tb_lines)
+
+                        # 3. Log the full text clearly
+                        logger.error(f"❌ STRATEGY FAILURE: {strategy_name} (Task {i})\n{tb_text}")
+                    else:
+                        logger.info(f"✅ Task {i} completed successfully")
+
             except asyncio.TimeoutError:
-                logger.error(f"⏰ TIMEOUT: {self.__class__.__name__} tasks took longer than 3 minutes!")
+                logger.error(f"⏰ TIMEOUT: {self.__class__.__name__} tasks took longer than 3 min!")
                 raise
             except Exception as e:
-                logger.error(f"❌ Error in {self.__class__.__name__} tasks: {e}", exc_info=True)
+                logger.error(f"❌ Unexpected error in gather: {e}", exc_info=True)
                 raise
         else:
             logger.info(f"⚪ No active strategies in {self.__class__.__name__}")

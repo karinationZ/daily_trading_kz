@@ -3,6 +3,7 @@ from datetime import datetime, timedelta
 from zoneinfo import ZoneInfo
 
 from daily_trading.bots.smc_bot.bots.ibkr.bos_bot import BosOrderBlockBot
+from daily_trading.bots.smc_bot.bots.ibkr.bos_fvg_bot import BosFvgBot
 
 # Import the Sub-Bots
 from daily_trading.bots.smc_bot.bots.ibkr.orb_bot import ORBBot
@@ -18,6 +19,7 @@ class MasterBot:
         # 2. Init Bots with Shared Client
         self.orb_bot = ORBBot(ib_client=self.ib_client)
         self.bos_ob_bot = BosOrderBlockBot(ib_client=self.ib_client)
+        self.bos_fvg_bot = BosFvgBot(ib_client=self.ib_client)
 
         # 3. Categorize Symbols for Fetching
         # ORB & BOS needs 5m
@@ -202,35 +204,36 @@ class MasterBot:
                         logger.info(msg)
                         await self.orb_bot.telegram_debug_channel.send_message(msg)
 
-                    logger.info("🤖 Executing bots in parallel...")
-
-                    logger.info("🤖 Executing bots in parallel...")
+                    logger.info("🤖 Executing bots strategies ...")
                     try:
                         # Fetch 5m Data
                         for sym in self.symbols_5m:
-                            df = await self.ib_client.get_klines(sym, "5m")
-                            if not df.empty:
-                                if sym not in market_data:
-                                    market_data[sym] = {}
-                                market_data[sym]["5m"] = df
+                            df_5m = await self.ib_client.get_klines(sym, "5m")
+                            market_data[sym] = {"5m": df_5m}
+                            if df_5m.empty:
+                                logger.warning(f"⚠️ ALARM {sym}: '5m' DataFrame is empty.")
+
+                        # Fetch all 1h data
+                        for sym in self.symbols_1h:
+                            if sym not in market_data:
+                                market_data[sym] = {}
+                            market_data[sym]["1h"] = await self.ib_client.get_klines(sym, "1h")
+
                         logger.info("📊 Starting ORB Bot Cycle...")
                         await self.orb_bot.execute_cycle(market_data, self.orb_bot.strategies)
                         await asyncio.sleep(0.5)
 
-                        logger.info("📊 Starting BOS Bot Cycle...")
-                        # Fetch 1h Data
-                        for sym in self.symbols_1h:
-                            df = await self.ib_client.get_klines(sym, "1h")
-                            if not df.empty:
-                                if sym not in market_data:
-                                    market_data[sym] = {}
-                                market_data[sym]["1h"] = df
+                        # # BOS 5m FVG Bot
+                        # logger.info("📊 Starting BOS 5m FVG Cycle...")
+                        # await self.bos_fvg_bot.execute_cycle(market_data, self.bos_fvg_bot.strategies)
+                        # await asyncio.sleep(0.5)
 
+                        logger.info("📊 Starting BOS Bot Cycle...")
+                        # BOS 1H Order Block Bot
                         await self.bos_ob_bot.execute_cycle(market_data, self.bos_ob_bot.strategies)
 
-                        logger.info("✅ Both bots completed sequentially")
+                        logger.info("✅ All bots completed sequentially")
 
-                        logger.info("✅ Both bots completed successfully")
                     except Exception as e:
                         logger.error(f"❌ Bot execution error: {e}", exc_info=True)
 

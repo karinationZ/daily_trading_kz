@@ -36,7 +36,7 @@ services:
 #     platform: linux/amd64
     build:
       context: .
-      dockerfile: Dockerfile.orb
+      dockerfile: Dockerfile.ibkr
     environment:
       TWS_USERID: ${TWS_USERID:-}
       TWS_PASSWORD: ${TWS_PASSWORD:-}

@@ -11,31 +11,29 @@ FROM python:3.11-slim
 # --- 1. Install System Dependencies ---
 RUN apt-get update && \
     apt-get install -y --no-install-recommends \
-    # Bot Dependencies
-    chromium \
-    chromium-driver \
-    fonts-liberation \
-    libatk-bridge2.0-0 \
-    libatk1.0-0 \
-    libcairo2 \
-    libgbm1 \
-    libgdk-pixbuf-2.0-0 \
-    libgtk-3-0 \
-    libpango-1.0-0 \
+    # Build & Core Tools
     make \
-    # IBKR & System Dependencies
+    curl \
+    unzip \
+    procps \
+    sudo \
+    gettext-base \
+    # Networking & Remote Access
     socat \
-    xvfb \
-    x11vnc \
     sshpass \
     openssh-client \
     netcat-openbsd \
-    gettext-base \
+    # Display Server (Critical for IB Gateway)
+    xvfb \
+    x11vnc \
+    # Minimal Java GUI Dependencies (Required for IB Gateway to draw windows)
+    libxext6 \
+    libxrender1 \
+    libxtst6 \
+    libxi6 \
+    libfreetype6 \
+    # Process Manager
     supervisor \
-    procps \
-    sudo \
-    curl \
-    unzip \
     && rm -rf /var/lib/apt/lists/*
 
 # --- 2. Setup IB Gateway Environment ---
@@ -59,8 +57,7 @@ ENV IBC_INI_TMPL=${IBC_INI}.tmpl
 ENV SCRIPT_PATH=${HOME}/scripts
 ENV GATEWAY_OR_TWS=gateway
 
-# --- COPY FIX IS HERE ---
-# The source image has files in /home/ibgateway, NOT /root.
+# --- COPY FILES ---
 COPY --from=ibkr_source /usr/local /usr/local
 COPY --from=ibkr_source --chown=${USER_ID}:${USER_GID} /home/ibgateway/ /home/ibgateway/
 

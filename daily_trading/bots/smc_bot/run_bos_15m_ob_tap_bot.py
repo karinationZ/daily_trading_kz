@@ -1,6 +1,6 @@
 import asyncio
 
-from daily_trading.bots.smc_bot.bots.SMCBosOrderBlockTapBot import (
+from daily_trading.bots.smc_bot.bots.old.SMCBosOrderBlockTapBot import (
     SMCBosOrderBlockTapBot,
 )
 from daily_trading.settings import TELEGRAM_MAIN_CHANNEL_CHAT_ID

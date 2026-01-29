@@ -1,6 +1,6 @@
 import asyncio
 
-from daily_trading.bots.smc_bot.bots.SMCBosFvgFillBot import SMCBosFvgFillBot
+from daily_trading.bots.smc_bot.bots.old.SMCBosFvgFillBot import SMCBosFvgFillBot
 from daily_trading.settings import TELEGRAM_MAIN_CHANNEL_CHAT_ID
 
 

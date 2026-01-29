@@ -53,9 +53,9 @@ class IBKRClient:
     TIMEFRAME_CONFIG = {
         "1m": ("1 min", "2 D"),
         "5m": ("5 mins", "5 D"),
-        "15m": ("15 mins", "10 D"),
+        "15m": ("15 mins", "2 W"),
         "1h": ("1 hour", "1 M"),
-        "1d": ("1 day", "3 M"),
+        "1d": ("1 day", "1 Y"),
     }
 
     def __init__(self, host: str = "127.0.0.1", port: int = 4002, client_id: int = 1):

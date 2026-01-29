@@ -5,22 +5,10 @@ from daily_trading.bots.smc_bot.bots.BaseBot import SMCBotBase
 from daily_trading.bots.smc_bot.strategy.BosFvgStrategy import BosFvgStrategy
 from daily_trading.settings import logger, TELEGRAM_MAIN_CHANNEL_CHAT_ID
 
-# # 10. MES_ASIA - Score: 85.82 | WR: 68.42% | Edge: 35.09% | Trades: 19
-# {
-#     'name': 'MES_ASIA_sw50_int3_rr2.0_mit0.75_sl0.1',
-#     'symbol': 'MES',
-#     'tz_name': 'ASIA',
-#     'sw': 50,
-#     'int': 3,
-#     'rr': 2.0,
-#     'mit': 0.75,
-#     'sl_buffer_mult': 0.1
-# },
-
 CONFIG = []
 
 
-class BosOrderBlockBot(SMCBotBase):
+class BosFvgBot(SMCBotBase):
     def __init__(self, telegram_chat_id=TELEGRAM_MAIN_CHANNEL_CHAT_ID, risk=250, ib_client=None):
         super().__init__(
             symbols=[],

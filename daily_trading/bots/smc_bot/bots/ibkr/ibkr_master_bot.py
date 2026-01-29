@@ -39,8 +39,8 @@ class MasterBot:
 
         try:
             # 1. Fetch Raw Data
-            positions = await self.ib_client.get_active_positions()
-            orders = await self.ib_client.get_open_orders()
+            positions = self.ib_client.get_active_positions()
+            orders = self.ib_client.get_open_orders()
 
             # 2. Build Blocked Set
             for pos in positions:
@@ -63,13 +63,13 @@ class MasterBot:
         blocked = set()
         try:
             # Check Live Positions
-            positions = await self.ib_client.get_active_positions()
+            positions = self.ib_client.get_active_positions()
             for pos in positions:
                 if pos.position != 0:
                     blocked.add(pos.contract.symbol)
 
             # Check Pending Orders
-            orders = await self.ib_client.get_open_orders()
+            orders = self.ib_client.get_open_orders()
             for o in orders:
                 blocked.add(o.contract.symbol)
         except Exception as e:

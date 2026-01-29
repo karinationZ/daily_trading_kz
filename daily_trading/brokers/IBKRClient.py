@@ -81,9 +81,9 @@ class IBKRClient:
         tick = self.TICK_SIZES.get(symbol, 0.01)
         return round(math.floor(price / tick + 0.5) * tick, 4)
 
-    async def get_active_positions(self) -> List[Any]:
+    def get_active_positions(self) -> List[Any]:
         """Returns currently open positions."""
-        return await self.ib.reqPositionsAsync()
+        return self.ib.positions()
 
     def get_open_orders(self) -> List[Any]:
         """
@@ -346,7 +346,7 @@ class IBKRClient:
             logger.info("✅ SUCCESS: API has Real-Time access. The delay is in the reqHistoricalData cache.")
 
     async def close_positions_smartly(self, symbol):
-        positions = await self.get_active_positions()
+        positions = self.get_active_positions()
         found = False
 
         for p in positions:
@@ -372,25 +372,23 @@ class IBKRClient:
 
     async def get_daily_summary(self) -> str:
         try:
-            accounts = self.ib.managedAccounts()
-            if not accounts:
-                return "⚠️ No accounts."
-            account_id = accounts[0]
-
-            # 1. Get Account Totals
-            summary = await self.ib.accountSummaryAsync()
+            values = self.ib.accountValues()
+            account_id = self.ib.managedAccounts()[0]
             net_liq = realized = unrealized = 0.0
-            for row in summary:
-                if (row.account == account_id or row.account == "All") and row.currency == "USD":
-                    if row.tag == "NetLiquidation":
-                        net_liq = float(row.value)
-                    elif row.tag == "RealizedPnL":
-                        realized = float(row.value)
-                    elif row.tag == "UnrealizedPnL":
-                        unrealized = float(row.value)
+
+            for v in values:
+                # Filter for the specific account and currency
+                if v.account == account_id and v.currency == "USD":
+                    if v.tag == "NetLiquidation":
+                        net_liq = float(v.value)
+                    elif v.tag == "RealizedPnL":
+                        realized = float(v.value)
+                    elif v.tag == "UnrealizedPnL":
+                        unrealized = float(v.value)
 
             # 2. Get Today's Executions (UTC)
-            executions = await self.ib.reqExecutionsAsync(ExecutionFilter())
+            executions = await asyncio.wait_for(
+                self.ib.reqExecutionsAsync(ExecutionFilter()), timeout=15)
             utc_now = datetime.now(timezone.utc)
             start_of_day = utc_now.replace(hour=0, minute=0, second=0, microsecond=0)
 
@@ -498,7 +496,7 @@ class IBKRClient:
                 consolidated_trades.append(current)
 
             # 5. Check Overnight
-            positions = await self.ib.reqPositionsAsync()
+            positions = self.ib.positions()
             actual_pos_map = {p.contract.symbol: p.position for p in positions if p.account == account_id and p.position != 0}
 
             for sym, items in open_inventory.items():
@@ -592,10 +590,10 @@ class IBKRClient:
         Used to report TRUE exit price (accounting for slippage).
         """
         # Request recent executions
-        execs = await self.ib.reqExecutionsAsync(ExecutionFilter())
+        fills = self.ib.fills()
 
         # Filter for our symbol
-        symbol_execs = [e for e in execs if e.contract.symbol == symbol]
+        symbol_execs = [fill for fill in fills if fill.contract.symbol == symbol]
 
         if not symbol_execs:
             return 0.0

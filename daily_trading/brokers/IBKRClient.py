@@ -387,8 +387,7 @@ class IBKRClient:
                         unrealized = float(v.value)
 
             # 2. Get Today's Executions (UTC)
-            executions = await asyncio.wait_for(
-                self.ib.reqExecutionsAsync(ExecutionFilter()), timeout=15)
+            executions = await asyncio.wait_for(self.ib.reqExecutionsAsync(ExecutionFilter()), timeout=15)
             utc_now = datetime.now(timezone.utc)
             start_of_day = utc_now.replace(hour=0, minute=0, second=0, microsecond=0)
 

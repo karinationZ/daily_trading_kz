@@ -3,6 +3,7 @@ from datetime import datetime, timedelta
 from zoneinfo import ZoneInfo
 
 from daily_trading.bots.smc_bot.bots.ibkr.bos_bot import BosOrderBlockBot
+
 # Import the Sub-Bots
 from daily_trading.bots.smc_bot.bots.ibkr.orb_bot import ORBBot
 from daily_trading.brokers.IBKRClient import IBKRClient
@@ -180,22 +181,6 @@ class MasterBot:
                     # --- A. Data Fetching Phase ---
                     market_data = {}
 
-                    # Fetch 5m Data
-                    for sym in self.symbols_5m:
-                        df = await self.ib_client.get_klines(sym, "5m")
-                        if not df.empty:
-                            if sym not in market_data:
-                                market_data[sym] = {}
-                            market_data[sym]["5m"] = df
-
-                    # Fetch 1h Data
-                    for sym in self.symbols_1h:
-                        df = await self.ib_client.get_klines(sym, "1h")
-                        if not df.empty:
-                            if sym not in market_data:
-                                market_data[sym] = {}
-                            market_data[sym]["1h"] = df
-
                     # --- B. Execution Phase ---
                     positions, orders, blocked = await self.get_account_state()
                     active_holdings = [p for p in positions if p.position != 0]
@@ -212,29 +197,36 @@ class MasterBot:
                         await self.orb_bot.telegram_debug_channel.send_message(msg)
 
                     if orders:
-                        pretty_orders = [f"{o.order.action} {o.order.totalQuantity} {o.contract.symbol}" for o in
-                                         orders]
+                        pretty_orders = [f"{o.order.action} {o.order.totalQuantity} {o.contract.symbol}" for o in orders]
                         msg = f"⏳ Pending Orders: {pretty_orders}"
                         logger.info(msg)
                         await self.orb_bot.telegram_debug_channel.send_message(msg)
 
                     logger.info("🤖 Executing bots in parallel...")
 
-                    # Refresh Positions and Orders before execution
-                    await asyncio.gather(self.ib_client.ib.reqPositionsAsync(),
-                                         self.ib_client.ib.reqOpenOrdersAsync())
-
                     logger.info("🤖 Executing bots in parallel...")
                     try:
-                        # 1. RUN ORB FIRST
-                        # This will run its 3 strategies in parallel internally
+                        # Fetch 5m Data
+                        for sym in self.symbols_5m:
+                            df = await self.ib_client.get_klines(sym, "5m")
+                            if not df.empty:
+                                if sym not in market_data:
+                                    market_data[sym] = {}
+                                market_data[sym]["5m"] = df
                         logger.info("📊 Starting ORB Bot Cycle...")
-                        await self.orb_bot.execute_cycle(market_data)
+                        await self.orb_bot.execute_cycle(market_data, self.orb_bot.strategies)
+                        await asyncio.sleep(0.5)
 
-                        # 2. RUN BOS SECOND
-                        # It will only start after ORB has finished its analysis and lock acquisition
                         logger.info("📊 Starting BOS Bot Cycle...")
-                        await self.bos_ob_bot.execute_cycle(market_data)
+                        # Fetch 1h Data
+                        for sym in self.symbols_1h:
+                            df = await self.ib_client.get_klines(sym, "1h")
+                            if not df.empty:
+                                if sym not in market_data:
+                                    market_data[sym] = {}
+                                market_data[sym]["1h"] = df
+
+                        await self.bos_ob_bot.execute_cycle(market_data, self.bos_ob_bot.strategies)
 
                         logger.info("✅ Both bots completed sequentially")
 

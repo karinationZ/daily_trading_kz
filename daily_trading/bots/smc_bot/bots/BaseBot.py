@@ -72,14 +72,14 @@ class SMCBotBase:
     ACTIVE_SYMBOL_LOCKS = {}
 
     def __init__(
-            self,
-            symbols,
-            main_tf: str = "1h",
-            symbol_volume_threshold: float = 30000000,
-            lookback_days: int = 1,
-            telegram_chat_id=TELEGRAM_MAIN_CHANNEL_CHAT_ID,
-            market_type: str = "crypto",
-            ib_client=None,
+        self,
+        symbols,
+        main_tf: str = "1h",
+        symbol_volume_threshold: float = 30000000,
+        lookback_days: int = 1,
+        telegram_chat_id=TELEGRAM_MAIN_CHANNEL_CHAT_ID,
+        market_type: str = "crypto",
+        ib_client=None,
     ):
         """
         Initialize SMCTradingBot.
@@ -201,8 +201,7 @@ class SMCBotBase:
 
                 # CLAIM IT IMMEDIATELY after flattening
                 self.ACTIVE_SYMBOL_LOCKS[symbol] = LockInfo(
-                    strategy_tag=strategy.ext_tag, status=TradeStatus.NONE, priority=strategy.priority,
-                    timestamp=datetime.now()
+                    strategy_tag=strategy.ext_tag, status=TradeStatus.NONE, priority=strategy.priority, timestamp=datetime.now()
                 )
                 return True
 
@@ -248,8 +247,7 @@ class SMCBotBase:
             avg_price = my_pos.avgCost
 
             # FETCH BRACKETS (The new robust method)
-            sl, tp = self.ib_client.get_active_sl_tp(symbol=strategy.symbol, order_ref=strategy.ext_tag,
-                                                     direction=direction_str)
+            sl, tp = self.ib_client.get_active_sl_tp(symbol=strategy.symbol, order_ref=strategy.ext_tag, direction=direction_str)
 
             # LOG WARNINGS for missing SL/TP
             # If IBKR returns 0.0 for TP (e.g., user cancelled it manually),
@@ -281,8 +279,7 @@ class SMCBotBase:
 
             # Re-acquire Lock on recovery
             SMCBotBase.ACTIVE_SYMBOL_LOCKS[strategy.symbol] = LockInfo(
-                strategy_tag=strategy.ext_tag, status=strategy.trade_status, priority=getattr(strategy, "priority", 1),
-                timestamp=datetime.now()
+                strategy_tag=strategy.ext_tag, status=strategy.trade_status, priority=getattr(strategy, "priority", 1), timestamp=datetime.now()
             )
 
             strategy.log.info(f"♻️ RESTORED STATE: FILLED {direction.name} @ {avg_price} (SL:{sl} TP:{tp})")
@@ -339,8 +336,7 @@ class SMCBotBase:
             strategy.trade_status = TradeStatus.PENDING
             # Re-acquire Lock on recovery
             SMCBotBase.ACTIVE_SYMBOL_LOCKS[strategy.symbol] = LockInfo(
-                strategy_tag=strategy.ext_tag, status=strategy.trade_status, priority=getattr(strategy, 'priority', 1),
-                timestamp=datetime.now()
+                strategy_tag=strategy.ext_tag, status=strategy.trade_status, priority=getattr(strategy, 'priority', 1), timestamp=datetime.now()
             )
             strategy.log.info(f"♻️ RESTORED STATE: PENDING {direction.name} @ {entry_price}")
 
@@ -360,13 +356,11 @@ class SMCBotBase:
         my_orders = [o for o in open_orders if o.order.orderRef == strategy.ext_tag]
 
         if my_orders:
-            logger.warning(
-                f"🧹 ORPHAN CHECK: Found {len(my_orders)} hanging orders for {strategy.symbol} while Status=NONE. Purging.")
+            logger.warning(f"🧹 ORPHAN CHECK: Found {len(my_orders)} hanging orders for {strategy.symbol} while Status=NONE. Purging.")
 
             # 4. Log what we are killing for debugging
             for o in my_orders:
-                logger.info(
-                    f"   -> Killing Orphan: {o.order.action} {o.order.totalQuantity} @ {o.order.lmtPrice or o.order.auxPrice}")
+                logger.info(f"   -> Killing Orphan: {o.order.action} {o.order.totalQuantity} @ {o.order.lmtPrice or o.order.auxPrice}")
 
             # 5. Nuke them
             await self.ib_client.cancel_all_orders(order_ref=strategy.ext_tag)
@@ -397,8 +391,7 @@ class SMCBotBase:
             bracket = await self.ib_client.get_active_bracket_levels(sig.symbol, strategy.ext_tag, sig.direction.name)
             if not bracket["found"]:
                 await asyncio.sleep(3.0)  # One retry
-                bracket = await self.ib_client.get_active_bracket_levels(sig.symbol, strategy.ext_tag,
-                                                                         sig.direction.name)
+                bracket = await self.ib_client.get_active_bracket_levels(sig.symbol, strategy.ext_tag, sig.direction.name)
                 if not bracket["found"]:
                     debug_note = "\n⚠️ <b>Warning:</b> Bracket orders not seen in API yet."
             else:
@@ -430,8 +423,7 @@ class SMCBotBase:
 
         # Calc PnL
         if sig.action == TradeAction.EXIT and display_price > 0:
-            entry_price = sig.metadata.get("entry_price", 0) or (
-                strategy.active_trade.price if strategy.active_trade else 0)
+            entry_price = sig.metadata.get("entry_price", 0) or (strategy.active_trade.price if strategy.active_trade else 0)
             if entry_price > 0:
                 points = (display_price - entry_price) if sig.direction == BIAS.LONG else (entry_price - display_price)
                 multiplier = getattr(strategy, "point_value", 1.0)
@@ -582,8 +574,7 @@ class SMCBotBase:
             # Update Locks on Success
             if sig.action == TradeAction.ENTER:
                 self.ACTIVE_SYMBOL_LOCKS[strategy.symbol] = LockInfo(
-                    strategy_tag=strategy.ext_tag, status=strategy.trade_status, priority=strategy.priority,
-                    timestamp=datetime.now()
+                    strategy_tag=strategy.ext_tag, status=strategy.trade_status, priority=strategy.priority, timestamp=datetime.now()
                 )
             elif sig.action in [TradeAction.EXIT, TradeAction.CANCEL]:
                 self.ACTIVE_SYMBOL_LOCKS.pop(strategy.symbol, None)
@@ -596,8 +587,8 @@ class SMCBotBase:
             locked_symbols = list(self.ACTIVE_SYMBOL_LOCKS.keys())
             strategy.log.info(f"🔒 LOCKED SYMBOLS: {locked_symbols}")
 
-        except Exception:
-            strategy.log.error(f"Strategy Cycle Error: {traceback.format_exc()}")
+        except Exception as e:
+            strategy.log.error(f"Strategy Cycle Error: {traceback.format_exc()}\n{e}")
 
     async def _background_post_trade_logic(self, strategy, sig):
         """Handles all the slow IBKR/Telegram IO without blocking the main loop."""
@@ -653,8 +644,7 @@ class SMCBotBase:
                     # IBKRClient usually logs errors, but we must stop the flow here.
                     err_msg = f" Order placed for {symbol} but not found in Active list. Likely Rejected."
                     strategy.log.error(err_msg)
-                    await strategy.telegram_session_bot.send_message(
-                        f"⚠️ <b>ORDER FAILED</b> | {strategy.log_tag}" f"\nReason: {err_msg}")
+                    await strategy.telegram_session_bot.send_message(f"⚠️ <b>ORDER FAILED</b> | {strategy.log_tag}" f"\nReason: {err_msg}")
                     return False
 
             # --- EXIT ---
@@ -692,16 +682,66 @@ class SMCBotBase:
             await strategy.telegram_session_bot.send_message(f"🚨 <b>EXECUTION ERROR</b> | {strategy.log_tag}\n{str(e)}")
             return False
 
-    @staticmethod
-    async def sleep_until_next_interval(interval_minutes: int = 5):
-        """Synced Sleep."""
-        now = datetime.now()
-        minutes_to_sleep = interval_minutes - (now.minute % interval_minutes)
-        seconds_to_sleep = (minutes_to_sleep * 60) - now.second
-        if seconds_to_sleep <= 0:
-            seconds_to_sleep = interval_minutes * 60
-        logger.info(f"SYNC: Waiting {seconds_to_sleep}s for next candle.")
-        await asyncio.sleep(seconds_to_sleep)
+    async def execute_cycle(self, market_data: dict, strategy_list: list):
+        """
+        Called by MasterBot.
+        Needs both 5m and 1h data.
+        """
+        logger.info(f"🔵 {self.__class__.__name__}.execute_cycle()")
+        tasks = []
+        await asyncio.gather(self.ib_client.ib.reqPositionsAsync(), self.ib_client.ib.reqOpenOrdersAsync())
+        for strategy in strategy_list:
+            sym_data = market_data.get(strategy.symbol, {})
+            df_5m = sym_data.get("5m")
+            df_1h = sym_data.get("1h", None)
+
+            # 3. Validate Data
+            if df_5m is None or df_5m.empty:
+                continue
+
+            curr = df_5m.iloc[-1]
+            ts_now = curr.name.tz_convert(self.timezone)
+            is_session_started = strategy.is_pre_session_started(ts_now, strategy.timezone)
+
+            if self.is_strategy_in_window(strategy) and is_session_started:
+                dfs = [df_5m]
+                if df_1h is not None:
+                    dfs.append(df_1h)
+                coro = self.run_strategy_cycle(strategy, *dfs)
+                tasks.append(asyncio.wait_for(coro, timeout=45))
+            else:
+                strategy.log.info(f"💤 {strategy.tz_short} Session has not started yet!")
+
+        if tasks:
+            logger.info(f"🔧 Running {len(tasks)} strategy tasks...")
+            try:
+                results = await asyncio.wait_for(asyncio.gather(*tasks, return_exceptions=True), timeout=180)
+
+                # Check each result
+                for i, result in enumerate(results):
+                    if isinstance(result, Exception):
+                        # 1. Identify WHICH strategy failed
+                        strategy_name = self.strategies[i].symbol if i < len(self.strategies) else "Unknown"
+
+                        # 2. Extract the full stack trace as a string
+                        tb_lines = traceback.format_exception(type(result), result, result.__traceback__)
+                        tb_text = "".join(tb_lines)
+
+                        # 3. Log the full text clearly
+                        logger.error(f"❌ STRATEGY FAILURE: {strategy_name} (Task {i})\n{tb_text}")
+                    else:
+                        logger.info(f"✅ Task {i} completed successfully")
+
+            except asyncio.TimeoutError:
+                logger.error(f"⏰ TIMEOUT: {self.__class__.__name__} tasks took longer than 3 min!")
+                raise
+            except Exception as e:
+                logger.error(f"❌ Unexpected error in gather: {e}", exc_info=True)
+                raise
+        else:
+            logger.info(f"⚪ No active strategies in {self.__class__.__name__}")
+
+        logger.info(f"🟢 {self.__class__.__name__}.execute_cycle() COMPLETED")
 
     @staticmethod
     def is_strategy_in_window(strategy) -> bool:
@@ -753,8 +793,7 @@ class SMCBotBase:
         # Time to sleep (in seconds)
         sleep_duration = (next_candle - now).total_seconds()
 
-        logger.info(
-            f"Sleeping for {int(sleep_duration)} seconds ({sleep_duration / 60:.2f} minutes) until {next_candle}")
+        logger.info(f"Sleeping for {int(sleep_duration)} seconds ({sleep_duration / 60:.2f} minutes) until {next_candle}")
         await asyncio.sleep(sleep_duration)
 
     async def send_final_message(self, analysis: SignalSummary, current_candle_time, symbol, title):
@@ -767,6 +806,17 @@ class SMCBotBase:
         is_success = await self.telegram_main_channel.send_message(msg, analysis.fig)
 
         return is_success
+
+    @staticmethod
+    async def sleep_until_next_interval(interval_minutes: int = 5):
+        """Synced Sleep."""
+        now = datetime.now()
+        minutes_to_sleep = interval_minutes - (now.minute % interval_minutes)
+        seconds_to_sleep = (minutes_to_sleep * 60) - now.second
+        if seconds_to_sleep <= 0:
+            seconds_to_sleep = interval_minutes * 60
+        logger.info(f"SYNC: Waiting {seconds_to_sleep}s for next candle.")
+        await asyncio.sleep(seconds_to_sleep)
 
     async def fetch_bitunix_ohlc_data(self, symbol: str, timeframe: str, num_candles: int = None) -> pd.DataFrame:
         """Fetch OHLC mgc with caching to reduce API calls.
@@ -896,14 +946,14 @@ class SMCBotBase:
             raise RuntimeError(f"Failed to update symbols: {e}")
 
     async def generate_signal(
-            self,
-            symbol: str,
-            analysis: SignalSummary,
-            ohlc_1d: pd.DataFrame,
-            ohlc_4h: pd.DataFrame,
-            ohlc_1h: pd.DataFrame,
-            ohlc_15m: pd.DataFrame,
-            send_non_signal=True,
+        self,
+        symbol: str,
+        analysis: SignalSummary,
+        ohlc_1d: pd.DataFrame,
+        ohlc_4h: pd.DataFrame,
+        ohlc_1h: pd.DataFrame,
+        ohlc_15m: pd.DataFrame,
+        send_non_signal=True,
     ):
         """Generate SMC signals."""
         try:

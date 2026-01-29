@@ -1,5 +1,3 @@
-import asyncio
-import traceback
 from typing import List
 from zoneinfo import ZoneInfo
 
@@ -104,62 +102,62 @@ class ORBBot(SMCBotBase):
 
         self.active_symbols = list(unique_symbols)
 
-    async def execute_cycle(self, market_data: dict):
-        """
-        The Entry Point for MasterBot.
-
-         It takes the centralized data, filters it, and triggers
-         'run_strategy_cycle' for valid strategies.
-
-         market_data: Dict structure { "MNQ": {"5m": df, "1h": df} }
-         blocked_symbols: Set of symbols active in other bots (conflict prevention).
-        """
-        logger.info(f"🔵 {self.__class__.__name__}.execute_cycle() STARTED")
-
-        tasks = []
-        for strategy in self.strategies:
-            # 2. Extract Data: ORBBot only needs "5m" data.
-            sym_data = market_data.get(strategy.symbol, {})
-            df_5m = sym_data.get("5m")
-
-            # 3. Validation: Check if data exists and strategy is in time window.
-            if df_5m is not None and not df_5m.empty:
-                curr = df_5m.iloc[-1]
-                ts_now = curr.name.tz_convert(self.timezone)
-                is_session_started = strategy.is_pre_session_started(ts_now, strategy.timezone)
-                if self.is_strategy_in_window(strategy) and is_session_started:
-                    # Call the EXISTING logic function
-                    coro = self.run_strategy_cycle(strategy, df_5m)
-                    tasks.append(asyncio.wait_for(coro, timeout=30))  # Each strategy gets 30s max
-                else:
-                    strategy.log.info(f"💤 {strategy.tz_short} Session has not started yet!")
-        if tasks:
-            logger.info(f"🔧 Running {len(tasks)} strategy tasks...")
-            try:
-                results = await asyncio.wait_for(asyncio.gather(*tasks, return_exceptions=True), timeout=180)
-
-                # Check each result
-                for i, result in enumerate(results):
-                    if isinstance(result, Exception):
-                        # 1. Identify WHICH strategy failed
-                        strategy_name = self.strategies[i].symbol if i < len(self.strategies) else "Unknown"
-
-                        # 2. Extract the full stack trace as a string
-                        tb_lines = traceback.format_exception(type(result), result, result.__traceback__)
-                        tb_text = "".join(tb_lines)
-
-                        # 3. Log the full text clearly
-                        logger.error(f"❌ STRATEGY FAILURE: {strategy_name} (Task {i})\n{tb_text}")
-                    else:
-                        logger.info(f"✅ Task {i} completed successfully")
-
-            except asyncio.TimeoutError:
-                logger.error(f"⏰ TIMEOUT: {self.__class__.__name__} tasks took longer than 3 min!")
-                raise
-            except Exception as e:
-                logger.error(f"❌ Unexpected error in gather: {e}", exc_info=True)
-                raise
-        else:
-            logger.info(f"⚪ No active strategies in {self.__class__.__name__}")
-
-        logger.info(f"🟢 {self.__class__.__name__}.execute_cycle() COMPLETED")
+    # async def execute_cycle(self, market_data: dict):
+    #     """
+    #     The Entry Point for MasterBot.
+    #
+    #      It takes the centralized data, filters it, and triggers
+    #      'run_strategy_cycle' for valid strategies.
+    #
+    #      market_data: Dict structure { "MNQ": {"5m": df, "1h": df} }
+    #      blocked_symbols: Set of symbols active in other bots (conflict prevention).
+    #     """
+    #     logger.info(f"🔵 {self.__class__.__name__}.execute_cycle() STARTED")
+    #
+    #     tasks = []
+    #     for strategy in self.strategies:
+    #         # 2. Extract Data: ORBBot only needs "5m" data.
+    #         sym_data = market_data.get(strategy.symbol, {})
+    #         df_5m = sym_data.get("5m")
+    #
+    #         # 3. Validation: Check if data exists and strategy is in time window.
+    #         if df_5m is not None and not df_5m.empty:
+    #             curr = df_5m.iloc[-1]
+    #             ts_now = curr.name.tz_convert(self.timezone)
+    #             is_session_started = strategy.is_pre_session_started(ts_now, strategy.timezone)
+    #             if self.is_strategy_in_window(strategy) and is_session_started:
+    #                 # Call the EXISTING logic function
+    #                 coro = self.run_strategy_cycle(strategy, df_5m)
+    #                 tasks.append(asyncio.wait_for(coro, timeout=30))  # Each strategy gets 30s max
+    #             else:
+    #                 strategy.log.info(f"💤 {strategy.tz_short} Session has not started yet!")
+    #     if tasks:
+    #         logger.info(f"🔧 Running {len(tasks)} strategy tasks...")
+    #         try:
+    #             results = await asyncio.wait_for(asyncio.gather(*tasks, return_exceptions=True), timeout=180)
+    #
+    #             # Check each result
+    #             for i, result in enumerate(results):
+    #                 if isinstance(result, Exception):
+    #                     # 1. Identify WHICH strategy failed
+    #                     strategy_name = self.strategies[i].symbol if i < len(self.strategies) else "Unknown"
+    #
+    #                     # 2. Extract the full stack trace as a string
+    #                     tb_lines = traceback.format_exception(type(result), result, result.__traceback__)
+    #                     tb_text = "".join(tb_lines)
+    #
+    #                     # 3. Log the full text clearly
+    #                     logger.error(f"❌ STRATEGY FAILURE: {strategy_name} (Task {i})\n{tb_text}")
+    #                 else:
+    #                     logger.info(f"✅ Task {i} completed successfully")
+    #
+    #         except asyncio.TimeoutError:
+    #             logger.error(f"⏰ TIMEOUT: {self.__class__.__name__} tasks took longer than 3 min!")
+    #             raise
+    #         except Exception as e:
+    #             logger.error(f"❌ Unexpected error in gather: {e}", exc_info=True)
+    #             raise
+    #     else:
+    #         logger.info(f"⚪ No active strategies in {self.__class__.__name__}")
+    #
+    #     logger.info(f"🟢 {self.__class__.__name__}.execute_cycle() COMPLETED")

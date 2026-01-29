@@ -319,12 +319,17 @@ class IBKRClient:
         return trades
 
     async def cancel_all_orders(self, order_ref: str):
-        """Cancels orders. If order_ref is provided, filters for that bot tag."""
+        """Cancels orders only if they are still active."""
+        # Get all trades tracked by the client
         open_trades = self.ib.openTrades()
+
         for trade in open_trades:
             if order_ref is None or trade.order.orderRef == order_ref:
-                self.ib.cancelOrder(trade.order)
-                logger.info(f"Cancelled Order ID: {trade.order.orderId} (Ref: {trade.order.orderRef})")
+                # ONLY CANCEL IF NOT ALREADY DONE/CANCELLED
+                # trade.isDone() returns True if Filled, Cancelled, or Inactive
+                if not trade.isDone():
+                    self.ib.cancelOrder(trade.order)
+                    logger.info(f"🗑️ Cancelling Order {trade.order.orderId} (Ref: {trade.order.orderRef})")
 
     async def diagnostic_market_data(self, symbol: str):
         contract = await self.get_futures_contract(symbol)

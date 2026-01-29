@@ -3,7 +3,6 @@ from datetime import datetime, timedelta
 from zoneinfo import ZoneInfo
 
 from daily_trading.bots.smc_bot.bots.ibkr.bos_bot import BosOrderBlockBot
-
 # Import the Sub-Bots
 from daily_trading.bots.smc_bot.bots.ibkr.orb_bot import ORBBot
 from daily_trading.brokers.IBKRClient import IBKRClient
@@ -151,8 +150,8 @@ class MasterBot:
             try:
                 report = await self.ib_client.get_daily_summary()
                 await self.orb_bot.telegram_main_channel.send_message(report)
-            except Exception:
-                logger.error("Failed to fetch startup summary.")
+            except Exception as e:
+                logger.error(f"Failed to fetch startup summary.\n{e}")
 
         while True:
             try:
@@ -213,30 +212,29 @@ class MasterBot:
                         await self.orb_bot.telegram_debug_channel.send_message(msg)
 
                     if orders:
-                        pretty_orders = [f"{o.order.action} {o.order.totalQuantity} {o.contract.symbol}" for o in orders]
+                        pretty_orders = [f"{o.order.action} {o.order.totalQuantity} {o.contract.symbol}" for o in
+                                         orders]
                         msg = f"⏳ Pending Orders: {pretty_orders}"
                         logger.info(msg)
                         await self.orb_bot.telegram_debug_channel.send_message(msg)
 
                     logger.info("🤖 Executing bots in parallel...")
 
-                    await asyncio.gather(self.ib_client.ib.reqPositionsAsync(), self.ib_client.ib.reqOpenOrdersAsync())
-
-                    # 2. Get the actual objects from the refreshed cache
-                    fresh_positions = self.ib_client.ib.positions()
-                    fresh_orders = self.ib_client.ib.openTrades()
+                    # Refresh Positions and Orders before execution
+                    await asyncio.gather(self.ib_client.ib.reqPositionsAsync(),
+                                         self.ib_client.ib.reqOpenOrdersAsync())
 
                     logger.info("🤖 Executing bots in parallel...")
                     try:
                         # 1. RUN ORB FIRST
                         # This will run its 3 strategies in parallel internally
                         logger.info("📊 Starting ORB Bot Cycle...")
-                        await self.orb_bot.execute_cycle(market_data, blocked, fresh_positions, fresh_orders)
+                        await self.orb_bot.execute_cycle(market_data)
 
                         # 2. RUN BOS SECOND
                         # It will only start after ORB has finished its analysis and lock acquisition
                         logger.info("📊 Starting BOS Bot Cycle...")
-                        await self.bos_ob_bot.execute_cycle(market_data, blocked, fresh_positions, fresh_orders)
+                        await self.bos_ob_bot.execute_cycle(market_data)
 
                         logger.info("✅ Both bots completed sequentially")
 

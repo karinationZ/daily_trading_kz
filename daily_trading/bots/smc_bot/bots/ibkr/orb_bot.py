@@ -104,7 +104,7 @@ class ORBBot(SMCBotBase):
 
         self.active_symbols = list(unique_symbols)
 
-    async def execute_cycle(self, market_data: dict, blocked_symbols: set, current_positions, open_orders):
+    async def execute_cycle(self, market_data: dict):
         """
         The Entry Point for MasterBot.
 
@@ -129,7 +129,7 @@ class ORBBot(SMCBotBase):
                 is_session_started = strategy.is_pre_session_started(ts_now, strategy.timezone)
                 if self.is_strategy_in_window(strategy) and is_session_started:
                     # Call the EXISTING logic function
-                    coro = self.run_strategy_cycle(strategy, df_5m, current_positions=current_positions, open_orders=open_orders)
+                    coro = self.run_strategy_cycle(strategy, df_5m)
                     tasks.append(asyncio.wait_for(coro, timeout=30))  # Each strategy gets 30s max
                 else:
                     strategy.log.info(f"💤 {strategy.tz_short} Session has not started yet!")

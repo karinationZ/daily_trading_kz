@@ -222,7 +222,7 @@ class IBKRClient:
             return df
         return pd.DataFrame()
 
-    async def get_active_sl_tp(self, symbol: str, order_ref: str, direction: str) -> tuple[float, float]:
+    def get_active_sl_tp(self, symbol: str, order_ref: str, direction: str) -> tuple[float, float]:
         """
         Retreives the active Stop Loss (auxPrice) and Take Profit (lmtPrice)
         for a specific strategy tag and direction.

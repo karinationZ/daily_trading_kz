@@ -43,15 +43,15 @@ class BosFvgStrategy(StrategyBase):
     """
 
     def __init__(
-        self,
-        symbol: str,
-        timezone: ZoneInfo,
-        main_tf="5m",  # LTF for Entry execution
-        risk: float = 150.0,
-        tp_multiple: float = 2.0,
-        fvg_mitigation_ratio: float = 0.5,  # 0.5 = Entry at 50% of FVG
-        sl_buffer_mult: float = 0.1,
-        priority: int = 1,
+            self,
+            symbol: str,
+            timezone: ZoneInfo,
+            main_tf="5m",  # LTF for Entry execution
+            risk: float = 150.0,
+            tp_multiple: float = 2.0,
+            fvg_mitigation_ratio: float = 0.5,  # 0.5 = Entry at 50% of FVG
+            sl_buffer_mult: float = 0.1,
+            priority: int = 1,
     ):
 
         super().__init__(main_tf, priority=priority)
@@ -60,9 +60,12 @@ class BosFvgStrategy(StrategyBase):
         self.timezone = timezone
 
         # Logging
+        telegram_chat_id = self.get_telegram_session_channel_id(self.timezone)
+        self.telegram_session_bot = TelegramBot(chat_id=telegram_chat_id)
         self.tz_short = self.get_tz_short(self.timezone)
-        self.log_tag = f"BOS-FVG | {symbol}:{self.tz_short}"
+        self.log_tag = f"1H-BOS-FVG | {symbol}:{self.tz_short}"
         self.log = logger.bind(bot_id=self.log_tag)
+        self.ext_tag = f"{symbol}_{self.tz_short}_BOS_FVG"
 
         telegram_chat_id = self.get_telegram_session_channel_id(self.timezone)
         self.telegram_session_bot = TelegramBot(chat_id=telegram_chat_id)
@@ -203,7 +206,8 @@ class BosFvgStrategy(StrategyBase):
 
             # F. Calculate Position Size
             pos_math = self.calculate_trade_position(
-                symbol=self.symbol, tp_multiple=self.tp_multiple, risk=self.risk, entry_price=entry, sl=sl, direction=htf_bias
+                symbol=self.symbol, tp_multiple=self.tp_multiple, risk=self.risk, entry_price=entry, sl=sl,
+                direction=htf_bias
             )
 
             # Gatekeeper

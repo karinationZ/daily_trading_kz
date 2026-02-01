@@ -333,16 +333,18 @@ async def test_bos_detector():
     # bot = SMCBotBase(symbols=[symbol], main_tf="1h", market_type="futures")
     # ohlc = await bot.fetch_ibkr_ohlc_data(symbol, "1h", num_candles=200)
 
-    pathlib = "/project/daily_trading/bots/smc_bot/tests/ohlc_data/mnq_1h.csv"
+    pathlib = "/project/daily_trading/bots/smc_bot/tests/ohlc_data/mbt_1h.csv"
     ohlc = load_data(
         pathlib,
-        start_ts="2025-02-07 13:30:00+00:00",
-        end_ts="2025-02-12 16:00:00+00:00"
+        start_ts="2025-10-07 00:00:00+00:00",
+        end_ts="2025-10-09 15:30:00+00:00"
     )
 
-    detector = BosChochDetector(main_tf, show_bull=True, show_bear=True, left_bars=5, right_bars=5)
+    detector = BosChochDetector(main_tf, show_bull=True, show_bear=True, left_bars=8, right_bars=3)
     detector.plot_tail = 300
+    detector.get_current_trend(ohlc)
     results = detector.calculate_bos_choch(ohlc, plot=True)
+    logger.info(results["signals"])
     fig = results["fig"]
     fig.show()
 

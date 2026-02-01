@@ -5,7 +5,32 @@ from daily_trading.bots.smc_bot.bots.BaseBot import SMCBotBase
 from daily_trading.bots.smc_bot.strategy.BosFvgStrategy import BosFvgStrategy
 from daily_trading.settings import logger, TELEGRAM_MAIN_CHANNEL_CHAT_ID
 
-CONFIG = []
+CONFIG = [
+    # MNQ NY - Win Rate: 63.8%
+    {'name': 'MNQ_NY_rr1.2_mit0.75_sl0.5', 'symbol': 'MNQ', 'tz_name': 'NY', 'rr': 1.2, 'mit': 0.75, 'sl_buffer_mult': 0.5},
+    # MNQ LONDON - Win Rate: 62.6%
+    {'name': 'MNQ_LONDON_rr1.5_mit0.95_sl0.5', 'symbol': 'MNQ', 'tz_name': 'LONDON', 'rr': 1.5, 'mit': 0.95, 'sl_buffer_mult': 0.5},
+    # MNQ ASIA - Win Rate: 63.8%
+    {'name': 'MNQ_ASIA_rr1.4_mit0.75_sl0.1', 'symbol': 'MNQ', 'tz_name': 'ASIA', 'rr': 1.4, 'mit': 0.75, 'sl_buffer_mult': 0.1},
+    # MBT NY - Win Rate: 64.1%
+    {'name': 'MBT_NY_rr1.2_mit0.5_sl0.5', 'symbol': 'MBT', 'tz_name': 'NY', 'rr': 1.2, 'mit': 0.5, 'sl_buffer_mult': 0.5},
+    # MBT LONDON - Win Rate: 68.5%
+    {'name': 'MBT_LONDON_rr0.85_mit0.5_sl0.5', 'symbol': 'MBT', 'tz_name': 'LONDON', 'rr': 0.85, 'mit': 0.5, 'sl_buffer_mult': 0.5},
+    # MBT ASIA - Win Rate: 66.0%
+    {'name': 'MBT_ASIA_rr0.85_mit0.75_sl0.5', 'symbol': 'MBT', 'tz_name': 'ASIA', 'rr': 0.85, 'mit': 0.75, 'sl_buffer_mult': 0.5},
+    # MGC NY - Win Rate: 64.3%
+    {'name': 'MGC_NY_rr1.2_mit0.75_sl0.5', 'symbol': 'MGC', 'tz_name': 'NY', 'rr': 1.2, 'mit': 0.75, 'sl_buffer_mult': 0.5},
+    # MGC ASIA - Win Rate: 76.6%
+    {'name': 'MGC_ASIA_rr0.85_mit0.25_sl0.1', 'symbol': 'MGC', 'tz_name': 'ASIA', 'rr': 0.85, 'mit': 0.25, 'sl_buffer_mult': 0.1},
+    # MGC LONDON - Win Rate: 65.3%
+    {'name': 'MGC_LONDON_rr1.2_mit0.75_sl0.5', 'symbol': 'MGC', 'tz_name': 'LONDON', 'rr': 1.2, 'mit': 0.75, 'sl_buffer_mult': 0.5},
+    # MES NY - Win Rate:  66.2 %
+    {'name': 'MES_NY_rr1.0_mit0.5_sl0.5', 'symbol': 'MES', 'tz_name': 'NY', 'rr': 1.0, 'mit': 0.5, 'sl_buffer_mult': 0.5},
+    # MES LONDON - Win Rate: 58.3%
+    {'name': 'MES_LONDON_rr1.4_mit0.5_sl0.2', 'symbol': 'MES', 'tz_name': 'LONDON', 'rr': 1.4, 'mit': 0.5, 'sl_buffer_mult': 0.2},
+    # MES ASIA - Win Rate: 60.8%
+    {'name': 'MES_ASIA_rr1.6_mit0.75_sl0.2', 'symbol': 'MES', 'tz_name': 'ASIA', 'rr': 1.6, 'mit': 0.75, 'sl_buffer_mult': 0.2},
+]
 
 
 class BosFvgBot(SMCBotBase):

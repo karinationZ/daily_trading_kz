@@ -395,7 +395,7 @@ class SMCBotBase:
                 if not bracket["found"]:
                     debug_note = "\n⚠️ <b>Warning:</b> Bracket orders not seen in API yet."
             else:
-                if abs(bracket["sl"] - sig.sl) > 0.5:
+                if abs(bracket["sl"] - sig.sl) > 1:
                     debug_note = f"\n⚠️ <b>SL Mismatch:</b> Bot {sig.sl} vs Broker {bracket['sl']}"
 
         # --- BUILD MESSAGE ---

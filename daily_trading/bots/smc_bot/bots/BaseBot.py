@@ -464,19 +464,19 @@ class SMCBotBase:
             is_flat = False
             pos_size = 0.0
 
-            for attempt in range(3):
+            for attempt in range(5):
                 is_flat, pos_size = self.ib_client.check_flatness(sig.symbol)
                 if is_flat:
                     break
 
-                if attempt < 2:  # Don't sleep on the last attempt
+                if attempt < 4:  # Don't sleep on the last attempt
                     strategy.log.warning(f"⚠️ {sig.symbol} not flat (Size: {pos_size}). Retry {attempt + 1}/3...")
                     await asyncio.sleep(2.0)
 
             # 4. FINAL REMEDIATION
             if not is_flat:
                 if abs(pos_size) > 0:
-                    warn_msg = f"🚨 <b>CRITICAL FAILURE:</b> Position {pos_size} stuck. FORCING EXIT."
+                    warn_msg = f"🚨 <b>FORCING EXIT.:</b> Position {pos_size} stuck."
                     strategy.log.error(warn_msg)
                     await strategy.telegram_session_bot.send_message(warn_msg)
 

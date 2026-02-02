@@ -1,7 +1,7 @@
 import asyncio
 import math
 from datetime import datetime, timedelta, timezone
-from typing import Any, List
+from typing import Any, ClassVar, List
 
 import pandas as pd
 from ib_async import (
@@ -57,6 +57,7 @@ class IBKRClient:
         "1h": ("1 hour", "1 M"),
         "1d": ("1 day", "1 Y"),
     }
+    _order_lock: ClassVar[asyncio.Lock] = asyncio.Lock()
 
     def __init__(self, host: str = "127.0.0.1", port: int = 4002, client_id: int = 1):
         self.ib = IB()
@@ -293,47 +294,49 @@ class IBKRClient:
             direction: str,
             order_ref: str = "TradingBot",
     ):
-        """Place Entry + SL + TP using IBKR's bracket pattern with proper sequencing."""
-        contract = await self.get_futures_contract(symbol)
+        """Place Entry + SL + TP with thread-safe order ID management."""
 
-        side = "BUY" if direction.upper() == "LONG" else "SELL"
+        # CRITICAL: Lock prevents concurrent order ID conflicts across strategies
+        async with self._order_lock:
+            contract = await self.get_futures_contract(symbol)
 
-        entry = self.round_to_tick(entry, symbol)
-        sl = self.round_to_tick(sl, symbol)
-        tp = self.round_to_tick(tp, symbol)
+            side = "BUY" if direction.upper() == "LONG" else "SELL"
 
-        # Create bracket - this returns BracketOrder(parent, takeProfit, stopLoss)
-        bracket = self.ib.bracketOrder(
-            action=side,
-            quantity=quantity,
-            limitPrice=entry,
-            takeProfitPrice=tp,
-            stopLossPrice=sl,
-        )
+            entry = self.round_to_tick(entry, symbol)
+            sl = self.round_to_tick(sl, symbol)
+            tp = self.round_to_tick(tp, symbol)
 
-        # Apply custom settings to all three orders
-        for order in bracket:
-            order.orderRef = order_ref
-            order.tif = "GTC"
-            order.outsideRth = False
+            # Create bracket - gets 3 sequential order IDs
+            bracket = self.ib.bracketOrder(
+                action=side,
+                quantity=quantity,
+                limitPrice=entry,
+                takeProfitPrice=tp,
+                stopLossPrice=sl,
+            )
 
-        # Place parent first
-        parent_trade = self.ib.placeOrder(contract, bracket.parent)
-        await asyncio.sleep(0.2)  # Give IBKR time to acknowledge parent
+            # Apply custom settings to all orders
+            for order in bracket:
+                order.orderRef = order_ref
+                order.tif = "GTC"
+                order.outsideRth = False
 
-        # Place take profit
-        tp_trade = self.ib.placeOrder(contract, bracket.takeProfit)
-        await asyncio.sleep(0.2)
+            # Place orders sequentially with delays
+            parent_trade = self.ib.placeOrder(contract, bracket.parent)
+            await asyncio.sleep(0.2)
 
-        # Place stop loss (transmit=True triggers all)
-        sl_trade = self.ib.placeOrder(contract, bracket.stopLoss)
+            tp_trade = self.ib.placeOrder(contract, bracket.takeProfit)
+            await asyncio.sleep(0.2)
 
-        logger.info(
-            f"✅ Bracket: {symbol} {direction} @ {entry} "
-            f"(SL={sl}, TP={tp}) Ref={order_ref}"
-        )
+            sl_trade = self.ib.placeOrder(contract, bracket.stopLoss)
+            await asyncio.sleep(0.3)  # Final delay before releasing lock
 
-        return [parent_trade, tp_trade, sl_trade]
+            logger.info(
+                f"✅ Bracket: {symbol} {direction} @ {entry} "
+                f"(SL={sl}, TP={tp}) Ref={order_ref}"
+            )
+
+            return [parent_trade, tp_trade, sl_trade]
 
     async def cancel_all_orders(self, order_ref: str):
         """Cancels orders only if they are still active."""

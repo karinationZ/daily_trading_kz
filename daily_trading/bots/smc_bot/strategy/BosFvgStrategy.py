@@ -317,7 +317,7 @@ class BosFvgStrategy(StrategyBase):
             exit_reason = "NORMAL"
 
             # A. GAP CHECK (If not just filled)
-            if not just_filled:
+            if not just_filled and self.debug:
                 if is_long:
                     if curr["open"] <= sl:
                         exit_type, exit_price = "LOSS", curr["open"]

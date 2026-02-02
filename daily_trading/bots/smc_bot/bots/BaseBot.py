@@ -54,6 +54,7 @@ class TimeZone:
 @dataclass
 class LockInfo:
     strategy_tag: str
+    strategy_instance: object
     status: TradeStatus  # PENDING or FILLED
     priority: int  # 1 = Low (BOS), 2 = High (ORB)
     timestamp: datetime
@@ -177,6 +178,7 @@ class SMCBotBase:
             # CLAIM IT IMMEDIATELY to prevent race conditions
             self.ACTIVE_SYMBOL_LOCKS[symbol] = LockInfo(
                 strategy_tag=strategy.ext_tag,
+                strategy_instance=strategy,
                 status=TradeStatus.NONE,  # Temporary status, will be updated end of cycle
                 priority=priority,
                 timestamp=datetime.now(),
@@ -193,6 +195,10 @@ class SMCBotBase:
             strategy.log.info(msg)
             strategy.telegram_session_bot.send_message(msg)
 
+            if current_lock.strategy_instance:
+                # Reset the old strategy's trade state
+                current_lock.strategy_instance.trade_status = TradeStatus.NONE
+
             # --- CRITICAL: CANCEL THE EXISTING ORDERS ---
             try:
                 # Cancel orders of the OLD strategy
@@ -201,7 +207,10 @@ class SMCBotBase:
 
                 # CLAIM IT IMMEDIATELY after flattening
                 self.ACTIVE_SYMBOL_LOCKS[symbol] = LockInfo(
-                    strategy_tag=strategy.ext_tag, status=TradeStatus.NONE, priority=strategy.priority,
+                    strategy_tag=strategy.ext_tag,
+                    strategy_instance=strategy,
+                    status=TradeStatus.NONE,
+                    priority=strategy.priority,
                     timestamp=datetime.now()
                 )
                 return True
@@ -280,8 +289,11 @@ class SMCBotBase:
             strategy.trade_status = TradeStatus.FILLED
 
             # Re-acquire Lock on recovery
-            SMCBotBase.ACTIVE_SYMBOL_LOCKS[strategy.symbol] = LockInfo(
-                strategy_tag=strategy.ext_tag, status=strategy.trade_status, priority=getattr(strategy, "priority", 1),
+            self.ACTIVE_SYMBOL_LOCKS[strategy.symbol] = LockInfo(
+                strategy_tag=strategy.ext_tag,
+                status=strategy.trade_status,
+                strategy_instance=strategy,
+                priority=getattr(strategy, "priority", 1),
                 timestamp=datetime.now()
             )
 
@@ -338,8 +350,11 @@ class SMCBotBase:
             )
             strategy.trade_status = TradeStatus.PENDING
             # Re-acquire Lock on recovery
-            SMCBotBase.ACTIVE_SYMBOL_LOCKS[strategy.symbol] = LockInfo(
-                strategy_tag=strategy.ext_tag, status=strategy.trade_status, priority=getattr(strategy, 'priority', 1),
+            self.ACTIVE_SYMBOL_LOCKS[strategy.symbol] = LockInfo(
+                strategy_tag=strategy.ext_tag,
+                status=strategy.trade_status,
+                strategy_instance=strategy,
+                priority=getattr(strategy, 'priority', 1),
                 timestamp=datetime.now()
             )
             strategy.log.info(f"♻️ RESTORED STATE: PENDING {direction.name} @ {entry_price}")
@@ -526,6 +541,7 @@ class SMCBotBase:
             self.ACTIVE_SYMBOL_LOCKS[strategy.symbol] = LockInfo(
                 strategy_tag=strategy.ext_tag,
                 status=strategy.trade_status,
+                strategy_instance=strategy,
                 priority=getattr(strategy, 'priority', 1),
                 timestamp=datetime.now(),
             )
@@ -577,12 +593,17 @@ class SMCBotBase:
             success = await self.handle_execution(strategy, analysis)
             if not success:
                 strategy.log.error("Execution failed. Aborting cycle.")
+                if sig.action == TradeAction.ENTER:
+                    self.ACTIVE_SYMBOL_LOCKS.pop(strategy.symbol, None)
                 return
 
             # Update Locks on Success
             if sig.action == TradeAction.ENTER:
                 self.ACTIVE_SYMBOL_LOCKS[strategy.symbol] = LockInfo(
-                    strategy_tag=strategy.ext_tag, status=strategy.trade_status, priority=strategy.priority,
+                    strategy_tag=strategy.ext_tag,
+                    status=strategy.trade_status,
+                    strategy_instance=strategy,
+                    priority=strategy.priority,
                     timestamp=datetime.now()
                 )
             elif sig.action in [TradeAction.EXIT, TradeAction.CANCEL]:

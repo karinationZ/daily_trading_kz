@@ -430,7 +430,7 @@ class BosFvgStrategy(StrategyBase):
                 self.log.info(f"🚫 CANCELLING PENDING ORDER | {cancel_reason}")
                 return SignalSummary(
                     direction="CANCELLED",
-                    trade_signal=self.create_signal(TradeAction.CANCEL, ts_utc),
+                    trade_signal=self.create_signal(TradeAction.CANCEL, ts_utc, reason=msg),
                 )
 
         return SignalSummary(direction="NEUTRAL")

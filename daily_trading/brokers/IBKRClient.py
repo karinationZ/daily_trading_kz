@@ -100,9 +100,12 @@ class IBKRClient:
 
         contract_map = {
             # --- CASH SETTLED (Indices) ---
-            "MNQ": {"symbol": "MNQ", "exchange": "CME", "currency": "USD", "active_months": [3, 6, 9, 12], "min_days": 8, "physical_delivery": False},
-            "MES": {"symbol": "MES", "exchange": "CME", "currency": "USD", "active_months": [3, 6, 9, 12], "min_days": 8, "physical_delivery": False},
-            "MBT": {"symbol": "MBT", "exchange": "CME", "currency": "USD", "active_months": range(1, 13), "min_days": 2, "physical_delivery": False},
+            "MNQ": {"symbol": "MNQ", "exchange": "CME", "currency": "USD", "active_months": [3, 6, 9, 12],
+                    "min_days": 8, "physical_delivery": False},
+            "MES": {"symbol": "MES", "exchange": "CME", "currency": "USD", "active_months": [3, 6, 9, 12],
+                    "min_days": 8, "physical_delivery": False},
+            "MBT": {"symbol": "MBT", "exchange": "CME", "currency": "USD", "active_months": range(1, 13), "min_days": 2,
+                    "physical_delivery": False},
             # --- PHYSICAL DELIVERY (Commodities) ---
             # FIX: First Notice Day is often the last day of the PREVIOUS month.
             # Using Feb 1st - 3 days = Jan 29th is TOO LATE.
@@ -115,7 +118,8 @@ class IBKRClient:
                 "min_days": 8,
                 "physical_delivery": True,
             },
-            "MCL": {"symbol": "MCL", "exchange": "NYMEX", "currency": "USD", "active_months": range(1, 13), "min_days": 8, "physical_delivery": True},
+            "MCL": {"symbol": "MCL", "exchange": "NYMEX", "currency": "USD", "active_months": range(1, 13),
+                    "min_days": 8, "physical_delivery": True},
         }
 
         target = contract_map.get(symbol)
@@ -192,7 +196,8 @@ class IBKRClient:
         # Pick the nearest valid contract (which should now be April, since Feb is excluded)
         front_month = min(valid_contracts, key=lambda c: c.lastTradeDateOrContractMonth)
 
-        logger.info(f"✅ Resolved {symbol} -> {front_month.localSymbol} (Exp: {front_month.lastTradeDateOrContractMonth})")
+        logger.info(
+            f"✅ Resolved {symbol} -> {front_month.localSymbol} (Exp: {front_month.lastTradeDateOrContractMonth})")
 
         # Clear cache if we just switched contracts to force update
         self._conid_cache[symbol] = front_month
@@ -259,12 +264,12 @@ class IBKRClient:
         return sl_price, tp_price
 
     async def place_limit_order(
-        self,
-        symbol: str,
-        quantity: int,
-        price: float,
-        side: str,
-        order_ref: str = "TradingBot",
+            self,
+            symbol: str,
+            quantity: int,
+            price: float,
+            side: str,
+            order_ref: str = "TradingBot",
     ):
         contract = await self.get_futures_contract(symbol)
         price = self.round_to_tick(price, symbol)
@@ -288,52 +293,45 @@ class IBKRClient:
             direction: str,
             order_ref: str = "TradingBot",
     ):
-        """Place Entry + SL + TP using IBKR's official bracket pattern."""
+        """Place Entry + SL + TP using IBKR's bracket pattern with proper sequencing."""
         contract = await self.get_futures_contract(symbol)
 
         side = "BUY" if direction.upper() == "LONG" else "SELL"
-        exit_side = "SELL" if side == "BUY" else "BUY"
 
         entry = self.round_to_tick(entry, symbol)
         sl = self.round_to_tick(sl, symbol)
         tp = self.round_to_tick(tp, symbol)
 
-        # Get next order ID
-        parent_id = self.ib.client.getReqId()
+        # Create bracket - this returns BracketOrder(parent, takeProfit, stopLoss)
+        bracket = self.ib.bracketOrder(
+            action=side,
+            quantity=quantity,
+            limitPrice=entry,
+            takeProfitPrice=tp,
+            stopLossPrice=sl,
+        )
 
-        # 1. PARENT ORDER (Entry Limit)
-        parent = LimitOrder(side, quantity, entry)
-        parent.orderId = parent_id
-        parent.orderRef = order_ref
-        parent.tif = "GTC"
-        parent.transmit = False  # DO NOT transmit yet
-        parent.outsideRth = False
+        # Apply custom settings to all three orders
+        for order in bracket:
+            order.orderRef = order_ref
+            order.tif = "GTC"
+            order.outsideRth = False
 
-        # 2. TAKE PROFIT (Child 1)
-        take_profit = LimitOrder(exit_side, quantity, tp)
-        take_profit.orderId = parent_id + 1
-        take_profit.orderRef = order_ref
-        take_profit.parentId = parent_id
-        take_profit.tif = "GTC"
-        take_profit.transmit = False  # DO NOT transmit yet
-        take_profit.outsideRth = False
+        # Place parent first
+        parent_trade = self.ib.placeOrder(contract, bracket.parent)
+        await asyncio.sleep(0.2)  # Give IBKR time to acknowledge parent
 
-        # 3. STOP LOSS (Child 2 - LAST ORDER)
-        from ib_async import StopOrder
-        stop_loss = StopOrder(exit_side, quantity, sl)
-        stop_loss.orderId = parent_id + 2
-        stop_loss.orderRef = order_ref
-        stop_loss.parentId = parent_id
-        stop_loss.tif = "GTC"
-        stop_loss.transmit = True  # TRANSMIT ALL orders when this one is placed
-        stop_loss.outsideRth = False
+        # Place take profit
+        tp_trade = self.ib.placeOrder(contract, bracket.takeProfit)
+        await asyncio.sleep(0.2)
 
-        # Place orders in sequence
-        parent_trade = self.ib.placeOrder(contract, parent)
-        tp_trade = self.ib.placeOrder(contract, take_profit)
-        sl_trade = self.ib.placeOrder(contract, stop_loss)
+        # Place stop loss (transmit=True triggers all)
+        sl_trade = self.ib.placeOrder(contract, bracket.stopLoss)
 
-        logger.info(f"✅ Bracket placed: Entry={entry}, SL={sl}, TP={tp}")
+        logger.info(
+            f"✅ Bracket: {symbol} {direction} @ {entry} "
+            f"(SL={sl}, TP={tp}) Ref={order_ref}"
+        )
 
         return [parent_trade, tp_trade, sl_trade]
 
@@ -489,7 +487,8 @@ class IBKRClient:
 
                     time_diff = (next_t["exit_dt"] - current["exit_dt"]).total_seconds() / 60
 
-                    is_same_group = current["symbol"] == next_t["symbol"] and current["direction"] == next_t["direction"] and time_diff < 5.0
+                    is_same_group = current["symbol"] == next_t["symbol"] and current["direction"] == next_t[
+                        "direction"] and time_diff < 5.0
 
                     if is_same_group:
                         total_qty = current["qty"] + next_t["qty"]
@@ -520,7 +519,8 @@ class IBKRClient:
 
             # 5. Check Overnight
             positions = self.ib.positions()
-            actual_pos_map = {p.contract.symbol: p.position for p in positions if p.account == account_id and p.position != 0}
+            actual_pos_map = {p.contract.symbol: p.position for p in positions if
+                              p.account == account_id and p.position != 0}
 
             for sym, items in open_inventory.items():
                 calc_qty = sum([i["qty"] * (1 if i["side"] == "BOT" else -1) for i in items])

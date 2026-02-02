@@ -122,7 +122,8 @@ class BosFvgStrategy(StrategyBase):
                 fvg_time = fvg_time.tz_localize(df_ltf.index.tz)
             else:
                 fvg_time = fvg_time.tz_convert(df_ltf.index.tz)
-        except Exception:
+        except Exception as e:
+            logger.info(f"Timezone normalization failed for FVG time: {fvg_time} | Error: {e}")
             fvg_time = fvg_time.replace(tzinfo=None)
 
         # Get history strictly AFTER FVG creation (excluding current forming candle)
@@ -431,7 +432,7 @@ class BosFvgStrategy(StrategyBase):
                 self.log.info(f"🚫 CANCELLING PENDING ORDER | {cancel_reason}")
                 return SignalSummary(
                     direction="CANCELLED",
-                    trade_signal=self.create_signal(TradeAction.CANCEL, ts_utc, reason=msg),
+                    trade_signal=self.create_signal(TradeAction.CANCEL, ts_utc, reason=cancel_reason),
                 )
 
         return SignalSummary(direction="NEUTRAL")

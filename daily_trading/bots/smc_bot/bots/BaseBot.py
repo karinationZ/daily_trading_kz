@@ -72,14 +72,14 @@ class SMCBotBase:
     ACTIVE_SYMBOL_LOCKS = {}
 
     def __init__(
-        self,
-        symbols,
-        main_tf: str = "1h",
-        symbol_volume_threshold: float = 30000000,
-        lookback_days: int = 1,
-        telegram_chat_id=TELEGRAM_MAIN_CHANNEL_CHAT_ID,
-        market_type: str = "crypto",
-        ib_client=None,
+            self,
+            symbols,
+            main_tf: str = "1h",
+            symbol_volume_threshold: float = 30000000,
+            lookback_days: int = 1,
+            telegram_chat_id=TELEGRAM_MAIN_CHANNEL_CHAT_ID,
+            market_type: str = "crypto",
+            ib_client=None,
     ):
         """
         Initialize SMCTradingBot.
@@ -189,9 +189,9 @@ class SMCBotBase:
 
         # 3. Symbol is occupied. Can we steal it?
         if current_lock.status == TradeStatus.PENDING and priority > current_lock.priority:
-            strategy.log.info(
-                f"⚡ OVERRIDE: {strategy.ext_tag} (P{priority}) kicking out {current_lock.strategy_tag}" f" (P{current_lock.priority}) on {symbol}"
-            )
+            msg = f"⚡ OVERRIDE: {strategy.ext_tag} (P{priority}) kicking out {current_lock.strategy_tag}" f" (P{current_lock.priority}) on {symbol}"
+            strategy.log.info(msg)
+            strategy.telegram_session_bot.send_message(msg)
 
             # --- CRITICAL: CANCEL THE EXISTING ORDERS ---
             try:
@@ -201,7 +201,8 @@ class SMCBotBase:
 
                 # CLAIM IT IMMEDIATELY after flattening
                 self.ACTIVE_SYMBOL_LOCKS[symbol] = LockInfo(
-                    strategy_tag=strategy.ext_tag, status=TradeStatus.NONE, priority=strategy.priority, timestamp=datetime.now()
+                    strategy_tag=strategy.ext_tag, status=TradeStatus.NONE, priority=strategy.priority,
+                    timestamp=datetime.now()
                 )
                 return True
 
@@ -247,7 +248,8 @@ class SMCBotBase:
             avg_price = my_pos.avgCost
 
             # FETCH BRACKETS (The new robust method)
-            sl, tp = self.ib_client.get_active_sl_tp(symbol=strategy.symbol, order_ref=strategy.ext_tag, direction=direction_str)
+            sl, tp = self.ib_client.get_active_sl_tp(symbol=strategy.symbol, order_ref=strategy.ext_tag,
+                                                     direction=direction_str)
 
             # LOG WARNINGS for missing SL/TP
             # If IBKR returns 0.0 for TP (e.g., user cancelled it manually),
@@ -279,7 +281,8 @@ class SMCBotBase:
 
             # Re-acquire Lock on recovery
             SMCBotBase.ACTIVE_SYMBOL_LOCKS[strategy.symbol] = LockInfo(
-                strategy_tag=strategy.ext_tag, status=strategy.trade_status, priority=getattr(strategy, "priority", 1), timestamp=datetime.now()
+                strategy_tag=strategy.ext_tag, status=strategy.trade_status, priority=getattr(strategy, "priority", 1),
+                timestamp=datetime.now()
             )
 
             strategy.log.info(f"♻️ RESTORED STATE: FILLED {direction.name} @ {avg_price} (SL:{sl} TP:{tp})")
@@ -336,7 +339,8 @@ class SMCBotBase:
             strategy.trade_status = TradeStatus.PENDING
             # Re-acquire Lock on recovery
             SMCBotBase.ACTIVE_SYMBOL_LOCKS[strategy.symbol] = LockInfo(
-                strategy_tag=strategy.ext_tag, status=strategy.trade_status, priority=getattr(strategy, 'priority', 1), timestamp=datetime.now()
+                strategy_tag=strategy.ext_tag, status=strategy.trade_status, priority=getattr(strategy, 'priority', 1),
+                timestamp=datetime.now()
             )
             strategy.log.info(f"♻️ RESTORED STATE: PENDING {direction.name} @ {entry_price}")
 
@@ -356,11 +360,13 @@ class SMCBotBase:
         my_orders = [o for o in open_orders if o.order.orderRef == strategy.ext_tag]
 
         if my_orders:
-            logger.warning(f"🧹 ORPHAN CHECK: Found {len(my_orders)} hanging orders for {strategy.symbol} while Status=NONE. Purging.")
+            logger.warning(
+                f"🧹 ORPHAN CHECK: Found {len(my_orders)} hanging orders for {strategy.symbol} while Status=NONE. Purging.")
 
             # 4. Log what we are killing for debugging
             for o in my_orders:
-                logger.info(f"   -> Killing Orphan: {o.order.action} {o.order.totalQuantity} @ {o.order.lmtPrice or o.order.auxPrice}")
+                logger.info(
+                    f"   -> Killing Orphan: {o.order.action} {o.order.totalQuantity} @ {o.order.lmtPrice or o.order.auxPrice}")
 
             # 5. Nuke them
             await self.ib_client.cancel_all_orders(order_ref=strategy.ext_tag)
@@ -391,7 +397,8 @@ class SMCBotBase:
             bracket = await self.ib_client.get_active_bracket_levels(sig.symbol, strategy.ext_tag, sig.direction.name)
             if not bracket["found"]:
                 await asyncio.sleep(3.0)  # One retry
-                bracket = await self.ib_client.get_active_bracket_levels(sig.symbol, strategy.ext_tag, sig.direction.name)
+                bracket = await self.ib_client.get_active_bracket_levels(sig.symbol, strategy.ext_tag,
+                                                                         sig.direction.name)
                 if not bracket["found"]:
                     debug_note = "\n⚠️ <b>Warning:</b> Bracket orders not seen in API yet."
             else:
@@ -423,7 +430,8 @@ class SMCBotBase:
 
         # Calc PnL
         if sig.action == TradeAction.EXIT and display_price > 0:
-            entry_price = sig.metadata.get("entry_price", 0) or (strategy.active_trade.price if strategy.active_trade else 0)
+            entry_price = sig.metadata.get("entry_price", 0) or (
+                strategy.active_trade.price if strategy.active_trade else 0)
             if entry_price > 0:
                 points = (display_price - entry_price) if sig.direction == BIAS.LONG else (entry_price - display_price)
                 multiplier = getattr(strategy, "point_value", 1.0)
@@ -574,7 +582,8 @@ class SMCBotBase:
             # Update Locks on Success
             if sig.action == TradeAction.ENTER:
                 self.ACTIVE_SYMBOL_LOCKS[strategy.symbol] = LockInfo(
-                    strategy_tag=strategy.ext_tag, status=strategy.trade_status, priority=strategy.priority, timestamp=datetime.now()
+                    strategy_tag=strategy.ext_tag, status=strategy.trade_status, priority=strategy.priority,
+                    timestamp=datetime.now()
                 )
             elif sig.action in [TradeAction.EXIT, TradeAction.CANCEL]:
                 self.ACTIVE_SYMBOL_LOCKS.pop(strategy.symbol, None)
@@ -644,7 +653,8 @@ class SMCBotBase:
                     # IBKRClient usually logs errors, but we must stop the flow here.
                     err_msg = f" Order placed for {symbol} but not found in Active list. Likely Rejected."
                     strategy.log.error(err_msg)
-                    await strategy.telegram_session_bot.send_message(f"⚠️ <b>ORDER FAILED</b> | {strategy.log_tag}" f"\nReason: {err_msg}")
+                    await strategy.telegram_session_bot.send_message(
+                        f"⚠️ <b>ORDER FAILED</b> | {strategy.log_tag}" f"\nReason: {err_msg}")
                     return False
 
             # --- EXIT ---
@@ -793,7 +803,8 @@ class SMCBotBase:
         # Time to sleep (in seconds)
         sleep_duration = (next_candle - now).total_seconds()
 
-        logger.info(f"Sleeping for {int(sleep_duration)} seconds ({sleep_duration / 60:.2f} minutes) until {next_candle}")
+        logger.info(
+            f"Sleeping for {int(sleep_duration)} seconds ({sleep_duration / 60:.2f} minutes) until {next_candle}")
         await asyncio.sleep(sleep_duration)
 
     async def send_final_message(self, analysis: SignalSummary, current_candle_time, symbol, title):
@@ -946,14 +957,14 @@ class SMCBotBase:
             raise RuntimeError(f"Failed to update symbols: {e}")
 
     async def generate_signal(
-        self,
-        symbol: str,
-        analysis: SignalSummary,
-        ohlc_1d: pd.DataFrame,
-        ohlc_4h: pd.DataFrame,
-        ohlc_1h: pd.DataFrame,
-        ohlc_15m: pd.DataFrame,
-        send_non_signal=True,
+            self,
+            symbol: str,
+            analysis: SignalSummary,
+            ohlc_1d: pd.DataFrame,
+            ohlc_4h: pd.DataFrame,
+            ohlc_1h: pd.DataFrame,
+            ohlc_15m: pd.DataFrame,
+            send_non_signal=True,
     ):
         """Generate SMC signals."""
         try:

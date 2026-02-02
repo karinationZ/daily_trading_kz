@@ -507,7 +507,7 @@ class ORBStrategy(StrategyBase):
                 sig.trade_result = res
                 return SignalSummary(direction="EXIT", trade_signal=sig)
 
-            return SignalSummary(direction="FILLED" if filled else "IN_TRADE")
+            return SignalSummary(direction="IN_TRADE")
 
         # 5. PENDING ORDER CANCELLATION (Only if NOT filled)
         if self.trade_status == TradeStatus.PENDING:

@@ -752,7 +752,7 @@ class SMCBotBase:
                 for i, result in enumerate(results):
                     if isinstance(result, Exception):
                         # 1. Identify WHICH strategy failed
-                        strategy_name = self.strategies[i].symbol if i < len(self.strategies) else "Unknown"
+                        strategy_name = strategy_list[i].symbol if i < len(strategy_list) else "Unknown"
 
                         # 2. Extract the full stack trace as a string
                         tb_lines = traceback.format_exception(type(result), result, result.__traceback__)

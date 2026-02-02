@@ -93,6 +93,7 @@ class BosFvgStrategy(StrategyBase):
         self.active_trade: Optional[TradeSignal] = None
         self.trade_status: TradeStatus = TradeStatus.NONE
         self.processed_zone_ids: Set[str] = set()
+        self.restore_metadata_defaults = {"bos_ts": pd.Timestamp(0, tz="UTC")}
 
     def reset_session_state(self):
         """Standard reset for start of trading day."""

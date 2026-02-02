@@ -279,44 +279,63 @@ class IBKRClient:
         return trade
 
     async def place_bracket_order(
-        self,
-        symbol: str,
-        quantity: int,
-        entry: float,
-        sl: float,
-        tp: float,
-        direction: str,
-        order_ref: str = "TradingBot",
+            self,
+            symbol: str,
+            quantity: int,
+            entry: float,
+            sl: float,
+            tp: float,
+            direction: str,
+            order_ref: str = "TradingBot",
     ):
-        """Natively handles Entry + SL + TP Bracket."""
+        """Place Entry + SL + TP using IBKR's official bracket pattern."""
         contract = await self.get_futures_contract(symbol)
 
         side = "BUY" if direction.upper() == "LONG" else "SELL"
+        exit_side = "SELL" if side == "BUY" else "BUY"
+
         entry = self.round_to_tick(entry, symbol)
         sl = self.round_to_tick(sl, symbol)
         tp = self.round_to_tick(tp, symbol)
 
-        # Create bracket orders WITHOUT outsideRth (it's ignored anyway)
-        brackets = self.ib.bracketOrder(
-            side,
-            quantity,
-            limitPrice=entry,
-            stopLossPrice=sl,
-            takeProfitPrice=tp,
-            outsideRth=False,
-            # Set to False for all futures to avoid warning
-        )
+        # Get next order ID
+        parent_id = self.ib.client.getReqId()
 
-        trades = []
-        for ord in brackets:
-            ord.orderRef = order_ref
-            ord.outsideRth = False  # Doesn't matter for futures, but avoids warning
-            ord.tif = "GTC"  # Good-Til-Cancelled (works across sessions)
-            # Alternative: ord.tif = "GTD" with ord.goodTillDate for specific expiry
-            trade = self.ib.placeOrder(contract, ord)
-            trades.append(trade)
+        # 1. PARENT ORDER (Entry Limit)
+        parent = LimitOrder(side, quantity, entry)
+        parent.orderId = parent_id
+        parent.orderRef = order_ref
+        parent.tif = "GTC"
+        parent.transmit = False  # DO NOT transmit yet
+        parent.outsideRth = False
 
-        return trades
+        # 2. TAKE PROFIT (Child 1)
+        take_profit = LimitOrder(exit_side, quantity, tp)
+        take_profit.orderId = parent_id + 1
+        take_profit.orderRef = order_ref
+        take_profit.parentId = parent_id
+        take_profit.tif = "GTC"
+        take_profit.transmit = False  # DO NOT transmit yet
+        take_profit.outsideRth = False
+
+        # 3. STOP LOSS (Child 2 - LAST ORDER)
+        from ib_async import StopOrder
+        stop_loss = StopOrder(exit_side, quantity, sl)
+        stop_loss.orderId = parent_id + 2
+        stop_loss.orderRef = order_ref
+        stop_loss.parentId = parent_id
+        stop_loss.tif = "GTC"
+        stop_loss.transmit = True  # TRANSMIT ALL orders when this one is placed
+        stop_loss.outsideRth = False
+
+        # Place orders in sequence
+        parent_trade = self.ib.placeOrder(contract, parent)
+        tp_trade = self.ib.placeOrder(contract, take_profit)
+        sl_trade = self.ib.placeOrder(contract, stop_loss)
+
+        logger.info(f"✅ Bracket placed: Entry={entry}, SL={sl}, TP={tp}")
+
+        return [parent_trade, tp_trade, sl_trade]
 
     async def cancel_all_orders(self, order_ref: str):
         """Cancels orders only if they are still active."""

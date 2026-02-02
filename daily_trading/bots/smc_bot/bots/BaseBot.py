@@ -479,13 +479,13 @@ class SMCBotBase:
                     warn_msg = f"🚨 SL/TP HIT, but Position is not flat. Check {strategy.symbol} to have 0 orders!"
                     strategy.log.error(warn_msg)
                     await strategy.telegram_session_bot.send_message(warn_msg)
-                    #
-                    # # --- CRITICAL: CANCEL ORDERS FIRST ---
-                    # # Stop the old SL/TP from triggering while we market close
-                    # await self.ib_client.cancel_all_orders(order_ref=strategy.ext_tag)
-                    #
-                    # # --- THEN MARKET CLOSE ---
-                    # await self.ib_client.close_positions_smartly(sig.symbol)
+
+                    # --- CRITICAL: CANCEL ORDERS FIRST ---
+                    # Stop the old SL/TP from triggering while we market close
+                    await self.ib_client.cancel_all_orders(order_ref=strategy.ext_tag)
+
+                    # --- THEN MARKET CLOSE ---
+                    await self.ib_client.close_positions_smartly(sig.symbol)
             else:
                 # SUCCESS: We are flat.
                 # Small extra sleep to ensure 'openTrades' cache is updated by IBKR

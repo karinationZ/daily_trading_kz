@@ -231,7 +231,6 @@ class MasterBot:
                         # logger.info("📊 Starting BOS Bot Cycle...")
                         # # BOS 1H Order Block Bot
                         # await self.bos_ob_bot.execute_cycle(market_data, self.bos_ob_bot.strategies)
-
                         logger.info("✅ All bots completed sequentially")
 
                     except Exception as e:

@@ -477,7 +477,10 @@ class SMCBotBase:
             #      CANCEL LOGIC
             # ========================
             elif sig.action == TradeAction.CANCEL:
-                await strategy.telegram_session_bot.send_message(f"🗑️ <b>CANCELLED</b> | {strategy.log_tag}\nPending entry removed.")
+                msg = f"🗑️ <b>CANCELLED</b> | {strategy.log_tag}\nPending entry removed."
+                if sig.reason:
+                    msg += f"\n📝 <b>Reason:</b> {sig.reason}"
+                await strategy.telegram_session_bot.send_message(msg)
 
         except Exception as e:
             strategy.log.error(f"Telemetry Error: {e}")

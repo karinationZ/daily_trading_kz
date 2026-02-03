@@ -368,8 +368,10 @@ class BosFvgStrategy(StrategyBase):
 
                 if exit_reason == "CUTOFF":
                     sig.metadata["exit_type"] = ExitType.MARKET_FORCE
+                    sig.metadata["exit_reason"] = "Session Cutoff"
                 else:
                     sig.metadata["exit_type"] = ExitType.SL_TP_HIT
+                    sig.metadata["exit_reason"] = "SL/TP Hit"
 
                 self.log.info(f"🎯 TRADE EXIT ({exit_type}) {self.symbol} | Reason: {exit_reason}")
                 return SignalSummary(direction="EXIT", trade_signal=sig)

@@ -396,14 +396,14 @@ class IBKRClient:
                 return "⚠️ No managed accounts."
             account_id = accounts[0]
 
-            net_liq = realized = unrealized = 0.0
+            net_liq = unrealized = 0.0
 
             for v in values:
                 if v.account == account_id and v.currency == "USD":
                     if v.tag == "NetLiquidation":
                         net_liq = float(v.value)
                     elif v.tag == "RealizedPnL":
-                        realized = float(v.value)
+                        float(v.value)
                     elif v.tag == "UnrealizedPnL":
                         unrealized = float(v.value)
 
@@ -559,7 +559,7 @@ class IBKRClient:
                     tag = t.get('strategy_tag', 'Unknown')
 
                     # Format: [TAG] Symbol Direction (Qty) $PnL
-                    header = f"{icon} <b>[{tag}]</b> {t['symbol']} {t['direction']} ({int(t['qty'])}) <b>${t['pnl']:+.2f}</b>"
+                    header = f"{icon} <b>[{tag}]</b> {t['symbol']} {t['direction']} " f"({int(t['qty'])}) <b>${t['pnl']:+.2f}</b>"
 
                     # Hardcoded 'UTC' string for cleaner output
                     details = f"   ⏳ {t_entry} @ {t['entry_price']:,.2f} ➜ {t_exit} UTC @ {t['exit_price']:,.2f}"

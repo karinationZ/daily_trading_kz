@@ -418,66 +418,28 @@ class SMCBotBase:
             #      EXIT LOGIC
             # ========================
             if sig.action == TradeAction.EXIT:
-                # A. Determine Exit Price
+                # Determine Exit Price
                 if not recent_fill:
                     strategy.log.warning("Tele: Exit fill not found in cache, using signal data.")
                     exit_price = sig.price
-                    filled_qty = sig.size
+                    sig.size
                 else:
                     exit_price = recent_fill.execution.avgPrice
-                    filled_qty = abs(recent_fill.execution.shares)
+                    abs(recent_fill.execution.shares)
 
-                # B. Determine Entry Price (Try Metadata first, then Active Trade memory)
-                entry_price = sig.metadata.get("entry_price", 0.0)
-                if entry_price == 0 and strategy.active_trade:
-                    entry_price = strategy.active_trade.price
-
-                # C. Calculate PnL
-                pnl_str = ""
-                result_icon = "⚪"
-                result_text = "EXIT"
-
-                if entry_price > 0:
-                    multiplier = (
-                        float(recent_fill.contract.multiplier)
-                        if (recent_fill and recent_fill.contract.multiplier)
-                        else getattr(strategy, "point_value", 1.0)
-                    )
-
-                    if sig.direction == BIAS.LONG:
-                        pts = exit_price - entry_price
-                    else:  # SHORT
-                        pts = entry_price - exit_price
-
-                    cash_pnl = pts * filled_qty * multiplier
-
-                    # Determine Win/Loss
-                    if cash_pnl > 0:
-                        result_icon = "🟢"
-                        result_text = "WIN"
-                    elif cash_pnl < 0:
-                        result_icon = "🔴"
-                        result_text = "LOSS"
-                    else:
-                        result_icon = "⚪"
-                        result_text = "BE"
-
-                    pnl_str = f"💰 <b>${cash_pnl:,.2f}</b> ({pts:+.2f} pts)"
-
-                # D. Construct Message
+                # Exit Message
                 lines = [
-                    f"{result_icon} <b>{result_text}</b> | {strategy.symbol}",
+                    f"{strategy.symbol}",
                     f"🏷️ {strategy.log_tag}",
                     "────────────────",
-                    f"📉 <b>Entry:</b> {entry_price:,.2f}",
                     f"📈 <b>Exit:</b>  {exit_price:,.2f}",
                     "────────────────",
-                    pnl_str,
                 ]
 
                 # --- REQUIREMENT: ADD REASON ---
-                if sig.reason:
-                    lines.append(f"📝 <b>Reason:</b> {sig.reason}")
+                if sig.metadata:
+                    reason = sig.metadata.get("exit_reason")
+                    lines.append(f"📝 <b>Reason:</b> {reason}")
 
                 # Filter empty lines and send
                 msg = "\n".join([line for line in lines if line])
@@ -485,8 +447,8 @@ class SMCBotBase:
 
                 # Trigger Daily Summary
                 await asyncio.sleep(2)
-                summary = await self.get_daily_summary()
-                await strategy.telegram_session_bot.send_message(summary)
+                summary = await self.ib_client.get_daily_summary()
+                await self.telegram_main_channel.send_message(summary)
 
             # ========================
             #      ENTER LOGIC

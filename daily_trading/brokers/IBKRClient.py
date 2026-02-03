@@ -526,17 +526,18 @@ class IBKRClient:
                     orphan_note += f"\n⚠️ <b>Overnight Close:</b> {sym} {abs(calc_qty)} contracts."
 
             # 6. Build Report
-            pnl_icon = "🟢" if realized >= 0 else "🔴"
+            display_pnl = calculated_total_pnl
+            pnl_icon = "🟢" if display_pnl >= 0 else "🔴"
+
             lines = [
                 f"📅 **REPORT: {utc_now.strftime('%Y-%m-%d')} (UTC)**",
                 f"👤 Account: `{account_id}`",
                 "────────────────",
                 f"💰 Net Liq: ${net_liq:,.2f}",
-                f"{pnl_icon} Daily PnL: ${realized:,.2f}",
+                f"{pnl_icon} Session PnL: ${display_pnl:,.2f}",  # Changed Label to Session PnL
                 f"🎲 Open PnL: ${unrealized:,.2f}",
                 "────────────────",
             ]
-
             if actual_pos_map:
                 lines.append("🏗️ **Open Positions:**")
                 for sym, size in actual_pos_map.items():

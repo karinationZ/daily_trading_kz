@@ -101,12 +101,9 @@ class IBKRClient:
 
         contract_map = {
             # --- CASH SETTLED (Indices) ---
-            "MNQ": {"symbol": "MNQ", "exchange": "CME", "currency": "USD", "active_months": [3, 6, 9, 12],
-                    "min_days": 8, "physical_delivery": False},
-            "MES": {"symbol": "MES", "exchange": "CME", "currency": "USD", "active_months": [3, 6, 9, 12],
-                    "min_days": 8, "physical_delivery": False},
-            "MBT": {"symbol": "MBT", "exchange": "CME", "currency": "USD", "active_months": range(1, 13), "min_days": 2,
-                    "physical_delivery": False},
+            "MNQ": {"symbol": "MNQ", "exchange": "CME", "currency": "USD", "active_months": [3, 6, 9, 12], "min_days": 8, "physical_delivery": False},
+            "MES": {"symbol": "MES", "exchange": "CME", "currency": "USD", "active_months": [3, 6, 9, 12], "min_days": 8, "physical_delivery": False},
+            "MBT": {"symbol": "MBT", "exchange": "CME", "currency": "USD", "active_months": range(1, 13), "min_days": 2, "physical_delivery": False},
             # --- PHYSICAL DELIVERY (Commodities) ---
             # FIX: First Notice Day is often the last day of the PREVIOUS month.
             # Using Feb 1st - 3 days = Jan 29th is TOO LATE.
@@ -119,8 +116,7 @@ class IBKRClient:
                 "min_days": 8,
                 "physical_delivery": True,
             },
-            "MCL": {"symbol": "MCL", "exchange": "NYMEX", "currency": "USD", "active_months": range(1, 13),
-                    "min_days": 8, "physical_delivery": True},
+            "MCL": {"symbol": "MCL", "exchange": "NYMEX", "currency": "USD", "active_months": range(1, 13), "min_days": 8, "physical_delivery": True},
         }
 
         target = contract_map.get(symbol)
@@ -197,8 +193,7 @@ class IBKRClient:
         # Pick the nearest valid contract (which should now be April, since Feb is excluded)
         front_month = min(valid_contracts, key=lambda c: c.lastTradeDateOrContractMonth)
 
-        logger.info(
-            f"✅ Resolved {symbol} -> {front_month.localSymbol} (Exp: {front_month.lastTradeDateOrContractMonth})")
+        logger.info(f"✅ Resolved {symbol} -> {front_month.localSymbol} (Exp: {front_month.lastTradeDateOrContractMonth})")
 
         # Clear cache if we just switched contracts to force update
         self._conid_cache[symbol] = front_month
@@ -265,12 +260,12 @@ class IBKRClient:
         return sl_price, tp_price
 
     async def place_limit_order(
-            self,
-            symbol: str,
-            quantity: int,
-            price: float,
-            side: str,
-            order_ref: str = "TradingBot",
+        self,
+        symbol: str,
+        quantity: int,
+        price: float,
+        side: str,
+        order_ref: str = "TradingBot",
     ):
         contract = await self.get_futures_contract(symbol)
         price = self.round_to_tick(price, symbol)
@@ -285,14 +280,14 @@ class IBKRClient:
         return trade
 
     async def place_bracket_order(
-            self,
-            symbol: str,
-            quantity: int,
-            entry: float,
-            sl: float,
-            tp: float,
-            direction: str,
-            order_ref: str = "TradingBot",
+        self,
+        symbol: str,
+        quantity: int,
+        entry: float,
+        sl: float,
+        tp: float,
+        direction: str,
+        order_ref: str = "TradingBot",
     ):
         """Place Entry + SL + TP with thread-safe order ID management."""
 
@@ -331,10 +326,7 @@ class IBKRClient:
             sl_trade = self.ib.placeOrder(contract, bracket.stopLoss)
             await asyncio.sleep(0.3)  # Final delay before releasing lock
 
-            logger.info(
-                f"✅ Bracket: {symbol} {direction} @ {entry} "
-                f"(SL={sl}, TP={tp}) Ref={order_ref}"
-            )
+            logger.info(f"✅ Bracket: {symbol} {direction} @ {entry} " f"(SL={sl}, TP={tp}) Ref={order_ref}")
 
             return [parent_trade, tp_trade, sl_trade]
 
@@ -388,21 +380,25 @@ class IBKRClient:
                     symbol=symbol,
                     quantity=qty,
                     side=action,
-                    order_ref="EMERGENCY_CLOSE",
+                    order_ref="FORCE_CLOSE",
                 )
-                logger.info("Order Placed - EMERGENCY_CLOSE")
+                logger.info("Order Placed - FORCE_CLOSE")
 
         if not found:
             logger.info(f"No open position found for {symbol}. You are flat.")
 
     async def get_daily_summary(self) -> str:
         try:
+            # 1. Get Account Values (Fast Cache)
             values = self.ib.accountValues()
-            account_id = self.ib.managedAccounts()[0]
+            accounts = self.ib.managedAccounts()
+            if not accounts:
+                return "⚠️ No managed accounts."
+            account_id = accounts[0]
+
             net_liq = realized = unrealized = 0.0
 
             for v in values:
-                # Filter for the specific account and currency
                 if v.account == account_id and v.currency == "USD":
                     if v.tag == "NetLiquidation":
                         net_liq = float(v.value)
@@ -412,12 +408,16 @@ class IBKRClient:
                         unrealized = float(v.value)
 
             # 2. Get Today's Executions (UTC)
-            executions = await asyncio.wait_for(self.ib.reqExecutionsAsync(ExecutionFilter()), timeout=15)
-            utc_now = datetime.now(timezone.utc)
+            tz = timezone.utc
+            utc_now = datetime.now(tz)
             start_of_day = utc_now.replace(hour=0, minute=0, second=0, microsecond=0)
 
-            # CRITICAL FIX: Sort by Time AND execId to handle simultaneous fills correctly
-            tz = timezone.utc
+            # API Filter: Fetch only today's trades for speed and accuracy
+            api_time_filter = start_of_day.strftime('%Y%m%d-%H:%M:%S')
+
+            executions = await asyncio.wait_for(self.ib.reqExecutionsAsync(ExecutionFilter(time=api_time_filter)), timeout=15)
+
+            # Sort by Time AND execId (Crucial for FIFO accuracy)
             todays_fills = sorted(
                 [f for f in executions if f.time.astimezone(tz) >= start_of_day],
                 key=lambda x: (x.time, x.execution.execId),
@@ -434,9 +434,12 @@ class IBKRClient:
                 sym = fill.contract.symbol
                 side = fill.execution.side
                 price = fill.execution.avgPrice
-                qty = fill.execution.shares
-                order_ref = fill.execution.orderRef
+                qty = abs(float(fill.execution.shares))
                 fill_time = fill.time.astimezone(tz)
+
+                # --- CAPTURE REF TAG ---
+                # Use 'Manual' if orderRef is empty/None
+                ref_tag = fill.execution.orderRef or "Unknown"
 
                 if sym not in open_inventory:
                     open_inventory[sym] = []
@@ -449,7 +452,9 @@ class IBKRClient:
                     match_qty = min(qty, match["qty"])
 
                     is_long = match["side"] == "BOT"
-                    mult = self.MULTIPLIERS.get(sym, 1.0)
+
+                    # Fix: Use actual contract multiplier (Critical for Futures)
+                    mult = float(fill.contract.multiplier) if fill.contract.multiplier else 1.0
 
                     diff = price - match["price"] if is_long else match["price"] - price
                     pnl = diff * match_qty * mult
@@ -465,7 +470,7 @@ class IBKRClient:
                             "exit_dt": fill_time,
                             "entry_price": match["price"],
                             "exit_price": price,
-                            "strategy_tag": order_ref,
+                            "strategy_tag": ref_tag,  # Store the tag
                         }
                     )
 
@@ -482,7 +487,6 @@ class IBKRClient:
             if raw_trades:
                 # Sort by Exit Time
                 raw_trades.sort(key=lambda x: x["exit_dt"])
-
                 current = raw_trades[0]
 
                 for i in range(1, len(raw_trades)):
@@ -490,30 +494,20 @@ class IBKRClient:
 
                     time_diff = (next_t["exit_dt"] - current["exit_dt"]).total_seconds() / 60
 
-                    is_same_group = current["symbol"] == next_t["symbol"] and current["direction"] == next_t[
-                        "direction"] and time_diff < 5.0
+                    is_same_group = current["symbol"] == next_t["symbol"] and current["direction"] == next_t["direction"] and time_diff < 5.0
 
                     if is_same_group:
                         total_qty = current["qty"] + next_t["qty"]
 
-                        current_entry_val = current["entry_price"] * current["qty"]
-                        next_entry_val = next_t["entry_price"] * next_t["qty"]
-                        avg_entry = (current_entry_val + next_entry_val) / total_qty
-
-                        current_exit_val = current["exit_price"] * current["qty"]
-                        next_exit_val = next_t["exit_price"] * next_t["qty"]
-                        avg_exit = (current_exit_val + next_exit_val) / total_qty
+                        # Weighted Averages
+                        avg_entry = ((current["entry_price"] * current["qty"]) + (next_t["entry_price"] * next_t["qty"])) / total_qty
+                        avg_exit = ((current["exit_price"] * current["qty"]) + (next_t["exit_price"] * next_t["qty"])) / total_qty
 
                         current["qty"] = total_qty
                         current["pnl"] += next_t["pnl"]
                         current["entry_price"] = avg_entry
                         current["exit_price"] = avg_exit
-
-                        if next_t["entry_dt"] < current["entry_dt"]:
-                            current["entry_dt"] = next_t["entry_dt"]
-                        if next_t["exit_dt"] > current["exit_dt"]:
-                            current["exit_dt"] = next_t["exit_dt"]
-
+                        current["exit_dt"] = max(current["exit_dt"], next_t["exit_dt"])
                     else:
                         consolidated_trades.append(current)
                         current = next_t
@@ -522,8 +516,7 @@ class IBKRClient:
 
             # 5. Check Overnight
             positions = self.ib.positions()
-            actual_pos_map = {p.contract.symbol: p.position for p in positions if
-                              p.account == account_id and p.position != 0}
+            actual_pos_map = {p.contract.symbol: p.position for p in positions if p.account == account_id and p.position != 0}
 
             for sym, items in open_inventory.items():
                 calc_qty = sum([i["qty"] * (1 if i["side"] == "BOT" else -1) for i in items])
@@ -561,10 +554,15 @@ class IBKRClient:
                     t_entry = t["entry_dt"].strftime("%H:%M")
                     t_exit = t["exit_dt"].strftime("%H:%M")
 
-                    strategy_info = f" {t['strategy_tag']}" if t['strategy_tag'] else ""
-                    header = f"{icon} {t['symbol']} {t['direction']} ({int(t['qty'])}) <b>${t['pnl']:+.2f}</b>"
-                    details = f"   ⏳ {t_entry} @ {t['entry_price']:,.2f} ➜ {t_exit} {tz} @ {t['exit_price']:,.2f}"
-                    lines.append(f"\n{strategy_info} - {header}\n{details}\n")
+                    # --- REF TAG DISPLAY ---
+                    tag = t.get('strategy_tag', 'Unknown')
+
+                    # Format: [TAG] Symbol Direction (Qty) $PnL
+                    header = f"{icon} <b>[{tag}]</b> {t['symbol']} {t['direction']} ({int(t['qty'])}) <b>${t['pnl']:+.2f}</b>"
+
+                    # Hardcoded 'UTC' string for cleaner output
+                    details = f"   ⏳ {t_entry} @ {t['entry_price']:,.2f} ➜ {t_exit} UTC @ {t['exit_price']:,.2f}"
+                    lines.append(f"\n{header}\n{details}")
             else:
                 lines.append("💤 No round-trip trades completed today.")
 

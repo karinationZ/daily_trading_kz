@@ -73,14 +73,14 @@ class SMCBotBase:
     ACTIVE_SYMBOL_LOCKS = {}
 
     def __init__(
-            self,
-            symbols,
-            main_tf: str = "1h",
-            symbol_volume_threshold: float = 30000000,
-            lookback_days: int = 1,
-            telegram_chat_id=TELEGRAM_MAIN_CHANNEL_CHAT_ID,
-            market_type: str = "crypto",
-            ib_client=None,
+        self,
+        symbols,
+        main_tf: str = "1h",
+        symbol_volume_threshold: float = 30000000,
+        lookback_days: int = 1,
+        telegram_chat_id=TELEGRAM_MAIN_CHANNEL_CHAT_ID,
+        market_type: str = "crypto",
+        ib_client=None,
     ):
         """
         Initialize SMCTradingBot.
@@ -211,7 +211,7 @@ class SMCBotBase:
                     strategy_instance=strategy,
                     status=TradeStatus.NONE,
                     priority=strategy.priority,
-                    timestamp=datetime.now()
+                    timestamp=datetime.now(),
                 )
                 return True
 
@@ -257,8 +257,7 @@ class SMCBotBase:
             avg_price = my_pos.avgCost
 
             # FETCH BRACKETS (The new robust method)
-            sl, tp = self.ib_client.get_active_sl_tp(symbol=strategy.symbol, order_ref=strategy.ext_tag,
-                                                     direction=direction_str)
+            sl, tp = self.ib_client.get_active_sl_tp(symbol=strategy.symbol, order_ref=strategy.ext_tag, direction=direction_str)
 
             # LOG WARNINGS for missing SL/TP
             # If IBKR returns 0.0 for TP (e.g., user cancelled it manually),
@@ -294,7 +293,7 @@ class SMCBotBase:
                 status=strategy.trade_status,
                 strategy_instance=strategy,
                 priority=getattr(strategy, "priority", 1),
-                timestamp=datetime.now()
+                timestamp=datetime.now(),
             )
 
             strategy.log.info(f"♻️ RESTORED STATE: FILLED {direction.name} @ {avg_price} (SL:{sl} TP:{tp})")
@@ -355,7 +354,7 @@ class SMCBotBase:
                 status=strategy.trade_status,
                 strategy_instance=strategy,
                 priority=getattr(strategy, 'priority', 1),
-                timestamp=datetime.now()
+                timestamp=datetime.now(),
             )
             strategy.log.info(f"♻️ RESTORED STATE: PENDING {direction.name} @ {entry_price}")
 
@@ -375,13 +374,11 @@ class SMCBotBase:
         my_orders = [o for o in open_orders if o.order.orderRef == strategy.ext_tag]
 
         if my_orders:
-            logger.warning(
-                f"🧹 ORPHAN CHECK: Found {len(my_orders)} hanging orders for {strategy.symbol} while Status=NONE. Purging.")
+            logger.warning(f"🧹 ORPHAN CHECK: Found {len(my_orders)} hanging orders for {strategy.symbol} while Status=NONE. Purging.")
 
             # 4. Log what we are killing for debugging
             for o in my_orders:
-                logger.info(
-                    f"   -> Killing Orphan: {o.order.action} {o.order.totalQuantity} @ {o.order.lmtPrice or o.order.auxPrice}")
+                logger.info(f"   -> Killing Orphan: {o.order.action} {o.order.totalQuantity} @ {o.order.lmtPrice or o.order.auxPrice}")
 
             # 5. Nuke them
             await self.ib_client.cancel_all_orders(order_ref=strategy.ext_tag)
@@ -390,90 +387,138 @@ class SMCBotBase:
             )
 
     async def _send_trade_telemetry(self, strategy, sig):
-        """Constructs and sends the Telegram report."""
+        """
+        Sends Telegram reports based on CONFIRMED broker data.
+        - ENTER: Includes technical metadata (JSON).
+        - EXIT: Includes PnL, Price, and Reason (e.g., SL HIT, TP HIT).
+        """
         if sig.action not in [TradeAction.ENTER, TradeAction.EXIT, TradeAction.CANCEL]:
             return
 
-        real_fill_price = 0.0
-        debug_note = ""
+        try:
+            # 1. WAIT FOR DATA PROPAGATION (IBKR Async Latency)
+            if sig.action in [TradeAction.ENTER, TradeAction.EXIT]:
+                await asyncio.sleep(1.0)
 
-        # --- GATHER DATA ---
-        if sig.action == TradeAction.EXIT:
-            real_fill_price = await self.ib_client.get_last_fill_price(sig.symbol)
-            # Calc Slippage
-            target_ref = sig.price
-            if real_fill_price > 0 and target_ref > 0:
-                diff = real_fill_price - target_ref
-                if abs(diff) > 0.5:
-                    debug_note = f"\n💸 <b>Slippage/Diff:</b> {diff:+.2f} pts"
+            # 2. FETCH LATEST EXECUTION FROM IBKR CACHE (Truth Source)
+            recent_fill = None
+            fills = list(self.ib_client.ib.fills())
+            # Filter: Match Symbol + Strategy Tag
+            my_fills = [f for f in fills if f.contract.symbol == strategy.symbol and f.execution.orderRef == strategy.ext_tag]
 
-        elif sig.action == TradeAction.ENTER:
-            # Verify Brackets
-            bracket = await self.ib_client.get_active_bracket_levels(sig.symbol, strategy.ext_tag, sig.direction.name)
-            if not bracket["found"]:
-                await asyncio.sleep(3.0)  # One retry
-                bracket = await self.ib_client.get_active_bracket_levels(sig.symbol, strategy.ext_tag,
-                                                                         sig.direction.name)
-                if not bracket["found"]:
-                    debug_note = "\n⚠️ <b>Warning:</b> Bracket orders not seen in API yet."
-            else:
-                if abs(bracket["sl"] - sig.sl) > 1:
-                    debug_note = f"\n⚠️ <b>SL Mismatch:</b> Bot {sig.sl} vs Broker {bracket['sl']}"
+            # Sort by time descending (newest first) to find the trade that just happened
+            if my_fills:
+                my_fills.sort(key=lambda x: x.time, reverse=True)
+                # Only accept fills from the last 15 seconds to avoid stale data
+                last_fill_time = my_fills[0].time.replace(tzinfo=None)
+                if (datetime.utcnow() - last_fill_time).total_seconds() < 15:
+                    recent_fill = my_fills[0]
 
-        # --- BUILD MESSAGE ---
-        title = sig.action.name
-        if sig.action == TradeAction.EXIT:
-            res = getattr(sig, "trade_result", "N/A")
-            icon = "🟢" if res == "WIN" else "🔴"
-            title = f"{icon} EXIT ({res})"
-        elif sig.action == TradeAction.ENTER:
-            title = "🚀 ENTER"
-        elif sig.action == TradeAction.CANCEL:
-            title = "🗑️ CANCEL"
+            # ========================
+            #      EXIT LOGIC
+            # ========================
+            if sig.action == TradeAction.EXIT:
+                # A. Determine Exit Price
+                if not recent_fill:
+                    strategy.log.warning("Tele: Exit fill not found in cache, using signal data.")
+                    exit_price = sig.price
+                    filled_qty = sig.size
+                else:
+                    exit_price = recent_fill.execution.avgPrice
+                    filled_qty = abs(recent_fill.execution.shares)
 
-        display_price = real_fill_price if (sig.action == TradeAction.EXIT and real_fill_price > 0) else sig.price
+                # B. Determine Entry Price (Try Metadata first, then Active Trade memory)
+                entry_price = sig.metadata.get("entry_price", 0.0)
+                if entry_price == 0 and strategy.active_trade:
+                    entry_price = strategy.active_trade.price
 
-        lines = [
-            f"<b>{title}</b> | {strategy.log_tag}",
-            f"Action: {sig.direction.name} {sig.action.name}",
-            f"Price: {display_price:,.2f}",
-        ]
-        if sig.reason:
-            lines.append(f"Reason: {sig.reason}")
-        if sig.metadata:
-            lines.append(f"<pre>{json.dumps(sig.metadata, indent=2, default=str)}</pre>")
+                # C. Calculate PnL
+                pnl_str = ""
+                result_icon = "⚪"
+                result_text = "EXIT"
 
-        # Calc PnL
-        if sig.action == TradeAction.EXIT and display_price > 0:
-            entry_price = sig.metadata.get("entry_price", 0) or (
-                strategy.active_trade.price if strategy.active_trade else 0)
-            if entry_price > 0:
-                points = (display_price - entry_price) if sig.direction == BIAS.LONG else (entry_price - display_price)
-                multiplier = getattr(strategy, "point_value", 1.0)
-                cash_pnl = points * sig.size * multiplier
-                pnl_emoji = "🤑" if cash_pnl > 0 else "🔻"
-                lines.append(f"{pnl_emoji} <b>PnL: ${cash_pnl:,.2f}</b> ({points:+.2f} pts)")
+                if entry_price > 0:
+                    multiplier = (
+                        float(recent_fill.contract.multiplier)
+                        if (recent_fill and recent_fill.contract.multiplier)
+                        else getattr(strategy, "point_value", 1.0)
+                    )
 
-        if sig.action == TradeAction.ENTER:
-            lines.append(f"Bracket: SL {sig.sl:,.2f} | TP {sig.tp:,.2f}")
-            lines.append(f"Size: {sig.size}")
+                    if sig.direction == BIAS.LONG:
+                        pts = exit_price - entry_price
+                    else:  # SHORT
+                        pts = entry_price - exit_price
 
-        if debug_note:
-            lines.append(debug_note)
-        lines.append(f"<i>{sig.timestamp.strftime('%H:%M:%S')} UTC</i>")
+                    cash_pnl = pts * filled_qty * multiplier
 
-        # --- SEND ---
-        await strategy.telegram_session_bot.send_message("\n".join(lines), getattr(sig, "fig", None))
+                    # Determine Win/Loss
+                    if cash_pnl > 0:
+                        result_icon = "🟢"
+                        result_text = "WIN"
+                    elif cash_pnl < 0:
+                        result_icon = "🔴"
+                        result_text = "LOSS"
+                    else:
+                        result_icon = "⚪"
+                        result_text = "BE"
 
-        # --- DAILY SUMMARY (Optional Side Effect) ---
-        if sig.action == TradeAction.EXIT:
-            try:
-                await asyncio.sleep(4)
-                report = await self.ib_client.get_daily_summary()
-                if report:
-                    await strategy.telegram_session_bot.send_message(report)
-            except Exception as e:
-                strategy.log.error(f"Failed to send daily summary: {e}")
+                    pnl_str = f"💰 <b>${cash_pnl:,.2f}</b> ({pts:+.2f} pts)"
+
+                # D. Construct Message
+                lines = [
+                    f"{result_icon} <b>{result_text}</b> | {strategy.symbol}",
+                    f"🏷️ {strategy.log_tag}",
+                    "────────────────",
+                    f"📉 <b>Entry:</b> {entry_price:,.2f}",
+                    f"📈 <b>Exit:</b>  {exit_price:,.2f}",
+                    "────────────────",
+                    pnl_str,
+                ]
+
+                # --- REQUIREMENT: ADD REASON ---
+                if sig.reason:
+                    lines.append(f"📝 <b>Reason:</b> {sig.reason}")
+
+                # Filter empty lines and send
+                msg = "\n".join([line for line in lines if line])
+                await strategy.telegram_session_bot.send_message(msg)
+
+                # Trigger Daily Summary
+                await asyncio.sleep(2)
+                summary = await self.get_daily_summary()
+                await strategy.telegram_session_bot.send_message(summary)
+
+            # ========================
+            #      ENTER LOGIC
+            # ========================
+            elif sig.action == TradeAction.ENTER:
+                fill_price = recent_fill.execution.avgPrice if recent_fill else sig.price
+
+                sl_txt = f"{sig.sl:,.2f}"
+                tp_txt = f"{sig.tp:,.2f}"
+
+                lines = [
+                    f"🚀 <b>ENTER {sig.direction.name}</b> | {strategy.symbol}",
+                    f"🏷️ {strategy.log_tag}",
+                    f"💲 Price: {fill_price:,.2f}",
+                    f"🛡️ SL: {sl_txt} | 🎯 TP: {tp_txt}",
+                    f"📦 Size: {int(sig.size)}",
+                ]
+
+                # --- REQUIREMENT: ADD JSON METADATA ---
+                if sig.metadata:
+                    lines.append(f"<pre>{json.dumps(sig.metadata, indent=2, default=str)}</pre>")
+
+                await strategy.telegram_session_bot.send_message("\n".join(lines))
+
+            # ========================
+            #      CANCEL LOGIC
+            # ========================
+            elif sig.action == TradeAction.CANCEL:
+                await strategy.telegram_session_bot.send_message(f"🗑️ <b>CANCELLED</b> | {strategy.log_tag}\nPending entry removed.")
+
+        except Exception as e:
+            strategy.log.error(f"Telemetry Error: {e}")
 
     async def _perform_post_execution_safety(self, strategy, sig):
         """
@@ -604,7 +649,7 @@ class SMCBotBase:
                     status=strategy.trade_status,
                     strategy_instance=strategy,
                     priority=strategy.priority,
-                    timestamp=datetime.now()
+                    timestamp=datetime.now(),
                 )
             elif sig.action in [TradeAction.EXIT, TradeAction.CANCEL]:
                 self.ACTIVE_SYMBOL_LOCKS.pop(strategy.symbol, None)
@@ -674,8 +719,7 @@ class SMCBotBase:
                     # IBKRClient usually logs errors, but we must stop the flow here.
                     err_msg = f" Order placed for {symbol} but not found in Active list. Likely Rejected."
                     strategy.log.error(err_msg)
-                    await strategy.telegram_session_bot.send_message(
-                        f"⚠️ <b>ORDER FAILED</b> | {strategy.log_tag}" f"\nReason: {err_msg}")
+                    await strategy.telegram_session_bot.send_message(f"⚠️ <b>ORDER FAILED</b> | {strategy.log_tag}" f"\nReason: {err_msg}")
                     return False
 
             # --- EXIT ---
@@ -824,8 +868,7 @@ class SMCBotBase:
         # Time to sleep (in seconds)
         sleep_duration = (next_candle - now).total_seconds()
 
-        logger.info(
-            f"Sleeping for {int(sleep_duration)} seconds ({sleep_duration / 60:.2f} minutes) until {next_candle}")
+        logger.info(f"Sleeping for {int(sleep_duration)} seconds ({sleep_duration / 60:.2f} minutes) until {next_candle}")
         await asyncio.sleep(sleep_duration)
 
     async def send_final_message(self, analysis: SignalSummary, current_candle_time, symbol, title):
@@ -978,14 +1021,14 @@ class SMCBotBase:
             raise RuntimeError(f"Failed to update symbols: {e}")
 
     async def generate_signal(
-            self,
-            symbol: str,
-            analysis: SignalSummary,
-            ohlc_1d: pd.DataFrame,
-            ohlc_4h: pd.DataFrame,
-            ohlc_1h: pd.DataFrame,
-            ohlc_15m: pd.DataFrame,
-            send_non_signal=True,
+        self,
+        symbol: str,
+        analysis: SignalSummary,
+        ohlc_1d: pd.DataFrame,
+        ohlc_4h: pd.DataFrame,
+        ohlc_1h: pd.DataFrame,
+        ohlc_15m: pd.DataFrame,
+        send_non_signal=True,
     ):
         """Generate SMC signals."""
         try:

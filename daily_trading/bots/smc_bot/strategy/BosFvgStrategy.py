@@ -43,15 +43,15 @@ class BosFvgStrategy(StrategyBase):
     """
 
     def __init__(
-            self,
-            symbol: str,
-            timezone: ZoneInfo,
-            main_tf="5m",  # LTF for Entry execution
-            risk: float = 150.0,
-            tp_multiple: float = 2.0,
-            fvg_mitigation_ratio: float = 0.5,  # 0.5 = Entry at 50% of FVG
-            sl_buffer_mult: float = 0.1,
-            priority: int = 1,
+        self,
+        symbol: str,
+        timezone: ZoneInfo,
+        main_tf="5m",  # LTF for Entry execution
+        risk: float = 150.0,
+        tp_multiple: float = 2.0,
+        fvg_mitigation_ratio: float = 0.5,  # 0.5 = Entry at 50% of FVG
+        sl_buffer_mult: float = 0.1,
+        priority: int = 1,
     ):
 
         super().__init__(main_tf, priority=priority)
@@ -208,8 +208,7 @@ class BosFvgStrategy(StrategyBase):
 
             # F. Calculate Position Size
             pos_math = self.calculate_trade_position(
-                symbol=self.symbol, tp_multiple=self.tp_multiple, risk=self.risk, entry_price=entry, sl=sl,
-                direction=htf_bias
+                symbol=self.symbol, tp_multiple=self.tp_multiple, risk=self.risk, entry_price=entry, sl=sl, direction=htf_bias
             )
 
             # Gatekeeper

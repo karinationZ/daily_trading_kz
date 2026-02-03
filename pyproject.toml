@@ -42,7 +42,7 @@ requires = ["poetry-core"]
 build-backend = "poetry.core.masonry.api"
 
 [tool.pytest.ini_options]
-addopts = "-s -n auto"
+addopts = "-s"
 
 [tool.black]
 line-length = 150

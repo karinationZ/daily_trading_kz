@@ -420,10 +420,11 @@ class ORBStrategy(StrategyBase):
 
         return sig
 
-    async def analyze(self, ohlc: pd.DataFrame) -> SignalSummary:
-        ts_now = ohlc.index[-1].tz_convert(self.timezone)
-        s_info = SESSION_MAP[self.timezone.key]
+    async def analyze(self, ohlc: pd.DataFrame, ib_client) -> SignalSummary:
         curr = ohlc.iloc[-1]
+        ts_now = curr.name.tz_convert(self.timezone)
+        ts_utc = curr.name.tz_convert("UTC")
+        s_info = SESSION_MAP[self.timezone.key]
 
         # 1. SETUP CUTOFFS
         session_end = ts_now.replace(
@@ -463,49 +464,60 @@ class ORBStrategy(StrategyBase):
 
         # 4. SESSION EXIT LOGIC (Evaluate both Active and Just-Filled trades)
         if self.trade_status == TradeStatus.FILLED:
-            # Check for SL/TP first
+            sl = self.active_trade.sl
+            tp = self.active_trade.tp
             is_long = self.active_trade.direction == BIAS.LONG
 
-            # Detailed check to see WHICH one was hit
-            hit_sl = (is_long and curr["low"] <= self.active_trade.sl) or (not is_long and curr["high"] >= self.active_trade.sl)
+            # DEBUG MODE EXIT SIMULATION
+            if self.debug:
+                # Detailed check to see WHICH one was hit
+                hit_sl = (is_long and curr["low"] <= sl) or (not is_long and curr["high"] >= sl)
+                hit_tp = (is_long and curr["high"] >= tp) or (not is_long and curr["low"] <= tp)
+                hit_sl_tp = hit_sl or hit_tp
+                if hit_sl_tp:
+                    # Determine actual exit price
+                    exit_price = self.active_trade.sl if hit_sl else self.active_trade.tp
 
-            hit_tp = (is_long and curr["high"] >= self.active_trade.tp) or (not is_long and curr["low"] <= self.active_trade.tp)
+                    msg = f"TRADE EXIT (HIT {'SL' if hit_sl else 'TP'})"
+                    self.log.info(f"🎯 {msg} | {self.symbol}: " f"Close: {curr['close']:.2f} |" f" Target: {exit_price:.2f}")
 
-            hit_sl_tp = hit_sl or hit_tp
+                    signal = self.create_signal(TradeAction.EXIT, ohlc.index[-1], custom_price=exit_price, reason=msg)
+                    signal.metadata["exit_type"] = ExitType.SL_TP_HIT
+                    if hit_sl:
+                        signal.trade_result = "LOSS"
+                    elif hit_tp:
+                        signal.trade_result = "WIN"
+                    return SignalSummary(direction="EXIT", trade_signal=signal)
+            else:
+                # -------------------------------------------------------------
+                # REALITY CHECK (Live Trading Only)
+                # -------------------------------------------------------------
+                exit_type, exit_price, exit_reason = await self.check_broker_exit(ib_client, self.symbol, sl, tp)
 
-            # OR Check if we hit the Session Hard Exit (e.g., 19:45 or 19:55)
-            # If we just filled, but it's already cutoff time, we must EXIT at market price.
-            is_cutoff_time = ts_now >= pending_cutoff
+                is_cutoff = ts_now >= pending_cutoff
+                if not exit_type and is_cutoff:
+                    exit_price = curr["close"]
+                    exit_reason = "CUTOFF"
 
-            if hit_sl_tp:
-                # Determine actual exit price
-                exit_price = self.active_trade.sl if hit_sl else self.active_trade.tp
+                    # Determine Result Manually
+                    pnl = (exit_price - self.active_trade.price) if is_long else (self.active_trade.price - exit_price)
+                    exit_type = "WIN" if pnl > 0 else "LOSS"
 
-                msg = f"TRADE EXIT (HIT {'SL' if hit_sl else 'TP'})"
-                self.log.info(f"🎯 {msg} | {self.symbol}: " f"Close: {curr['close']:.2f} |" f" Target: {exit_price:.2f}")
+                # --- EXECUTION ---
+                if exit_type:
+                    sig = self.create_signal(TradeAction.EXIT, ts_utc, custom_price=exit_price)
+                    sig.trade_result = exit_type
+                    sig.metadata["exit_reason"] = exit_reason
 
-                signal = self.create_signal(TradeAction.EXIT, ohlc.index[-1], custom_price=exit_price, reason=msg)
-                signal.metadata["exit_type"] = ExitType.SL_TP_HIT
-                if hit_sl:
-                    signal.trade_result = "LOSS"
-                elif hit_tp:
-                    signal.trade_result = "WIN"
-                return SignalSummary(direction="EXIT", trade_signal=signal)
+                    if exit_reason == "CUTOFF":
+                        sig.metadata["exit_type"] = ExitType.MARKET_FORCE
+                        sig.metadata["exit_reason"] = "Session Cutoff"
+                    else:
+                        sig.metadata["exit_type"] = ExitType.SL_TP_HIT
+                        sig.metadata["exit_reason"] = "SL/TP Hit"
 
-            elif is_cutoff_time:
-                msg = "⏰ End Of Session"
-                self.log.info(msg)
-                exit_price = curr["close"]
-                # DETERMINE RESULT BASED ON PNL
-                pnl = exit_price - self.active_trade.price
-                if self.active_trade.direction == BIAS.SHORT:
-                    pnl = -pnl
-
-                res = "WIN" if pnl > 0 else "LOSS"
-                sig = self.create_signal(TradeAction.EXIT, curr.name, custom_price=exit_price, reason=msg)
-                sig.metadata["exit_type"] = ExitType.MARKET_FORCE
-                sig.trade_result = res
-                return SignalSummary(direction="EXIT", trade_signal=sig)
+                    self.log.info(f"🎯 TRADE EXIT ({exit_type}) {self.symbol} | Reason: {exit_reason}")
+                    return SignalSummary(direction="EXIT", trade_signal=sig)
 
             return SignalSummary(direction="IN_TRADE")
 

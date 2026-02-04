@@ -517,8 +517,8 @@ class SMCBotBase:
                     # Stop the old SL/TP from triggering while we market close
                     await self.ib_client.cancel_all_orders(order_ref=strategy.ext_tag)
 
-                    # --- THEN MARKET CLOSE ---
-                    await self.ib_client.close_positions_smartly(sig.symbol)
+                    # # --- THEN MARKET CLOSE ---
+                    # await self.ib_client.close_positions_smartly(sig.symbol)
             else:
                 # SUCCESS: We are flat.
                 # Small extra sleep to ensure 'openTrades' cache is updated by IBKR
@@ -591,7 +591,7 @@ class SMCBotBase:
             await self.sync_state(strategy, fresh_positions, fresh_orders)
             await self._check_and_update_pending_status(strategy)
 
-            analysis = await strategy.analyze(*args, **kwargs)
+            analysis = await strategy.analyze(*args, ib_client=self.ib_client, **kwargs)
             sig = analysis.trade_signal
             if not sig:
                 return

@@ -250,6 +250,36 @@ class StrategyBase(ABC):
 
         return {"sl": sl, "tp": tp, "size": size}
 
+    @staticmethod
+    async def check_broker_exit(ib_client, symbol, sl: float, tp: float):
+        """
+        Checks if the position is flat at the broker.
+        If flat, calculates whether it was a Win (TP) or Loss (SL) based on fill price.
+
+        Returns:
+            tuple: (exit_type, exit_price, exit_reason) or (None, None, None) if still in trade.
+        """
+        # 1. Ask IBKR: Do we still have a position?
+        is_flat, _ = ib_client.check_flatness(symbol)
+
+        if not is_flat:
+            return None, None, None  # Still in trade
+
+        # 2. Get the real fill price
+        exit_price = await ib_client.get_last_fill_price(symbol)
+
+        # 3. Determine if it was SL or TP based on price proximity
+        # (We compare the real exit price to our planned SL/TP)
+        dist_to_sl = abs(exit_price - sl)
+        dist_to_tp = abs(exit_price - tp)
+
+        # Heuristic: Whichever is closer is likely the reason we exited
+        if dist_to_sl < dist_to_tp:
+            return "LOSS", exit_price, "SL Hit (Broker)"
+        else:
+            return "WIN", exit_price, "TP Hit (Broker)"
+
+    # TODO: remove it
     async def manage_cache_event(self, cache_key: Tuple[str, str], event: str, current_time: datetime) -> bool:
         """Manage cache for a new event, return True if event is new."""
         if cache_key not in self.event_cache:

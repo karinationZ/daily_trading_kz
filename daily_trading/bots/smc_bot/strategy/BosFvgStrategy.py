@@ -264,7 +264,7 @@ class BosFvgStrategy(StrategyBase):
 
         return sig
 
-    async def analyze(self, df_ltf: pd.DataFrame, df_htf: pd.DataFrame) -> SignalSummary:
+    async def analyze(self, df_ltf: pd.DataFrame, df_htf: pd.DataFrame, ib_client) -> SignalSummary:
         curr = df_ltf.iloc[-1]
         ts_now = curr.name.tz_convert(self.timezone)
         ts_utc = curr.name.tz_convert("UTC")
@@ -317,38 +317,44 @@ class BosFvgStrategy(StrategyBase):
             exit_price = None
             exit_reason = "NORMAL"
 
-            # A. GAP CHECK (If not just filled)
-            if not just_filled and self.debug:
-                if is_long:
-                    if curr["open"] <= sl:
-                        exit_type, exit_price = "LOSS", curr["open"]
-                    elif curr["open"] >= tp:
-                        exit_type, exit_price = "WIN", curr["open"]
-                else:
-                    if curr["open"] >= sl:
-                        exit_type, exit_price = "LOSS", curr["open"]
-                    elif curr["open"] <= tp:
-                        exit_type, exit_price = "WIN", curr["open"]
+            # SIMULATION -- GAP CHECK (If not just filled)
+            if self.debug:
+                if not just_filled:
+                    if is_long:
+                        if curr["open"] <= sl:
+                            exit_type, exit_price = "LOSS", curr["open"]
+                        elif curr["open"] >= tp:
+                            exit_type, exit_price = "WIN", curr["open"]
+                    else:
+                        if curr["open"] >= sl:
+                            exit_type, exit_price = "LOSS", curr["open"]
+                        elif curr["open"] <= tp:
+                            exit_type, exit_price = "WIN", curr["open"]
 
-            # B. STANDARD CHECK (Trust Wicks)
-            if not exit_type:
-                if is_long:
-                    hit_sl = curr["low"] <= sl
-                    hit_tp = curr["high"] >= tp
-                else:
-                    hit_sl = curr["high"] >= sl
-                    hit_tp = curr["low"] <= tp
+                # B. STANDARD CHECK (Trust Wicks)
+                if not exit_type:
+                    if is_long:
+                        hit_sl = curr["low"] <= sl
+                        hit_tp = curr["high"] >= tp
+                    else:
+                        hit_sl = curr["high"] >= sl
+                        hit_tp = curr["low"] <= tp
 
-                # Pessimistic conflict resolution
-                if hit_sl and hit_tp:
-                    hit_tp = False
+                    # Pessimistic conflict resolution
+                    if hit_sl and hit_tp:
+                        hit_tp = False
 
-                if hit_sl:
-                    exit_type = "LOSS"
-                    exit_price = sl
-                elif hit_tp:
-                    exit_type = "WIN"
-                    exit_price = tp
+                    if hit_sl:
+                        exit_type = "LOSS"
+                        exit_price = sl
+                    elif hit_tp:
+                        exit_type = "WIN"
+                        exit_price = tp
+            else:
+                # -------------------------------------------------------------
+                # REALITY CHECK (Live Trading Only)
+                # -------------------------------------------------------------
+                exit_type, exit_price, exit_reason = await self.check_broker_exit(ib_client, self.symbol, sl, tp)
 
             # C. TIME CUTOFF
             is_cutoff = ts_now >= cutoff_ts

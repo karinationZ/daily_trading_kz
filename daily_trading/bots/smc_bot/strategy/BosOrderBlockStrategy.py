@@ -267,7 +267,7 @@ class BosOrderBlockStrategy(StrategyBase):
 
         return sig
 
-    async def analyze(self, df_ltf: pd.DataFrame, df_htf: pd.DataFrame) -> SignalSummary:
+    async def analyze(self, df_ltf: pd.DataFrame, df_htf: pd.DataFrame, ib_client) -> SignalSummary:
         curr = df_ltf.iloc[-1]
         ts_now = curr.name.tz_convert(self.timezone)
         ts_utc = curr.name.tz_convert("UTC")
@@ -322,39 +322,45 @@ class BosOrderBlockStrategy(StrategyBase):
             exit_price = None
             exit_reason = "NORMAL"  # Metadata tag
 
-            # A. GAP CHECK (If not just filled)
-            if not just_filled and self.debug:
-                if is_long:
-                    if curr["open"] <= sl:
-                        exit_type, exit_price = "LOSS", curr["open"]
-                    elif curr["open"] >= tp:
-                        exit_type, exit_price = "WIN", curr["open"]
-                else:
-                    if curr["open"] >= sl:
-                        exit_type, exit_price = "LOSS", curr["open"]
-                    elif curr["open"] <= tp:
-                        exit_type, exit_price = "WIN", curr["open"]
+            # SIMULATION -- GAP CHECK (If not just filled)
+            if self.debug:
+                if not just_filled:
+                    if is_long:
+                        if curr["open"] <= sl:
+                            exit_type, exit_price = "LOSS", curr["open"]
+                        elif curr["open"] >= tp:
+                            exit_type, exit_price = "WIN", curr["open"]
+                    else:
+                        if curr["open"] >= sl:
+                            exit_type, exit_price = "LOSS", curr["open"]
+                        elif curr["open"] <= tp:
+                            exit_type, exit_price = "WIN", curr["open"]
 
-            # B. STANDARD CHECK (Trusting Wicks)
-            if not exit_type:
-                if is_long:
-                    hit_sl = curr["low"] <= sl
-                    hit_tp = curr["high"] >= tp
-                else:
-                    hit_sl = curr["high"] >= sl
-                    hit_tp = curr["low"] <= tp
+                # B. STANDARD CHECK (Trusting Wicks)
+                if not exit_type:
+                    if is_long:
+                        hit_sl = curr["low"] <= sl
+                        hit_tp = curr["high"] >= tp
+                    else:
+                        hit_sl = curr["high"] >= sl
+                        hit_tp = curr["low"] <= tp
 
-                if hit_sl and hit_tp:
-                    hit_tp = False  # Pessimistic
+                    if hit_sl and hit_tp:
+                        hit_tp = False  # Pessimistic
 
-                if hit_sl:
-                    exit_type = "LOSS"
-                    exit_price = sl
-                elif hit_tp:
-                    exit_type = "WIN"
-                    exit_price = tp
+                    if hit_sl:
+                        exit_type = "LOSS"
+                        exit_price = sl
+                    elif hit_tp:
+                        exit_type = "WIN"
+                        exit_price = tp
+            else:
+                # -------------------------------------------------------------
+                # REALITY CHECK (Live Trading Only)
+                # -------------------------------------------------------------
+                exit_type, exit_price, exit_reason = await self.check_broker_exit(ib_client, self.symbol, sl, tp)
 
-            # C. TIME CUTOFF (Calculated as WIN/LOSS)
+            # TIME CUTOFF (Calculated as WIN/LOSS)
             is_cutoff = ts_now >= cutoff_ts
             if not exit_type and is_cutoff:
                 exit_price = curr["close"]
@@ -371,11 +377,6 @@ class BosOrderBlockStrategy(StrategyBase):
 
             # --- EXECUTION ---
             if exit_type:
-                # TODO: Mark zone as processed if we don't want to re-enter
-                # zone_id = self.active_trade.metadata.get("zone_id")
-                # if zone_id:
-                #     self.processed_zone_ids.add(zone_id)
-
                 sig = self.create_signal(TradeAction.EXIT, ts_utc, custom_price=exit_price, reason=exit_reason)
                 sig.trade_result = exit_type  # 'WIN' or 'LOSS'
                 sig.metadata["exit_reason"] = exit_reason

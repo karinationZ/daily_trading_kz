@@ -332,21 +332,32 @@ async def test_bos_detector():
     pass
     # bot = SMCBotBase(symbols=[symbol], main_tf="1h", market_type="futures")
     # ohlc = await bot.fetch_ibkr_ohlc_data(symbol, "1h", num_candles=200)
+    #
+    # pathlib = "/project/daily_trading/bots/smc_bot/tests/ohlc_data/mbt_1h.csv"
+    # ohlc = load_data(
+    #     pathlib,
+    #     start_ts="2025-10-07 00:00:00+00:00",
+    #     end_ts="2025-10-09 15:30:00+00:00"
+    # )
+    client = IBKRClient(host=HOST, port=PORT, client_id=CLIENT_ID)
 
-    pathlib = "/project/daily_trading/bots/smc_bot/tests/ohlc_data/mbt_1h.csv"
-    ohlc = load_data(
-        pathlib,
-        start_ts="2025-10-07 00:00:00+00:00",
-        end_ts="2025-10-09 15:30:00+00:00"
-    )
+    # 1. CONNECT
+    await client.connect()
+    await asyncio.sleep(2)
+    ohlc = await client.get_klines("MBT", "5m")
 
-    detector = BosChochDetector(main_tf, show_bull=True, show_bear=True, left_bars=8, right_bars=3)
-    detector.plot_tail = 300
-    detector.get_current_trend(ohlc)
-    results = detector.calculate_bos_choch(ohlc, plot=True)
-    logger.info(results["signals"])
-    fig = results["fig"]
+    fvg_detector = FvgDetector(main_tf=main_tf, pivot_period=5, fvg_threshold=0.5)
+    fvg_results = fvg_detector.calculate_fvg(ohlc, plot=True)
+    fig = fvg_results["fig"]
     fig.show()
+
+    # detector = BosChochDetector(main_tf, show_bull=True, show_bear=True, left_bars=8, right_bars=3)
+    # detector.plot_tail = 300
+    # detector.get_current_trend(ohlc)
+    # results = detector.calculate_bos_choch(ohlc, plot=True)
+    # logger.info(results["signals"])
+    # fig = results["fig"]
+    # fig.show()
 
 
 def test_csv_merge():

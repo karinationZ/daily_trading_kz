@@ -1,5 +1,5 @@
 from datetime import timedelta
-from typing import Dict, Optional, Set
+from typing import Optional
 from zoneinfo import ZoneInfo
 
 import pandas as pd
@@ -92,7 +92,6 @@ class BosFvgStrategy(StrategyBase):
         # --- STATE ---
         self.active_trade: Optional[TradeSignal] = None
         self.trade_status: TradeStatus = TradeStatus.NONE
-        self.processed_zone_ids: Set[str] = set()
         self.restore_metadata_defaults = {"bos_ts": pd.Timestamp(0, tz="UTC")}
 
     def reset_session_state(self):
@@ -100,59 +99,12 @@ class BosFvgStrategy(StrategyBase):
         self.log.info("Resetting Session State.")
         self.active_trade = None
         self.trade_status = TradeStatus.NONE
-        self.processed_zone_ids.clear()
-
-    # -------------------------------------------------------------------------
-    # HELPERS: Safety & Math
-    # -------------------------------------------------------------------------
-
-    @staticmethod
-    def is_fvg_invalidated(df_ltf: pd.DataFrame, fvg: Dict) -> bool:
-        """
-        Restart Safety: Checks if the FVG has been VIOLATED (Candle Closed beyond it)
-        in the history between FVG creation and Now.
-        """
-        fvg_time = fvg["time"]
-
-        # Normalize Timezone
-        try:
-            if df_ltf.index.tz is None:
-                fvg_time = fvg_time.replace(tzinfo=None)
-            elif fvg_time.tzinfo is None:
-                fvg_time = fvg_time.tz_localize(df_ltf.index.tz)
-            else:
-                fvg_time = fvg_time.tz_convert(df_ltf.index.tz)
-        except Exception as e:
-            logger.info(f"Timezone normalization failed for FVG time: {fvg_time} | Error: {e}")
-            fvg_time = fvg_time.replace(tzinfo=None)
-
-        # Get history strictly AFTER FVG creation (excluding current forming candle)
-        history = df_ltf[df_ltf.index > fvg_time].iloc[:-1]
-
-        if history.empty:
-            return False
-
-        # Check Invalidation (Close beyond the gap)
-        if fvg["bias"] == 1:  # Bullish FVG
-            # Invalidated if a candle CLOSES below the bottom
-            if history["close"].min() < fvg["bottom"]:
-                return True
-        else:  # Bearish FVG
-            # Invalidated if a candle CLOSES above the top
-            if history["close"].max() > fvg["top"]:
-                return True
-
-        return False
-
-    # -------------------------------------------------------------------------
-    # LOGIC: Find Setup
-    # -------------------------------------------------------------------------
 
     def find_setup(self, df_ltf: pd.DataFrame, htf_bias: BIAS, bos_time, ts_now) -> Optional[TradeSignal]:
         """
-        Scans LTF for fresh FVGs that align with HTF Bias.
+        Scans LTF for the MOST RECENT fresh FVG that aligns with HTF Bias.
         """
-        # 1. Get LTF FVGs
+        # Get LTF FVGs (Already sorted by Time: Newest -> Oldest)
         result = self.ltf_fvg_detector.calculate_fvg(df_ltf, plot=False)
         fvg_signals = result.get("signals", [])
         atr = self.ltf_fvg_detector.get_current_atr(df_ltf)
@@ -171,51 +123,46 @@ class BosFvgStrategy(StrategyBase):
                 continue
 
             # B. Filter by Mitigation (Must be Fresh)
+            # We rely on the detector's geometry check.
             if fvg.get("mitigated", True):
                 continue
 
-            # C. Filter by Cache (Already processed)
             fvg_id = f"{fvg['time']}_{self.symbol}"
-            if fvg_id in self.processed_zone_ids:
-                continue
 
-            # D. Filter by Historical Invalidation (Restart Safety)
-            if self.is_fvg_invalidated(df_ltf, fvg):
-                self.processed_zone_ids.add(fvg_id)
-                continue
-
-            # E. Calculate Entry Params
+            # D. Calculate Entry Params
             top = fvg["top"]
             bottom = fvg["bottom"]
             height = top - bottom
 
             if htf_bias == BIAS.LONG:
-                # Buy Limit at X% depth
+                # Buy Limit Entry Calculation
                 entry = top - (height * self.entry_depth)
                 sl = bottom - (atr * self.sl_buffer_mult)
 
-                # Logic: Entry must be below current price for a Limit Buy
+                # CRITICAL: For a Limit Buy, Entry must be <= Current Price
+                # If Entry > Current Price, we cannot place a Limit order there.
+                # We skip this FVG and look for the next recent one.
                 if entry > current_price:
-                    continue  # Price is below entry, we missed it or need market order (skipping for limit strategy)
+                    continue
             else:
-                # Sell Limit at X% depth
+                # Sell Limit Entry Calculation
                 entry = bottom + (height * self.entry_depth)
                 sl = top + (atr * self.sl_buffer_mult)
 
-                # Logic: Entry must be above current price for a Limit Sell
+                # CRITICAL: For a Limit Sell, Entry must be >= Current Price
                 if entry < current_price:
                     continue
 
-            # F. Calculate Position Size
+            # E. Calculate Position Size
             pos_math = self.calculate_trade_position(
                 symbol=self.symbol, tp_multiple=self.tp_multiple, risk=self.risk, entry_price=entry, sl=sl, direction=htf_bias
             )
 
-            # Gatekeeper
+            # Gatekeeper (Risk Management)
             if pos_math["size"] <= 0 or pos_math["sl"] <= 0:
                 continue
 
-            # G. Create Signal
+            # F. Return the FIRST valid match (The Most Recent One)
             return TradeSignal(
                 action=TradeAction.ENTER,
                 symbol=self.symbol,
@@ -407,8 +354,6 @@ class BosFvgStrategy(StrategyBase):
                 if new_trade:
                     self.active_trade = new_trade
                     self.trade_status = TradeStatus.PENDING
-                    # Mark FVG as processed immediately to avoid recalc
-                    self.processed_zone_ids.add(new_trade.metadata["fvg_id"])
 
                     self.log.info(f"🚀 LIMIT ORDER PLACED: {new_trade.direction.name} @ {new_trade.price:.2f}")
                     return SignalSummary(direction=new_trade.direction.name, trade_signal=new_trade)

@@ -256,7 +256,7 @@ class StrategyBase(ABC):
         Checks if the price has gone BEYOND the SL or TP levels while the position is still open.
         This implies the broker failed to trigger the stop/limit order (e.g., missed fill, gap).
         """
-        current_price = curr["open"]
+        current_price = curr["close"]
         is_long = direction == BIAS.LONG
 
         if is_long:

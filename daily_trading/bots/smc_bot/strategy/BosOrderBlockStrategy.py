@@ -84,12 +84,12 @@ class BosOrderBlockStrategy(StrategyBase):
         )
 
         self.sd_detector = SupplyDemandZonesDetector(
-            fvg_based_only=fvg_based_only,
+            fvg_based_only=True,
             swing_length=swing_length,
             internal_length=internal_length,
-            # zone_precision_factor=zone_precision_factor,
-            # fvg_offset=fvg_offset,
-            # fvg_threshold=fvg_threshold,
+            zone_precision_factor=2.0,
+            fvg_offset=3,
+            fvg_threshold=0.15,
         )
 
         # State Variables
@@ -281,12 +281,12 @@ class BosOrderBlockStrategy(StrategyBase):
         cutoff_ts = session_end - timedelta(minutes=self.end_buffer_minutes)
         entry_cutoff = session_end - timedelta(minutes=30)
 
-        swing_zones, internal_zones = self.sd_detector.calculate(df_htf)
+        swing_zones, internal_zones = self.sd_detector.calculate(df_ltf)
         self.zones = swing_zones + internal_zones
 
         if ts_now.hour != self.last_processed_hour:
             self.last_processed_hour = ts_now.hour
-            self.log.info(f"1H Zones: {self.zones}")
+            self.log.info(f"5M Zones: {self.zones}")
 
         just_filled = False
 
@@ -325,19 +325,6 @@ class BosOrderBlockStrategy(StrategyBase):
             # SIMULATION -- GAP CHECK (If not just filled)
             if self.debug:
                 if not just_filled:
-                    if is_long:
-                        if curr["open"] <= sl:
-                            exit_type, exit_price = "LOSS", curr["open"]
-                        elif curr["open"] >= tp:
-                            exit_type, exit_price = "WIN", curr["open"]
-                    else:
-                        if curr["open"] >= sl:
-                            exit_type, exit_price = "LOSS", curr["open"]
-                        elif curr["open"] <= tp:
-                            exit_type, exit_price = "WIN", curr["open"]
-
-                # B. STANDARD CHECK (Trusting Wicks)
-                if not exit_type:
                     if is_long:
                         hit_sl = curr["low"] <= sl
                         hit_tp = curr["high"] >= tp

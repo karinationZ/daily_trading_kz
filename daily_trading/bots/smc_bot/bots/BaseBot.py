@@ -593,7 +593,7 @@ class SMCBotBase:
                 if not symbol_orders:
                     # 🚫 NO Position AND NO Open Orders -> The setup failed/cancelled/rejected.
                     msg = f"🚫 Order Gone (Fast Fill+Exit or Rejected) | {strategy.log_tag} - Resetting."
-                    strategy.telegram_session_bot(msg)
+                    await strategy.telegram_session_bot.send_message(msg)
                     # Reset State to Allow New Trades
                     strategy.active_trade = None
                     strategy.trade_status = TradeStatus.NONE

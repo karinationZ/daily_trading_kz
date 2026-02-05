@@ -251,6 +251,31 @@ class StrategyBase(ABC):
         return {"sl": sl, "tp": tp, "size": size}
 
     @staticmethod
+    def check_sl_tp_failure(curr, sl, tp, direction: BIAS):
+        """
+        Checks if the price has gone BEYOND the SL or TP levels while the position is still open.
+        This implies the broker failed to trigger the stop/limit order (e.g., missed fill, gap).
+        """
+        current_price = curr["open"]
+        is_long = direction == BIAS.LONG
+
+        if is_long:
+            # Long: Price is currently BELOW SL or ABOVE TP
+            if current_price <= sl:
+                return "LOSS", current_price, "BROKER_FAILED_SL"
+            elif current_price >= tp:
+                return "WIN", current_price, "BROKER_FAILED_TP"
+        else:
+            # Short: Price is currently ABOVE SL or BELOW TP
+            if current_price >= sl:
+                return "LOSS", current_price, "BROKER_FAILED_SL"
+            elif current_price <= tp:
+                return "WIN", current_price, "BROKER_FAILED_TP"
+
+        # No failure detected (Price is still inside the bracket)
+        return None, None, None
+
+    @staticmethod
     async def check_broker_exit(ib_client, symbol, sl: float, tp: float):
         """
         Checks if the position is flat at the broker.
@@ -279,9 +304,9 @@ class StrategyBase(ABC):
         else:
             return "WIN", exit_price, "TP Hit (Broker)"
 
-    #_________________________
+    # _________________________
     #
-    #_________________________
+    # _________________________
     # TODO: remove it
     async def manage_cache_event(self, cache_key: Tuple[str, str], event: str, current_time: datetime) -> bool:
         """Manage cache for a new event, return True if event is new."""

@@ -677,6 +677,17 @@ class SMCBotBase:
         try:
             # --- ENTER ---
             if sig.action == TradeAction.ENTER:
+                # ---------------------------------------------------------
+                # SAFEGUARD: Check for existing position before entering
+                # ---------------------------------------------------------
+                is_flat, current_pos = self.ib_client.check_flatness(symbol)
+
+                if not is_flat:
+                    msg = f"⚠️ SKIP ENTRY: Position already open for {symbol} (Size: {current_pos}). Ignoring new signal."
+                    strategy.log.warning(msg)
+                    await strategy.telegram_session_bot.send_message(msg)
+                    return False
+
                 strategy.log.info(f"🚀 ENTER {sig.direction.name} @ {sig.price}")
                 direction = "LONG" if sig.direction == BIAS.LONG else "SHORT"
                 # Place Parent + Bracket (OCA)
@@ -719,11 +730,9 @@ class SMCBotBase:
                     return True
 
                 if exit_type == ExitType.MARKET_FORCE:
-                    # CASE A: TIME CUTOFF
-                    # 1. Cancel everything (Limit/SL/TP) so they don't trigger while we market close
-                    strategy.log.warning("⏰ TIME CUTOFF - FORCING EXIT")
+                    reason = sig.metadata["exit_reason"]
+                    strategy.log.warning(f"{reason} - FORCING EXIT")
                     await self.ib_client.cancel_all_orders(order_ref=strategy.ext_tag)
-                    # 2. Dump position at Market
                     await self.ib_client.close_positions_smartly(symbol)
 
                 else:

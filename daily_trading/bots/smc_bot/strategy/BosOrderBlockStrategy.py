@@ -359,6 +359,11 @@ class BosOrderBlockStrategy(StrategyBase):
                 # REALITY CHECK (Live Trading Only)
                 # -------------------------------------------------------------
                 exit_type, exit_price, exit_reason = await self.check_broker_exit(ib_client, self.symbol, sl, tp)
+                if not exit_type:
+                    direction = self.active_trade.direction
+                    exit_type, exit_price, exit_reason = self.check_sl_tp_failure(curr, sl, tp, direction)
+                    if exit_type:
+                        self.log.error(f"🚨 BROKER FAILURE DETECTED: Price ({exit_price}) passed limits. Forcing Exit.")
 
             # TIME CUTOFF (Calculated as WIN/LOSS)
             is_cutoff = ts_now >= cutoff_ts
@@ -385,9 +390,15 @@ class BosOrderBlockStrategy(StrategyBase):
                 if exit_reason == "CUTOFF":
                     # Time exit: Bot MUST cancel brackets and dump position at market
                     sig.metadata["exit_type"] = ExitType.MARKET_FORCE
+                    sig.metadata["exit_reason"] = "Session Cutoff"
+
+                elif "BROKER_FAILED" in exit_reason:
+                    sig.metadata["exit_type"] = ExitType.MARKET_FORCE
+                    sig.metadata["exit_reason"] = "Broker Failed to Execute SL/TP"
                 else:
                     # SL/TP hit: Bot assumes IBKR Bracket triggered; just monitors
                     sig.metadata["exit_type"] = ExitType.SL_TP_HIT
+                    sig.metadata["exit_reason"] = "SL/TP Hit"
 
                 self.log.info(f"🎯 TRADE EXIT ({exit_type}) {self.symbol} | Reason: {exit_reason}")
                 return SignalSummary(direction="EXIT", trade_signal=sig)

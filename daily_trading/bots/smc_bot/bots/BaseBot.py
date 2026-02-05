@@ -223,7 +223,7 @@ class SMCBotBase:
         # logger.info(f"🔒 {symbol} locked by {current_lock.strategy_tag}. Skipping.")
         return False
 
-    async def sync_state(self, strategy, current_positions: list, open_orders: list):
+    async def sync_state(self, strategy, current_positions: list, open_trades: list):
         """
         Restores self.active_trade and self.trade_status from IBKR data.
         """
@@ -232,7 +232,7 @@ class SMCBotBase:
             return
 
         # 1. Filter orders strictly belonging to THIS strategy
-        my_orders = [o for o in open_orders if o.order.orderRef == strategy.ext_tag]
+        my_orders = [o for o in open_trades if o.order.orderRef == strategy.ext_tag]
 
         # 2. Check for ACTIVE POSITIONS
         my_pos = next(
@@ -300,7 +300,7 @@ class SMCBotBase:
             return
 
         # 3. Check for PENDING ORDERS (Limit Entry Waiting)
-        my_orders = [o for o in open_orders if o.order.orderRef == strategy.ext_tag]
+        my_orders = [o for o in open_trades if o.order.orderRef == strategy.ext_tag]
 
         # Find the Parent Entry Order (Limit order with no parentId usually)
         # Note: In a bracket, the parent has parentId=0 (or empty)
@@ -567,17 +567,36 @@ class SMCBotBase:
         return True
 
     async def _check_and_update_pending_status(self, strategy):
-        """Checks if a PENDING trade has actually been filled at the broker."""
+        """Checks if a PENDING trade has actually been filled, cancelled, or rejected."""
         if strategy.trade_status == TradeStatus.PENDING:
+            # 1. Check if we have a live position
             is_flat, pos_size = self.ib_client.check_flatness(strategy.symbol)
 
             if not is_flat:
                 # ✅ WE ARE FILLED!
                 strategy.trade_status = TradeStatus.FILLED
                 fill_price = await self.ib_client.get_last_fill_price(strategy.symbol)
+
                 msg = f"⚡ ORDER FILLED | {strategy.log_tag} @ {fill_price:.2f}"
                 strategy.log.info(msg)
                 await strategy.telegram_session_bot.send_message(msg)
+
+            else:
+                # ⚠️ We are FLAT, but status is PENDING.
+                # Get ALL open trades (Trade objects)
+                all_open_trades = self.ib_client.get_open_orders()
+
+                # Filter for this specific symbol
+                # We access 't.contract.symbol' because 't' is a Trade object
+                symbol_orders = [t for t in all_open_trades if t.contract.symbol == strategy.symbol]
+
+                if not symbol_orders:
+                    # 🚫 NO Position AND NO Open Orders -> The setup failed/cancelled/rejected.
+                    msg = f"🚫 Order Gone (Fast Fill+Exit or Rejected) | {strategy.log_tag} - Resetting."
+                    strategy.telegram_session_bot(msg)
+                    # Reset State to Allow New Trades
+                    strategy.active_trade = None
+                    strategy.trade_status = TradeStatus.NONE
 
     async def run_strategy_cycle(self, strategy, *args, **kwargs):
         """

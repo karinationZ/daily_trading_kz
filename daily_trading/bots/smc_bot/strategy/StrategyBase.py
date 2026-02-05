@@ -279,6 +279,9 @@ class StrategyBase(ABC):
         else:
             return "WIN", exit_price, "TP Hit (Broker)"
 
+    #_________________________
+    #
+    #_________________________
     # TODO: remove it
     async def manage_cache_event(self, cache_key: Tuple[str, str], event: str, current_time: datetime) -> bool:
         """Manage cache for a new event, return True if event is new."""

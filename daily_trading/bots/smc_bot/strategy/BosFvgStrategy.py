@@ -1,5 +1,5 @@
 from datetime import timedelta
-from typing import Optional
+from typing import Optional, Set
 from zoneinfo import ZoneInfo
 
 import pandas as pd
@@ -92,6 +92,7 @@ class BosFvgStrategy(StrategyBase):
         # --- STATE ---
         self.active_trade: Optional[TradeSignal] = None
         self.trade_status: TradeStatus = TradeStatus.NONE
+        self.processed_zone_ids: Set[str] = set()
         self.restore_metadata_defaults = {"bos_ts": pd.Timestamp(0, tz="UTC")}
 
     def reset_session_state(self):
@@ -99,6 +100,15 @@ class BosFvgStrategy(StrategyBase):
         self.log.info("Resetting Session State.")
         self.active_trade = None
         self.trade_status = TradeStatus.NONE
+        self.processed_zone_ids.clear()
+
+    # -------------------------------------------------------------------------
+    # HELPERS: Safety & Math
+    # -------------------------------------------------------------------------
+
+    # -------------------------------------------------------------------------
+    # LOGIC: Find Setup
+    # -------------------------------------------------------------------------
 
     def find_setup(self, df_ltf: pd.DataFrame, htf_bias: BIAS, bos_time, ts_now) -> Optional[TradeSignal]:
         """
@@ -128,6 +138,8 @@ class BosFvgStrategy(StrategyBase):
                 continue
 
             fvg_id = f"{fvg['time']}_{self.symbol}"
+            if fvg_id in self.processed_zone_ids:
+                continue
 
             # D. Calculate Entry Params
             top = fvg["top"]
@@ -135,9 +147,20 @@ class BosFvgStrategy(StrategyBase):
             height = top - bottom
 
             if htf_bias == BIAS.LONG:
-                # Buy Limit Entry Calculation
                 entry = top - (height * self.entry_depth)
-                sl = bottom - (atr * self.sl_buffer_mult)
+
+                # SL calculated from entry (like TradingView tool)
+                sl_distance_from_atr = atr * self.sl_buffer_mult
+
+                # Minimum SL distance from entry as percentage of entry price
+                min_sl_distance_pct = 0.001  # 0.1% of entry price (adjustable)
+                min_sl_distance = entry * min_sl_distance_pct
+
+                # Use the LARGER distance
+                sl_distance = max(sl_distance_from_atr, min_sl_distance)
+
+                # SL is entry minus distance
+                sl = entry - sl_distance
 
                 # CRITICAL: For a Limit Buy, Entry must be <= Current Price
                 # If Entry > Current Price, we cannot place a Limit order there.
@@ -145,9 +168,20 @@ class BosFvgStrategy(StrategyBase):
                 if entry > current_price:
                     continue
             else:
-                # Sell Limit Entry Calculation
                 entry = bottom + (height * self.entry_depth)
-                sl = top + (atr * self.sl_buffer_mult)
+
+                # SL calculated from entry (like TradingView tool)
+                sl_distance_from_atr = atr * self.sl_buffer_mult
+
+                # Minimum SL distance from entry as percentage of entry price
+                min_sl_distance_pct = 0.001  # 0.1% of entry price (adjustable)
+                min_sl_distance = entry * min_sl_distance_pct
+
+                # Use the LARGER distance
+                sl_distance = max(sl_distance_from_atr, min_sl_distance)
+
+                # SL is entry plus distance
+                sl = entry + sl_distance
 
                 # CRITICAL: For a Limit Sell, Entry must be >= Current Price
                 if entry < current_price:
@@ -251,6 +285,7 @@ class BosFvgStrategy(StrategyBase):
         # 2. EXIT CHECK (Stop Loss, Take Profit, Zombies, Cutoff)
         # ==================================================================
         if self.trade_status == TradeStatus.FILLED:
+            self.processed_zone_ids.add(self.active_trade.metadata.get("fvg_id"))
             # --- ZOMBIE KILLER (Safety) ---
             if self.active_trade.sl <= 0 or self.active_trade.price <= 0:
                 self.log.error(f"🧟 ZOMBIE TRADE DETECTED ({self.symbol}). Cleaning up.")

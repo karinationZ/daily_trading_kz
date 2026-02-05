@@ -109,9 +109,9 @@ class Backtester:
 
                     strategy_args["df_4h"] = window_4h
                 # -----------------------------
-                analysis = await self.strategy.analyze(**strategy_args)
+                analysis = await self.strategy.analyze(**strategy_args, ib_client=None)
             else:
-                analysis = await self.strategy.analyze(window_main_tf)
+                analysis = await self.strategy.analyze(window_main_tf, ib_client=None)
 
             # 3. RECORD KEEPING (The Accountant)
             if analysis.trade_signal:

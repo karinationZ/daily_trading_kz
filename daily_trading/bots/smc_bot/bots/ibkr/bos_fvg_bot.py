@@ -30,7 +30,6 @@ CONFIG = [
      'sl_buffer_mult': 1.0},
     {'name': 'MBT_LONDON_rr0.85_mit0.75_sl1.0', 'symbol': 'MBT', 'tz_name': 'LONDON', 'rr': 0.85, 'mit': 0.75,
      'sl_buffer_mult': 1.0},
-
 ]
 
 

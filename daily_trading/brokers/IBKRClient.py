@@ -269,13 +269,13 @@ class IBKRClient:
     ):
         contract = await self.get_futures_contract(symbol)
         price = self.round_to_tick(price, symbol)
-        order = LimitOrder(side.upper(), quantity, price, orderRef=order_ref, outsideRth=False)
+        order = LimitOrder(side.upper(), quantity, price, orderRef=order_ref, outsideRth=True)
         trade = self.ib.placeOrder(contract, order)
         return trade
 
     async def place_market_order(self, symbol: str, quantity: int, side: str, order_ref: str = "TradingBot"):
         contract = await self.get_futures_contract(symbol)
-        order = MarketOrder(side.upper(), quantity, orderRef=order_ref, outsideRth=False)
+        order = MarketOrder(side.upper(), quantity, orderRef=order_ref, outsideRth=True)
         trade = self.ib.placeOrder(contract, order)
         return trade
 
@@ -314,7 +314,7 @@ class IBKRClient:
             for order in bracket:
                 order.orderRef = order_ref
                 order.tif = "GTC"
-                order.outsideRth = False
+                order.outsideRth = True
 
             # Place orders sequentially with delays
             parent_trade = self.ib.placeOrder(contract, bracket.parent)

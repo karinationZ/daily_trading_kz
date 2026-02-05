@@ -21,7 +21,7 @@ CONFIG = [
     # MGC NY - Win Rate: 64.3%
     {'name': 'MGC_NY_rr1.2_mit0.75_sl0.5', 'symbol': 'MGC', 'tz_name': 'NY', 'rr': 1.2, 'mit': 0.75, 'sl_buffer_mult': 0.5},
     # MGC ASIA - Win Rate: 76.6%
-    {'name': 'MGC_ASIA_rr0.85_mit0.25_sl0.1', 'symbol': 'MGC', 'tz_name': 'ASIA', 'rr': 0.85, 'mit': 0.25, 'sl_buffer_mult': 0.1},
+    # {'name': 'MGC_ASIA_rr0.85_mit0.25_sl0.1', 'symbol': 'MGC', 'tz_name': 'ASIA', 'rr': 0.85, 'mit': 0.25, 'sl_buffer_mult': 0.1},
     # MGC LONDON - Win Rate: 65.3%
     {'name': 'MGC_LONDON_rr1.2_mit0.75_sl0.5', 'symbol': 'MGC', 'tz_name': 'LONDON', 'rr': 1.2, 'mit': 0.75, 'sl_buffer_mult': 0.5},
     # MES NY - Win Rate:  66.2 %

@@ -30,7 +30,7 @@ class BosOrderBlockStrategy(StrategyBase):
     - Detects the last Break of Structure (BOS) on 1H TF to determine Trend.
 
     PHASE 2: ZONE IDENTIFICATION & ORDER PLACEMENT
-    - Identifies Supply/Demand zones on the 1H TF (or Main TF, configurable).
+    - Identifies Supply/Demand zones on the 5M TF (configurable).
     - Places a LIMIT ORDER inside the zone at `entry_depth` %.
     - Stop Loss placed just outside the zone + buffer.
     """
@@ -193,26 +193,17 @@ class BosOrderBlockStrategy(StrategyBase):
             # We want the zone closest to current price but NOT already passed
             dist = abs(current_close - entry)
 
-            # Ensure we aren't placing a limit order that would immediately fill at a bad price
-            # (e.g. Price is 100, we want to Buy Limit at 90. OK.)
-            # (e.g. Price is 100, we want to Buy Limit at 110. BAD -> Market Buy.)
-            valid_limit = False
             if trend_bias == BIAS.LONG:
-                if current_close > entry:
-                    valid_limit = True
+                if current_close < sl:
+                    continue # Price already below SL
             else:
-                if current_close < entry:
-                    valid_limit = True
-
-            if not valid_limit:
-                continue
+                if current_close > sl:
+                    continue # Price already above SL
 
             if dist < closest_dist:
-
                 pos = self.calculate_trade_position(
                     symbol=self.symbol, tp_multiple=self.tp_multiple, risk=self.risk, entry_price=entry, sl=sl, direction=trend_bias
                 )
-
                 # Gatekeeper
                 if pos["size"] <= 0:
                     continue
@@ -310,6 +301,7 @@ class BosOrderBlockStrategy(StrategyBase):
 
         # 2. EXIT CHECK
         if self.trade_status == TradeStatus.FILLED:
+            self.processed_zone_ids.add(self.active_trade.metadata.get("zone_id"))
             # Zombie Killer
             if self.active_trade.sl <= 0 or self.active_trade.price <= 0:
                 self.active_trade, self.trade_status = None, TradeStatus.NONE

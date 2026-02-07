@@ -87,7 +87,7 @@ class BosFvgStrategy(StrategyBase):
         # HTF: For Trend Bias
         self.htf_bos_detector = BosChochDetector(main_tf="1h")
         # LTF: For Entry Signals
-        self.ltf_fvg_detector = FvgDetector(main_tf=main_tf, pivot_period=5, fvg_threshold=0.5)
+        self.ltf_fvg_detector = FvgDetector(main_tf=main_tf, pivot_period=5, fvg_threshold=0.25)
 
         # --- STATE ---
         self.active_trade: Optional[TradeSignal] = None
@@ -161,12 +161,6 @@ class BosFvgStrategy(StrategyBase):
 
                 # SL is entry minus distance
                 sl = entry - sl_distance
-
-                # CRITICAL: For a Limit Buy, Entry must be <= Current Price
-                # If Entry > Current Price, we cannot place a Limit order there.
-                # We skip this FVG and look for the next recent one.
-                if entry > current_price:
-                    continue
             else:
                 entry = bottom + (height * self.entry_depth)
 
@@ -285,7 +279,7 @@ class BosFvgStrategy(StrategyBase):
         # 2. EXIT CHECK (Stop Loss, Take Profit, Zombies, Cutoff)
         # ==================================================================
         if self.trade_status == TradeStatus.FILLED:
-            self.processed_zone_ids.add(self.active_trade.metadata.get("fvg_id"))
+            # self.processed_zone_ids.add(self.active_trade.metadata.get("fvg_id"))
             # --- ZOMBIE KILLER (Safety) ---
             if self.active_trade.sl <= 0 or self.active_trade.price <= 0:
                 self.log.error(f"🧟 ZOMBIE TRADE DETECTED ({self.symbol}). Cleaning up.")

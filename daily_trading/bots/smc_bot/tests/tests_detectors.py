@@ -344,9 +344,10 @@ async def test_bos_detector():
     # 1. CONNECT
     await client.connect()
     await asyncio.sleep(2)
-    ohlc = await client.get_klines("MBT", "5m")
+    ohlc = await client.get_klines("MGC", "5m")
 
-    fvg_detector = FvgDetector(main_tf=main_tf, pivot_period=5, fvg_threshold=0.5)
+    fvg_detector = FvgDetector(main_tf=main_tf, pivot_period=5, fvg_threshold=0.3)
+    fvg_detector.plot_tail = 500
     fvg_results = fvg_detector.calculate_fvg(ohlc, plot=True)
     fig = fvg_results["fig"]
     fig.show()

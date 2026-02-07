@@ -84,12 +84,12 @@ class BosOrderBlockStrategy(StrategyBase):
         )
 
         self.sd_detector = SupplyDemandZonesDetector(
-            fvg_based_only=True,
+            fvg_based_only=False,
             swing_length=swing_length,
             internal_length=internal_length,
-            zone_precision_factor=2.0,
-            fvg_offset=3,
-            fvg_threshold=0.15,
+            # zone_precision_factor=1.8,
+            # fvg_offset=5,
+            # fvg_threshold=0.15,
         )
 
         # State Variables
@@ -195,10 +195,10 @@ class BosOrderBlockStrategy(StrategyBase):
 
             if trend_bias == BIAS.LONG:
                 if current_close < sl:
-                    continue # Price already below SL
+                    continue  # Price already below SL
             else:
                 if current_close > sl:
-                    continue # Price already above SL
+                    continue  # Price already above SL
 
             if dist < closest_dist:
                 pos = self.calculate_trade_position(
@@ -272,12 +272,12 @@ class BosOrderBlockStrategy(StrategyBase):
         cutoff_ts = session_end - timedelta(minutes=self.end_buffer_minutes)
         entry_cutoff = session_end - timedelta(minutes=30)
 
-        swing_zones, internal_zones = self.sd_detector.calculate(df_ltf)
+        swing_zones, internal_zones = self.sd_detector.calculate(df_htf)
         self.zones = swing_zones + internal_zones
 
         if ts_now.hour != self.last_processed_hour:
             self.last_processed_hour = ts_now.hour
-            self.log.info(f"5M Zones: {self.zones}")
+            self.log.info(f"1H Zones: {self.zones}")
 
         just_filled = False
 
@@ -301,7 +301,7 @@ class BosOrderBlockStrategy(StrategyBase):
 
         # 2. EXIT CHECK
         if self.trade_status == TradeStatus.FILLED:
-            self.processed_zone_ids.add(self.active_trade.metadata.get("zone_id"))
+            # self.processed_zone_ids.add(self.active_trade.metadata.get("zone_id"))
             # Zombie Killer
             if self.active_trade.sl <= 0 or self.active_trade.price <= 0:
                 self.active_trade, self.trade_status = None, TradeStatus.NONE

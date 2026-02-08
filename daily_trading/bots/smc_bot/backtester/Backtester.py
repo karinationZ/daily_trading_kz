@@ -1,5 +1,4 @@
 import uuid
-
 # Import constants
 from datetime import datetime, time, timedelta
 from typing import List, Optional
@@ -34,27 +33,31 @@ class Backtester:
         self.active_record: Optional[dict] = None  # Currently open/pending ledger entry
 
     async def run(
-        self,
-        main_tf: pd.DataFrame,
-        ohlc_1h: Optional[pd.DataFrame] = None,
-        ohlc_4h: Optional[pd.DataFrame] = None,  # <--- ADDED
-        lookback_main_tf: int = 200,
-        lookback_1h: int = 200,
-        lookback_4h: int = 200,
+            self,
+            df_ltf: pd.DataFrame,
+            df_ltf_2: Optional[pd.DataFrame] = None,
+            df_htf: Optional[pd.DataFrame] = None,
+            df_htf_2: Optional[pd.DataFrame] = None,
+            lookback_main_tf: int = 300,
+            lookback_1h: int = 200,
+            lookback_4h: int = 200,
     ):
 
         # 1. SETUP
-        mode = "MTF" if ohlc_1h is not None else "STF"
+        mode = "MTF" if df_htf is not None else "STF"
         logger.info(f"🏁 {mode} Backtest | {self.strategy.symbol}")
         self.strategy.debug = True
 
         # Standardize Data
-        main_tf = self._prepare_data(main_tf)
-        if ohlc_1h is not None:
-            ohlc_1h = self._prepare_data(ohlc_1h)
+        main_tf = self._prepare_data(df_ltf)
+        if df_ltf_2 is not None:
+            df_ltf_2 = self._prepare_data(df_ltf_2)
 
-        if ohlc_4h is not None:
-            ohlc_4h = self._prepare_data(ohlc_4h)
+        if df_htf is not None:
+            df_htf = self._prepare_data(df_htf)
+
+        if df_htf_2 is not None:
+            df_htf_2 = self._prepare_data(df_htf_2)
 
         self.strategy.reset_session_state()
         self.journal = []
@@ -87,27 +90,30 @@ class Backtester:
                 continue
 
             # B. Prepare Windows
-            window_main_tf = main_tf.iloc[i - lookback_main_tf : i + 1]
+            window_main_tf = main_tf.iloc[i - lookback_main_tf: i + 1]
 
             # C. Execute Strategy
             if mode == "MTF":
                 # Strict lookahead protection: 1H candle must be closed before 5m time
-                window_1h = ohlc_1h[ohlc_1h.index < ts_utc].tail(lookback_1h)
-                if len(window_1h) < 8:
+                window_htf = df_htf[df_htf.index < ts_utc].tail(lookback_1h)
+                if len(window_htf) < 8:
                     continue
                 # Prepare Arguments
-                strategy_args = {"df_ltf": window_main_tf, "df_htf": window_1h}
+                strategy_args = {"df_ltf": window_main_tf, "df_htf": window_htf}
+
+                if df_ltf_2 is not None:
+                    strategy_args["df_ltf_2"] = df_ltf_2.iloc[i - lookback_main_tf: i + 1]
 
                 # 4H Slicing Logic
-                if ohlc_4h is not None:
+                if df_htf_2 is not None:
                     # Strict lookahead protection: 4H candle must be closed before 5m time
-                    window_4h = ohlc_4h[ohlc_4h.index < ts_utc].tail(lookback_4h)
+                    window_4h = df_htf_2[df_htf_2.index < ts_utc].tail(lookback_4h)
 
                     # Ensure we have enough 4H data (at least 2 bars for trend calc)
                     if len(window_4h) < 2:
                         continue
 
-                    strategy_args["df_4h"] = window_4h
+                    strategy_args["df_htf_2"] = window_4h
                 # -----------------------------
                 analysis = await self.strategy.analyze(**strategy_args, ib_client=None)
             else:
@@ -238,10 +244,10 @@ class Backtester:
         return df[~df.index.duplicated(keep="first")]
 
     def plot_trade(
-        self,
-        trade_idx: int,
-        ohlc_5m: pd.DataFrame,
-        ohlc_1h: Optional[pd.DataFrame] = None,
+            self,
+            trade_idx: int,
+            ohlc_5m: pd.DataFrame,
+            ohlc_1h: Optional[pd.DataFrame] = None,
     ) -> Optional[go.Figure]:
         """
         Generic Plotter.
@@ -263,7 +269,7 @@ class Backtester:
             end_idx = signal_5m + 50
 
         end_idx = min(len(ohlc_5m) - 1, end_idx)
-        view_5m = ohlc_5m.iloc[start_5m : end_idx + 1]
+        view_5m = ohlc_5m.iloc[start_5m: end_idx + 1]
 
         # 2. Base Figure
         # Attempt to use Strategy's specific plotter first (for ORB lines etc)

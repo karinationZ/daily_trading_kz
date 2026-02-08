@@ -273,6 +273,9 @@ class BosChochDetector(DetectorsBase):
         """
         Determines current market bias based on the LAST confirmed BOS/CHoCH.
         """
+        if ohlc is None or len(ohlc) == 0:
+            return BIAS.NEUTRAL
+
         current_ts = ohlc.index[-1]
 
         if self.last_trend_timestamp == current_ts:

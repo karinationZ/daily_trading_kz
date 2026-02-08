@@ -168,7 +168,7 @@ class BosFvgStrategy(StrategyBase):
                 sl_distance_from_atr = atr * self.sl_buffer_mult
 
                 # Minimum SL distance from entry as percentage of entry price
-                min_sl_distance_pct = 0.001  # 0.1% of entry price (adjustable)
+                min_sl_distance_pct = 0.001  # 0.15% of entry price (adjustable)
                 min_sl_distance = entry * min_sl_distance_pct
 
                 # Use the LARGER distance

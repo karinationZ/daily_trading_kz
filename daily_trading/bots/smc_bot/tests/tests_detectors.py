@@ -363,7 +363,7 @@ async def test_bos_detector():
 
 def test_csv_merge():
     ohlc_dir = f"{PROJECT_DIR}/bots/smc_bot/tests/ohlc_data"
-    symbol = "mgc"
+    symbol = "mbt"
     files = []
     for i in range(1, 10):
         if os.path.exists(f"{ohlc_dir}/{symbol}_{i}.csv"):

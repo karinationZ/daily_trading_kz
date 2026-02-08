@@ -209,6 +209,8 @@ class MasterBot:
                         # Fetch 5m Data
                         for sym in self.symbols_5m:
                             df_5m = await self.ib_client.get_klines(sym, "5m")
+                            if not df_5m.empty:
+                                df_5m = df_5m.tail(300)
                             market_data[sym] = {"5m": df_5m}
                             if df_5m.empty:
                                 logger.warning(f"⚠️ ALARM {sym}: '5m' DataFrame is empty.")
@@ -217,7 +219,10 @@ class MasterBot:
                         for sym in self.symbols_1h:
                             if sym not in market_data:
                                 market_data[sym] = {}
-                            market_data[sym]["1h"] = await self.ib_client.get_klines(sym, "1h")
+                            df_1h = await self.ib_client.get_klines(sym, "1h")
+                            if not df_1h.empty:
+                                df_1h = df_1h.tail(200)
+                            market_data[sym]["1h"] = df_1h
 
                         # logger.info("📊 Starting ORB Bot Cycle...")
                         # await self.orb_bot.execute_cycle(market_data, self.orb_bot.strategies)

@@ -20,7 +20,7 @@ from daily_trading.bots.smc_bot.detectors.VolumeProfiler import VolumeProfiler
 from daily_trading.settings import GEMINI_API_KEY, logger
 from daily_trading.technicals.CryptoSentimentAnalyzer import CryptoSentimentAnalyzer
 
-GEMINI_FLASH = "gemini-2.0-flash"
+# GEMINI_FLASH = "gemini-2.0-flash"
 GEMINI_PRO = "gemini-3-pro-preview"  # "gemini-2.5-pro"
 TEST_PROMPT = """
         Tell me about SMC trading OB, very short 1 sentence (5 words). Your response must be in the format:{"message": "your message here",

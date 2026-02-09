@@ -1,4 +1,5 @@
 import uuid
+
 # Import constants
 from datetime import datetime, time, timedelta
 from typing import List, Optional
@@ -33,14 +34,14 @@ class Backtester:
         self.active_record: Optional[dict] = None  # Currently open/pending ledger entry
 
     async def run(
-            self,
-            df_ltf: pd.DataFrame,
-            df_ltf_2: Optional[pd.DataFrame] = None,
-            df_htf: Optional[pd.DataFrame] = None,
-            df_htf_2: Optional[pd.DataFrame] = None,
-            lookback_main_tf: int = 300,
-            lookback_1h: int = 200,
-            lookback_4h: int = 200,
+        self,
+        df_ltf: pd.DataFrame,
+        df_ltf_2: Optional[pd.DataFrame] = None,
+        df_htf: Optional[pd.DataFrame] = None,
+        df_htf_2: Optional[pd.DataFrame] = None,
+        lookback_main_tf: int = 300,
+        lookback_1h: int = 200,
+        lookback_4h: int = 200,
     ):
 
         # 1. SETUP
@@ -90,7 +91,7 @@ class Backtester:
                 continue
 
             # B. Prepare Windows
-            window_main_tf = main_tf.iloc[i - lookback_main_tf: i + 1]
+            window_main_tf = main_tf.iloc[i - lookback_main_tf : i + 1]
 
             # C. Execute Strategy
             if mode == "MTF":
@@ -102,7 +103,7 @@ class Backtester:
                 strategy_args = {"df_ltf": window_main_tf, "df_htf": window_htf}
 
                 if df_ltf_2 is not None:
-                    strategy_args["df_ltf_2"] = df_ltf_2.iloc[i - lookback_main_tf: i + 1]
+                    strategy_args["df_ltf_2"] = df_ltf_2.iloc[i - lookback_main_tf : i + 1]
 
                 # 4H Slicing Logic
                 if df_htf_2 is not None:
@@ -244,10 +245,10 @@ class Backtester:
         return df[~df.index.duplicated(keep="first")]
 
     def plot_trade(
-            self,
-            trade_idx: int,
-            ohlc_5m: pd.DataFrame,
-            ohlc_1h: Optional[pd.DataFrame] = None,
+        self,
+        trade_idx: int,
+        ohlc_5m: pd.DataFrame,
+        ohlc_1h: Optional[pd.DataFrame] = None,
     ) -> Optional[go.Figure]:
         """
         Generic Plotter.
@@ -269,7 +270,7 @@ class Backtester:
             end_idx = signal_5m + 50
 
         end_idx = min(len(ohlc_5m) - 1, end_idx)
-        view_5m = ohlc_5m.iloc[start_5m: end_idx + 1]
+        view_5m = ohlc_5m.iloc[start_5m : end_idx + 1]
 
         # 2. Base Figure
         # Attempt to use Strategy's specific plotter first (for ORB lines etc)

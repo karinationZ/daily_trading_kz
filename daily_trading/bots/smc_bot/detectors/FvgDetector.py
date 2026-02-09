@@ -739,10 +739,7 @@ class FvgDetector(DetectorsBase):
                     end_time = signal["mitigated_time"] if signal["mitigated"] else ohlc.index[-1]
                     if signal["mitigated"] and end_time not in ohlc.index:
                         end_time = ohlc.index[ohlc.index.get_indexer([end_time], method="nearest")[0]]
-                        logger.info(f"Adjusted end_time to nearest OHLC index: {end_time} for FVG at {signal['time']}")
-                    logger.info(
-                        f"Adding FVG rectangle: x0={signal['time']}, x1={end_time}, y0={signal['bottom']:.6f}, y1={signal['top']:.6f}, color={color}"
-                    )
+
                     fig.add_shape(
                         type="rect",
                         x0=signal["time"],

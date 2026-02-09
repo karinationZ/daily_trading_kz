@@ -8,6 +8,7 @@ from daily_trading.bots.smc_bot.bots.TelegramBot import TelegramBot
 from daily_trading.bots.smc_bot.detectors.BosChochDetector import BosChochDetector
 from daily_trading.bots.smc_bot.detectors.DetectorsBase import BIAS
 from daily_trading.bots.smc_bot.detectors.FvgDetector import FvgDetector
+from daily_trading.bots.smc_bot.detectors.SupplyDemandZonesDetector import SupplyDemandZonesDetector
 from daily_trading.bots.smc_bot.strategy.StrategyBase import (
     ExitType,
 )
@@ -20,6 +21,12 @@ from daily_trading.bots.smc_bot.strategy.StrategyBase import (
     TradeStatus,
 )
 from daily_trading.settings import logger
+from daily_trading.technicals.AITradeAssistants.AiAssistant import (
+    AITradeAssistant,
+    AssetData,
+    GEMINI_PRO,
+    PromptType,
+)
 
 
 class BosFvgStrategy(StrategyBase):
@@ -88,6 +95,11 @@ class BosFvgStrategy(StrategyBase):
         self.htf_bos_detector = BosChochDetector(main_tf="1h")
         # LTF: For Entry Signals
         self.ltf_fvg_detector = FvgDetector(main_tf=main_tf, pivot_period=5, fvg_threshold=0.25)
+        self.ob_detector = SupplyDemandZonesDetector(fvg_based_only=False, swing_length=50, internal_length=5)
+
+        self.ai_throttle_minutes = 30
+        self.last_ai_call_ts: Optional[pd.Timestamp] = None
+        self.use_ai = symbol in ["MBT", "MNQ"]
 
         # --- STATE ---
         self.active_trade: Optional[TradeSignal] = None
@@ -109,6 +121,66 @@ class BosFvgStrategy(StrategyBase):
     # -------------------------------------------------------------------------
     # LOGIC: Find Setup
     # -------------------------------------------------------------------------
+    async def find_ai_setup(self, df_ltf: pd.DataFrame, df_htf: pd.DataFrame):
+        active_swing, active_internal = self.ob_detector.calculate(df_ltf)
+        ob_signals = active_swing + active_internal
+        fvg_results = self.ltf_fvg_detector.calculate_fvg(df_ltf, plot=False)
+        fvg_signals = fvg_results.get("signals", [])
+        bos_choch_signals = self.htf_bos_detector.calculate_bos_choch(df_htf, plot=False).get("signals", [])
+
+        asset_data = AssetData(
+            symbol=self.symbol,
+            current_price=df_ltf.iloc[-1]["close"],
+            fvg_signals=fvg_signals,
+            ob_signals=ob_signals,
+            bos_choch_signals=bos_choch_signals,
+            ohlc_1h=df_htf.tail(200).to_dict(orient="records"),
+            ohlc_5m=df_ltf.tail(300).to_dict(orient="records"),
+        )
+
+        ai_agent = AITradeAssistant(symbol=self.symbol, model=GEMINI_PRO, debug=self.debug)
+        formatted_ai_message, raw_message = await ai_agent.analyze_asset_trade_data(
+            prompt_type=PromptType.BOS_FVG,
+            asset_data=asset_data,
+        )
+
+        if not raw_message:
+            return None, formatted_ai_message
+
+        decision = raw_message.get("decision", "")
+        params = raw_message.get("parameters", {})
+        metadata = raw_message.get("metadata", {})
+
+        if decision == "ENTER_LONG":
+            direction = BIAS.LONG
+        elif decision == "ENTER_SHORT":
+            direction = BIAS.SHORT
+        else:
+            return None, formatted_ai_message
+
+        entry = params.get("entry_price")
+        sl = params.get("stop_loss")
+        tp = params.get("take_profit")
+        size = params.get("size") or 1
+        if entry is None or sl is None or tp is None:
+            return None, formatted_ai_message
+
+        new_trade = TradeSignal(
+            action=TradeAction.ENTER,
+            symbol=self.symbol,
+            direction=direction,
+            price=entry,
+            sl=sl,
+            tp=tp,
+            size=size,
+            timestamp=pd.Timestamp.now(tz=self.timezone),
+            metadata={
+                "fvg_id": metadata.get("fvg_id"),
+                "bos_ts": metadata.get("bos_ts"),
+                "ai_reasoning": raw_message.get("reasoning"),
+            },
+        )
+        return new_trade, formatted_ai_message
 
     def find_setup(self, df_ltf: pd.DataFrame, htf_bias: BIAS, bos_time, ts_now) -> Optional[TradeSignal]:
         """
@@ -388,6 +460,19 @@ class BosFvgStrategy(StrategyBase):
         if self.trade_status == TradeStatus.NONE:
             if ts_now < entry_cutoff:
                 new_trade = self.find_setup(df_ltf, trend_bias, bos_time, ts_utc)
+                if new_trade and self.use_ai and not self.debug:
+                    new_trade = None
+                    should_call_ai = True
+                    if self.last_ai_call_ts is not None:
+                        elapsed_min = (ts_utc - self.last_ai_call_ts).total_seconds() / 60.0
+                        if elapsed_min < self.ai_throttle_minutes:
+                            should_call_ai = False
+
+                    if should_call_ai:
+                        self.log.info("Calling AI to find trade setup...")
+                        new_trade, ai_msg = await self.find_ai_setup(df_ltf, df_htf)
+                        self.last_ai_call_ts = ts_utc
+                        await self.telegram_session_bot.send_message(f"🤖 AI Analysis for {self.symbol}:\n\n{ai_msg}")
 
                 if new_trade:
                     self.active_trade = new_trade

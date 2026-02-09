@@ -780,7 +780,7 @@ class SMCBotBase:
                 if self.__class__.__name__ != "ORBBot" and df_1h is not None:
                     dfs.append(df_1h)
                 coro = self.run_strategy_cycle(strategy, *dfs)
-                tasks.append(asyncio.wait_for(coro, timeout=45))
+                tasks.append(asyncio.wait_for(coro, timeout=300))
             else:
                 strategy.log.info(f"💤 {strategy.tz_short} Session has not started yet!")
 

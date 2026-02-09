@@ -134,8 +134,8 @@ class BosFvgStrategy(StrategyBase):
             fvg_signals=fvg_signals,
             ob_signals=ob_signals,
             bos_choch_signals=bos_choch_signals,
-            ohlc_1h=df_htf.tail(200).to_dict(orient="records"),
-            ohlc_5m=df_ltf.tail(300).to_dict(orient="records"),
+            ohlc_1h=df_htf.tail(100).to_dict(orient="records"),
+            ohlc_5m=df_ltf.tail(50).to_dict(orient="records"),
         )
 
         ai_agent = AITradeAssistant(symbol=self.symbol, model=GEMINI_PRO, debug=self.debug)

@@ -151,29 +151,28 @@ Use this to determine the HTF Bias. If no signals, bias is NEUTRAL.
 # OUTPUT FORMAT
 You must respond with a JSON object ONLY. No conversational filler.
 Use the input symbol exactly (do not output "Unknown"). Use UTC timestamps for `bos_ts` and `fvg_id`.
-Always include `direction` and `size` inside `parameters`.
-
-```json
-{{
-  "decision": "ENTER_LONG" | "ENTER_SHORT" | "WAIT" | "CANCEL",
+Always include `direction` and `size` inside `parameters`. """ + """
+JSON Response Format (Strictly Follow):
+{
+    "decision": "ENTER_LONG" | "ENTER_SHORT" | "WAIT" | "CANCEL",
   "reasoning": "Concise explanation of HTF bias, selected FVG, and validation checks.",
-  "parameters": {{
-    "symbol": "Ticker",
+  "parameters": {
+        "symbol": "Ticker",
     "direction": "LONG" | "SHORT",
     "entry_price": 0.00,
     "stop_loss": 0.00,
     "take_profit": 0.00,
     "risk_reward_ratio": 1.2,
     "size": 1,
-    "fvg_timestamp": "YYYY-MM-DD HH:MM:SS"
-  }},
-  "metadata": {{
-    "htf_bias": "BULLISH" | "BEARISH",
+    "fvg_timestamp": "YYYY-MM-DD HH:MM:SS"},
+  "metadata": {
+        "htf_bias": "BULLISH" | "BEARISH",
     "confidence_score": 0-100,
     "bos_ts": "YYYY-MM-DD HH:MM:SS",
     "fvg_id": "YYYY-MM-DD HH:MM:SS"
-  }}
-}}
+  }
+}
+
 ## Trading Rules You Follow
 - Quality over quantity: only trade when HTF bias + fresh LTF FVG align.
 - Structure first: never trade against HTF BOS bias.

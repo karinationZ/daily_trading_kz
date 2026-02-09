@@ -62,7 +62,8 @@ class AITradeAssistant:
     @staticmethod
     async def build_bos_fvg_prompt(asset_data: AssetData) -> str:
         """Build the prompt for Gemini API based on ICT Smart Money Concepts."""
-        prompt = f"""
+        prompt = (
+            f"""
             # You are the **SMC-Alpha Trading Agent**, a highly specialized algorithmic trader 
             executing a "Multi-Timeframe Trend Following" strategy based on Smart Money Concepts (SMC). 
             Your sole purpose is to analyze market data, identify high-probability setups aligning Higher Timeframe (HTF) structure 
@@ -109,6 +110,9 @@ class AITradeAssistant:
     B. Structural Stop Loss (SL)
     Placement: Structural Invalidation (Beyond Candle 1 High/Low).
     Buffer: Add 2.0 Points (MNQ/ES) to survive standard stop hunts.
+    Minimum SL Distance:
+    The SL MUST BE AT LEAST 0.1% of entry price away from entry.
+    If |Entry - SL| / Entry < 0.001, widen SL to exactly 0.1% from entry.
     Soft Penalty (Not a Rejection):
     If |Entry - SL| / Entry > 0.002 (0.2%), you may still trade, but reduce confidence by 20 points
     and clearly mention "wide structural SL" in reasoning.
@@ -151,7 +155,8 @@ Use this to determine the HTF Bias. If no signals, bias is NEUTRAL.
 # OUTPUT FORMAT
 You must respond with a JSON object ONLY. No conversational filler.
 Use the input symbol exactly (do not output "Unknown"). Use UTC timestamps for `bos_ts` and `fvg_id`.
-Always include `direction` and `size` inside `parameters`. """ + """
+Always include `direction` and `size` inside `parameters`. """
+            + """
 JSON Response Format (Strictly Follow):
 {
     "decision": "ENTER_LONG" | "ENTER_SHORT" | "WAIT" | "CANCEL",
@@ -181,6 +186,7 @@ JSON Response Format (Strictly Follow):
 - Invalidation clarity: SL must be beyond structural invalidation + buffer.
 - TP realism: TP must respect nearby structure; if 1.2R is blocked, WAIT.
 """
+        )
         return prompt
 
     async def call_gemini_api(self, prompt: str):
@@ -197,7 +203,6 @@ JSON Response Format (Strictly Follow):
             return None, None
         if prompt_type == PromptType.BOS_FVG:
             my_prompt = await self.build_bos_fvg_prompt(asset_data)
-            logger.info(f"Built BOS-FVG prompt for Gemini API:\n{my_prompt}")
         else:
             raise ValueError("Invalid prompt type specified.")
         response = await self.call_gemini_api(my_prompt)

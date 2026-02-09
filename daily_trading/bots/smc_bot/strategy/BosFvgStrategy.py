@@ -473,6 +473,8 @@ class BosFvgStrategy(StrategyBase):
                         new_trade, ai_msg = await self.find_ai_setup(df_ltf, df_htf)
                         self.last_ai_call_ts = ts_utc
                         await self.telegram_session_bot.send_message(f"🤖 AI Analysis for {self.symbol}:\n\n{ai_msg}")
+                        if new_trade and new_trade.metadata is not None:
+                            new_trade.metadata["bos_ts"] = bos_time
 
                 if new_trade:
                     self.active_trade = new_trade

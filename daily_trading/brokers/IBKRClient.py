@@ -530,6 +530,25 @@ class IBKRClient:
 
             # List Completed Trades
             if consolidated_trades:
+                # Consolidate identical trades (same times/prices/tag)
+                grouped = {}
+                for t in consolidated_trades:
+                    key = (
+                        t["symbol"],
+                        t["direction"],
+                        t["entry_dt"],
+                        t["exit_dt"],
+                        t["entry_price"],
+                        t["exit_price"],
+                        t["tag"],
+                    )
+                    if key not in grouped:
+                        grouped[key] = t.copy()
+                    else:
+                        grouped[key]["qty"] += t["qty"]
+                        grouped[key]["pnl"] += t["pnl"]
+
+                consolidated_trades = list(grouped.values())
                 lines.append("📊 **Trades (Since Asia Open):**")
                 for t in consolidated_trades:
                     icon = "🟢" if t["pnl"] >= 0 else "🔴"

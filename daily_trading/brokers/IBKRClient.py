@@ -530,25 +530,55 @@ class IBKRClient:
 
             # List Completed Trades
             if consolidated_trades:
-                # Consolidate identical trades (same times/prices/tag)
+                # Consolidate trades by symbol+direction+tag+entry/exit times.
+                # Prices can differ across partial fills, so compute weighted averages.
                 grouped = {}
+
+                def _entry_bucket(dt):
+                    return dt.replace(second=0, microsecond=0)
+
                 for t in consolidated_trades:
                     key = (
                         t["symbol"],
                         t["direction"],
-                        t["entry_dt"],
-                        t["exit_dt"],
-                        t["entry_price"],
-                        t["exit_price"],
+                        _entry_bucket(t["entry_dt"]),
                         t["tag"],
                     )
                     if key not in grouped:
-                        grouped[key] = t.copy()
-                    else:
-                        grouped[key]["qty"] += t["qty"]
-                        grouped[key]["pnl"] += t["pnl"]
+                        grouped[key] = {
+                            "symbol": t["symbol"],
+                            "direction": t["direction"],
+                            "tag": t["tag"],
+                            "entry_dt": t["entry_dt"],
+                            "exit_dt": t["exit_dt"],
+                            "qty": 0.0,
+                            "pnl": 0.0,
+                            "_entry_price_qty": 0.0,
+                            "_exit_price_qty": 0.0,
+                        }
+                    grouped[key]["qty"] += t["qty"]
+                    grouped[key]["pnl"] += t["pnl"]
+                    grouped[key]["_entry_price_qty"] += t["entry_price"] * t["qty"]
+                    grouped[key]["_exit_price_qty"] += t["exit_price"] * t["qty"]
 
-                consolidated_trades = list(grouped.values())
+                consolidated_trades = []
+                for g in grouped.values():
+                    qty = g["qty"]
+                    entry_price = g["_entry_price_qty"] / qty if qty else 0.0
+                    exit_price = g["_exit_price_qty"] / qty if qty else 0.0
+                    consolidated_trades.append(
+                        {
+                            "symbol": g["symbol"],
+                            "direction": g["direction"],
+                            "qty": qty,
+                            "pnl": g["pnl"],
+                            "entry_dt": g["entry_dt"],
+                            "exit_dt": g["exit_dt"],
+                            "entry_price": entry_price,
+                            "exit_price": exit_price,
+                            "tag": g["tag"],
+                        }
+                    )
                 lines.append("📊 **Trades (Since Asia Open):**")
                 for t in consolidated_trades:
                     icon = "🟢" if t["pnl"] >= 0 else "🔴"

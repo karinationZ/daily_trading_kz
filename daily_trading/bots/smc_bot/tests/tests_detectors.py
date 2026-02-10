@@ -458,7 +458,7 @@ async def test_ibkr():
 
 
 @pytest.mark.asyncio
-async def test_panic_close():
+async def test_summary():
     client = IBKRClient(host=HOST, port=PORT, client_id=CLIENT_ID)
 
     # 1. CONNECT

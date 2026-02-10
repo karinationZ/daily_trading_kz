@@ -1,5 +1,6 @@
 import asyncio
 import io
+import html
 import re
 from typing import Optional
 
@@ -83,6 +84,9 @@ class TelegramBot:
             logger.warning("No channel ID configured, message not sent")
             return False
 
+        # Escape to avoid Telegram HTML parse errors from model output
+        text = html.escape(text)
+
         async with self.semaphore:
             try:
                 if len(text) > 4096:
@@ -125,6 +129,7 @@ class TelegramBot:
     async def _send_single_message(self, text: str, image: Optional[go.Figure] = None) -> bool:
         """Send a single message (internal helper)."""
         try:
+            text = html.escape(text)
             if image:
                 buffer = io.BytesIO()
                 image.write_image(buffer, format="png", width=1200, height=675, scale=1)

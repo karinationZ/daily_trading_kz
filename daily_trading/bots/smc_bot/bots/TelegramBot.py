@@ -2,6 +2,7 @@ import asyncio
 import io
 import html
 import re
+import re
 from typing import Optional
 
 import aiohttp
@@ -84,8 +85,8 @@ class TelegramBot:
             logger.warning("No channel ID configured, message not sent")
             return False
 
-        # Escape to avoid Telegram HTML parse errors from model output
-        text = html.escape(text)
+        # Sanitize to avoid Telegram HTML parse errors while preserving allowed tags
+        text = self._sanitize_html(text)
 
         async with self.semaphore:
             try:
@@ -129,7 +130,6 @@ class TelegramBot:
     async def _send_single_message(self, text: str, image: Optional[go.Figure] = None) -> bool:
         """Send a single message (internal helper)."""
         try:
-            text = html.escape(text)
             if image:
                 buffer = io.BytesIO()
                 image.write_image(buffer, format="png", width=1200, height=675, scale=1)
@@ -157,6 +157,20 @@ class TelegramBot:
                 timeout=45,
             )
             return True
+
+    @staticmethod
+    def _sanitize_html(text: str) -> str:
+        """
+        Escape all HTML, then re-enable a small allowlist of tags used in reports.
+        This prevents malformed tags from AI output breaking Telegram parsing.
+        """
+        escaped = html.escape(text)
+        # Allowlist only basic tags we actually use in reports
+        allow_tags = ["b", "pre"]
+        for tag in allow_tags:
+            escaped = re.sub(fr"&lt;{tag}&gt;", f"<{tag}>", escaped)
+            escaped = re.sub(fr"&lt;/{tag}&gt;", f"</{tag}>", escaped)
+        return escaped
 
     async def _send_long_message(self, text: str, image: Optional[go.Figure] = None) -> bool:
         """Split and send long messages (internal helper)."""

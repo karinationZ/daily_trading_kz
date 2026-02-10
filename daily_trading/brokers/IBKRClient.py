@@ -389,7 +389,9 @@ class IBKRClient:
 
     async def get_daily_summary(self) -> str:
         try:
-            # 1. Get Account Values (Fast Cache)
+            from datetime import timedelta  # Make sure this is imported
+
+            # 1. Get Account Values
             values = self.ib.accountValues()
             accounts = self.ib.managedAccounts()
             if not accounts:
@@ -397,38 +399,35 @@ class IBKRClient:
             account_id = accounts[0]
 
             net_liq = unrealized = 0.0
-
             for v in values:
                 if v.account == account_id and v.currency == "USD":
                     if v.tag == "NetLiquidation":
                         net_liq = float(v.value)
-                    elif v.tag == "RealizedPnL":
-                        float(v.value)
                     elif v.tag == "UnrealizedPnL":
                         unrealized = float(v.value)
 
-            # 2. Get Today's Executions (UTC)
+            # 2. DEFINE SESSION START (ASIA OPEN)
+            # We treat the trading day as starting at 21:00 UTC (5 PM NY Time)
             tz = timezone.utc
             utc_now = datetime.now(tz)
-            start_of_day = utc_now.replace(hour=0, minute=0, second=0, microsecond=0)
 
-            # API Filter: Fetch only today's trades for speed and accuracy
-            api_time_filter = start_of_day.strftime('%Y%m%d-%H:%M:%S')
+            # If it is currently past 21:00, the session started today at 21:00.
+            # If it is before 21:00 (e.g., 02:00), the session started YESTERDAY at 21:00.
+            if utc_now.hour >= 21:
+                session_start = utc_now.replace(hour=21, minute=0, second=0, microsecond=0)
+            else:
+                session_start = (utc_now - timedelta(days=1)).replace(hour=21, minute=0, second=0, microsecond=0)
 
+            # Fetch trades starting from that time
+            api_time_filter = session_start.strftime('%Y%m%d-%H:%M:%S')
             executions = await asyncio.wait_for(self.ib.reqExecutionsAsync(ExecutionFilter(time=api_time_filter)), timeout=15)
 
-            # Sort by Time AND execId (Crucial for FIFO accuracy)
-            todays_fills = sorted(
-                [f for f in executions if f.time.astimezone(tz) >= start_of_day],
-                key=lambda x: (x.time, x.execution.execId),
-            )
+            todays_fills = sorted([f for f in executions if f.time.astimezone(tz) >= session_start], key=lambda x: (x.time, x.execution.execId))
 
             # 3. FIFO MATCHING LOGIC
-            raw_trades = []
+            consolidated_trades = []
             open_inventory = {}
             calculated_total_pnl = 0.0
-            inventory_mismatch = False
-            orphan_note = ""
 
             for fill in todays_fills:
                 sym = fill.contract.symbol
@@ -437,30 +436,27 @@ class IBKRClient:
                 qty = abs(float(fill.execution.shares))
                 fill_time = fill.time.astimezone(tz)
 
-                # --- CAPTURE REF TAG ---
-                # Use 'Manual' if orderRef is empty/None
+                # Tag (Strategy Name)
                 ref_tag = fill.execution.orderRef or "Unknown"
 
                 if sym not in open_inventory:
                     open_inventory[sym] = []
-
                 needed_side = "SLD" if side == "BOT" else "BOT"
 
-                # Match against inventory
+                # Check for match in inventory
                 while qty > 0 and open_inventory[sym] and open_inventory[sym][0]["side"] == needed_side:
                     match = open_inventory[sym][0]
                     match_qty = min(qty, match["qty"])
-
                     is_long = match["side"] == "BOT"
 
-                    # Fix: Use actual contract multiplier (Critical for Futures)
+                    # Contract Multiplier
                     mult = float(fill.contract.multiplier) if fill.contract.multiplier else 1.0
 
                     diff = price - match["price"] if is_long else match["price"] - price
                     pnl = diff * match_qty * mult
                     calculated_total_pnl += pnl
 
-                    raw_trades.append(
+                    consolidated_trades.append(
                         {
                             "symbol": sym,
                             "direction": "LONG" if is_long else "SHORT",
@@ -470,7 +466,7 @@ class IBKRClient:
                             "exit_dt": fill_time,
                             "entry_price": match["price"],
                             "exit_price": price,
-                            "strategy_tag": ref_tag,  # Store the tag
+                            "tag": ref_tag,
                         }
                     )
 
@@ -482,99 +478,53 @@ class IBKRClient:
                 if qty > 0:
                     open_inventory[sym].append({"price": price, "qty": qty, "side": side, "time": fill_time})
 
-            # 4. AGGREGATION STEP
-            consolidated_trades = []
-            if raw_trades:
-                # Sort by Exit Time
-                raw_trades.sort(key=lambda x: x["exit_dt"])
-                current = raw_trades[0]
+            # 4. REPORT GENERATION
+            # If inventory remains, it's an OPEN position, not a "weird count" mismatch
 
-                for i in range(1, len(raw_trades)):
-                    next_t = raw_trades[i]
-
-                    time_diff = (next_t["exit_dt"] - current["exit_dt"]).total_seconds() / 60
-
-                    is_same_group = current["symbol"] == next_t["symbol"] and current["direction"] == next_t["direction"] and time_diff < 5.0
-
-                    if is_same_group:
-                        total_qty = current["qty"] + next_t["qty"]
-
-                        # Weighted Averages
-                        avg_entry = ((current["entry_price"] * current["qty"]) + (next_t["entry_price"] * next_t["qty"])) / total_qty
-                        avg_exit = ((current["exit_price"] * current["qty"]) + (next_t["exit_price"] * next_t["qty"])) / total_qty
-
-                        current["qty"] = total_qty
-                        current["pnl"] += next_t["pnl"]
-                        current["entry_price"] = avg_entry
-                        current["exit_price"] = avg_exit
-                        current["exit_dt"] = max(current["exit_dt"], next_t["exit_dt"])
-                    else:
-                        consolidated_trades.append(current)
-                        current = next_t
-
-                consolidated_trades.append(current)
-
-            # 5. Check Overnight
-            positions = self.ib.positions()
-            actual_pos_map = {p.contract.symbol: p.position for p in positions if p.account == account_id and p.position != 0}
-
-            for sym, items in open_inventory.items():
-                calc_qty = sum([i["qty"] * (1 if i["side"] == "BOT" else -1) for i in items])
-                actual_qty = actual_pos_map.get(sym, 0.0)
-                if calc_qty != 0 and actual_qty == 0:
-                    inventory_mismatch = True
-                    orphan_note += f"\n⚠️ <b>Overnight Close:</b> {sym} {abs(calc_qty)} contracts."
-
-            # 6. Build Report
-            display_pnl = calculated_total_pnl
-            pnl_icon = "🟢" if display_pnl >= 0 else "🔴"
+            pnl_icon = "🟢" if calculated_total_pnl >= 0 else "🔴"
+            session_label = session_start.strftime('%d %b %H:%M')
 
             lines = [
-                f"📅 **REPORT: {utc_now.strftime('%Y-%m-%d')} (UTC)**",
+                f"📅 **REPORT: {utc_now.strftime('%Y-%m-%d')}**",
+                f"🕒 Session Start: {session_label} UTC",
                 f"👤 Account: `{account_id}`",
                 "────────────────",
                 f"💰 Net Liq: ${net_liq:,.2f}",
-                f"{pnl_icon} Session PnL: ${display_pnl:,.2f}",  # Changed Label to Session PnL
+                f"{pnl_icon} Session PnL: ${calculated_total_pnl:,.2f}",
                 f"🎲 Open PnL: ${unrealized:,.2f}",
                 "────────────────",
             ]
-            if actual_pos_map:
-                lines.append("🏗️ **Open Positions:**")
-                for sym, size in actual_pos_map.items():
-                    side = "LONG" if size > 0 else "SHORT"
-                    lines.append(f"• {sym}: {side} {abs(size)}")
-            else:
-                lines.append("🧘 **Current Status: FLAT**")
 
-            lines.append("────────────────")
-
+            # List Completed Trades
             if consolidated_trades:
-                lines.append(f"📊 **Today's Trades (Calc: ${calculated_total_pnl:+.2f}):**")
+                lines.append("📊 **Trades (Since Asia Open):**")
                 for t in consolidated_trades:
                     icon = "🟢" if t["pnl"] >= 0 else "🔴"
-                    t_entry = t["entry_dt"].strftime("%H:%M")
+                    t_entry = t["entry_dt"].strftime("%d-%H:%M")  # Show date in case it was yesterday
                     t_exit = t["exit_dt"].strftime("%H:%M")
 
-                    # --- REF TAG DISPLAY ---
-                    tag = t.get('strategy_tag', 'Unknown')
-
-                    # Format: [TAG] Symbol Direction (Qty) $PnL
-                    header = f"{icon} <b>[{tag}]</b> {t['symbol']} {t['direction']} " f"({int(t['qty'])}) <b>${t['pnl']:+.2f}</b>"
-
-                    # Hardcoded 'UTC' string for cleaner output
-                    details = f"   ⏳ {t_entry} @ {t['entry_price']:,.2f} ➜ {t_exit} UTC @ {t['exit_price']:,.2f}"
+                    header = f"{icon} <b>[{t['tag']}]</b> {t['symbol']} {t['direction']} ({int(t['qty'])}) <b>${t['pnl']:+.2f}</b>"
+                    details = f"   ⏳ {t_entry} @ {t['entry_price']:,.2f} ➜ {t_exit} @ {t['exit_price']:,.2f}"
                     lines.append(f"\n{header}\n{details}")
             else:
-                lines.append("💤 No round-trip trades completed today.")
+                lines.append("💤 No round-trip trades this session.")
 
-            if inventory_mismatch:
+            # List Active Inventory (Partial fills or Open positions)
+            if any(open_inventory.values()):
                 lines.append("────────────────")
-                lines.append(f"📉 <i>Note: Realized PnL includes overnight positions.</i>{orphan_note}")
+                lines.append("🏗️ **Active Inventory (Unclosed):**")
+                for sym, items in open_inventory.items():
+                    total_qty = sum(i['qty'] for i in items)
+                    if total_qty > 0:
+                        side = items[0]['side']
+                        lines.append(f"• {sym}: {side} {int(total_qty)} (Avg: {items[0]['price']:.2f})")
+            else:
+                lines.append("────────────────")
+                lines.append("🧘 **Inventory: FLAT**")
 
             return "\n".join(lines)
 
         except Exception as e:
-            logger.error(f"Report Error: {e}")
             return f"⚠️ Report Error: {e}"
 
     async def get_active_bracket_levels(self, symbol: str, order_ref: str, direction: str) -> dict:

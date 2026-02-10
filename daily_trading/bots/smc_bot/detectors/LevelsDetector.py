@@ -70,7 +70,7 @@ class LevelsDetector(DetectorsBase):
 
         fig = None
         if plot:
-            fig = self._plot_levels(ohlc, sr_info_list)
+            fig = self.plot_levels(ohlc, sr_info_list)
 
         pivot_high_points = [{"time": idx, "level": pivot_high.loc[idx]} for idx in pivot_high[pivot_high.notna()].index]
         pivot_low_points = [{"time": idx, "level": pivot_low.loc[idx]} for idx in pivot_low[pivot_low.notna()].index]
@@ -83,84 +83,65 @@ class LevelsDetector(DetectorsBase):
             "fig": fig,
         }
 
-    def plot_htf_levels_on_ltf(self, ohlc_ltf, signals_htf):
-        ohlc_ltf = self.validate_data(ohlc_ltf)
-        ohlc_ltf = ohlc_ltf.sort_index().tail(self.plot_tail)
+    def calculate_major_levels(self, ohlc_1h):
+        # 1. Standardize Data
+        df = self.validate_data(ohlc_1h).copy()
+        if not isinstance(df.index, pd.DatetimeIndex):
+            df.index = pd.to_datetime(df.index)
 
-        symbol = ohlc_ltf["symbol"].iloc[0] if "symbol" in ohlc_ltf.columns else "Unknown"
-        fig = go.Figure()
+        # Ensure index is sorted
+        df = df.sort_index()
 
-        # Plot candlesticks
-        fig.add_trace(
-            go.Candlestick(
-                x=ohlc_ltf.index,
-                open=ohlc_ltf["open"],
-                high=ohlc_ltf["high"],
-                low=ohlc_ltf["low"],
-                close=ohlc_ltf["close"],
-                name="OHLC",
-            )
-        )
+        major_levels = []
 
-        # Plot levels within OHLC range
-        min_price = ohlc_ltf["low"].min()
-        max_price = ohlc_ltf["high"].max()
-        sr_levels = signals_htf.get("support_levels", []) + signals_htf.get("resistance_levels", [])
-        for sr in sr_levels:
-            if sr["strength"] >= self.strength and min_price <= sr["price"] <= max_price:
-                start_time = sr["start_time"]
-                if start_time not in ohlc_ltf.index:
-                    start_time = ohlc_ltf.index[ohlc_ltf.index.get_indexer([start_time], method="nearest")[0]]
-                # Plot solid blue line
-                fig.add_trace(
-                    go.Scatter(
-                        x=[start_time, ohlc_ltf.index[-1]],
-                        y=[sr["price"], sr["price"]],
-                        mode="lines",
-                        line=dict(color="blue", width=1),
-                        name=sr["type"],
-                        showlegend=False,
-                    )
-                )
-                # Add price text annotation
-                fig.add_annotation(
-                    x=ohlc_ltf.index[-1],
-                    y=sr["price"],
-                    text=f"{sr['price']}",
-                    showarrow=False,
-                    xanchor="left",
-                    yanchor="middle",
-                    font=dict(size=10, color="blue"),
-                    xshift=5,
-                )
+        # Get the EXACT timestamp of the very last candle in your data
+        # We use this to define "NOW"
+        last_candle_time = df.index[-1]
 
-        last_candle = ohlc_ltf.index.max().tz_convert("US/Pacific").strftime("%Y-%m-%d %H:%M")
+        # Helper Function to get the truly closed previous period
+        def get_closed_level(resampled_df, period_name, strength):
+            if resampled_df.empty:
+                return
 
-        if len(ohlc_ltf) > 1:
-            interval = ohlc_ltf.index[-1] - ohlc_ltf.index[-2]
-        else:
-            interval = pd.Timedelta(minutes=1)
-        x_range_max = ohlc_ltf.index[-1] + interval * 0.5
+            # CRITICAL LOGIC:
+            # 1. Determine the start time of the period the LAST candle belongs to.
+            #    (e.g., if last candle is 23:00, period_start is 00:00 today)
+            # 2. Filter the resampled dataframe to only keep rows BEFORE that start time.
 
-        tf_str = self.get_time_frame_name(ohlc_ltf)
-        fig.update_layout(
-            title=f"{symbol} |Support & Resistance Levels | Last Candle: {last_candle} (PT) | {tf_str} TF",
-            xaxis_title="Time",
-            yaxis_title="Price",
-            xaxis_rangeslider_visible=False,
-            xaxis=dict(range=[ohlc_ltf.index[0], x_range_max]),
-            yaxis=dict(autorange=True),
-            margin=dict(l=50, r=50, t=100, b=100),
-        )
-        fig.update_xaxes(
-            type="date",
-            tickformat="%H:%M",
-            tickmode="linear",
-            dtick=7200000,  # 2-hour intervals
-            tickangle=45,
-        )
+            # Find the bin in resampled_df that corresponds to last_candle_time
+            # 'asof' finds the nearest index label equal to or less than the value
+            current_period_idx = resampled_df.index.asof(last_candle_time)
 
-        return fig
+            # Filter: Keep only fully completed periods (Strictly Less Than current period)
+            completed_periods = resampled_df[resampled_df.index < current_period_idx]
+
+            if not completed_periods.empty:
+                # The last item in this filtered list is the actual PREVIOUS period
+                prev_candle = completed_periods.iloc[-1]
+                start_time = completed_periods.index[-1]
+
+                major_levels.append({"type": f"P{period_name}H", "price": prev_candle['high'], "start_time": start_time, "strength": strength})
+                major_levels.append({"type": f"P{period_name}L", "price": prev_candle['low'], "start_time": start_time, "strength": strength})
+
+        # --- 1. Daily Levels ---
+        if len(df) >= 24:
+            # Resample Daily
+            daily = df.resample('D').agg({'high': 'max', 'low': 'min'}).dropna()
+            get_closed_level(daily, "D", 2)
+
+        # --- 2. Weekly Levels ---
+        if len(df) >= 120:
+            # Resample Weekly (Ends Sunday)
+            weekly = df.resample('W').agg({'high': 'max', 'low': 'min'}).dropna()
+            get_closed_level(weekly, "W", 3)
+
+        # --- 3. Monthly Levels ---
+        if len(df) >= 700:
+            # Resample Monthly (Month End)
+            monthly = df.resample('ME').agg({'high': 'max', 'low': 'min'}).dropna()
+            get_closed_level(monthly, "M", 4)
+
+        return major_levels
 
     def _is_valid_sr(self, price, sr_info_list, atr):
         for sr in sr_info_list:
@@ -168,12 +149,25 @@ class LevelsDetector(DetectorsBase):
                 return False
         return True
 
-    def _plot_levels(self, ohlc, sr_info_list):
-        tf_str = self.get_time_frame_name(ohlc)
+    def plot_levels(self, ohlc, sr_info_list):
+        self.get_time_frame_name(ohlc)
         ohlc = ohlc.sort_index().tail(self.plot_tail)
         symbol = ohlc["symbol"].iloc[0] if "symbol" in ohlc.columns else "Unknown"
         fig = make_subplots(rows=1, cols=1)
 
+        # 1. Define Color/Style Map for different levels
+        style_map = {
+            "Resistance": {"color": "blue", "width": 1, "dash": "solid"},
+            "Support": {"color": "blue", "width": 1, "dash": "solid"},
+            "PDH": {"color": "green", "width": 2, "dash": "solid"},  # Daily High
+            "PDL": {"color": "green", "width": 2, "dash": "solid"},  # Daily Low
+            "PWH": {"color": "orange", "width": 3, "dash": "dash"},  # Weekly
+            "PWL": {"color": "orange", "width": 3, "dash": "dash"},
+            "PMH": {"color": "red", "width": 3, "dash": "longdash"},  # Monthly
+            "PML": {"color": "red", "width": 3, "dash": "longdash"},
+        }
+
+        # Plot Candlesticks
         fig.add_trace(
             go.Candlestick(
                 x=ohlc.index,
@@ -188,40 +182,64 @@ class LevelsDetector(DetectorsBase):
         )
 
         for sr in sr_info_list:
+            # Filter by strength (Major levels usually have strength >= 2, so they pass)
             if sr["strength"] >= self.strength:
+
+                # Handle Start Time (Snap to left edge if older than plot history)
                 start_time = sr["start_time"]
                 if start_time not in ohlc.index:
-                    start_time = ohlc.index[ohlc.index.get_indexer([start_time], method="nearest")[0]]
+                    # Find nearest index
+                    idx_loc = ohlc.index.get_indexer([start_time], method="nearest")[0]
+                    # If the actual start time is BEFORE the first visible candle, snap to first candle
+                    if start_time < ohlc.index[0]:
+                        start_time = ohlc.index[0]
+                    else:
+                        start_time = ohlc.index[idx_loc]
+
                 end_time = ohlc.index[-1]
+
+                # Get Style based on Type (Default to Blue if unknown)
+                level_type = sr["type"]
+                style = style_map.get(level_type, {"color": "gray", "width": 1, "dash": "dot"})
+
+                # Plot the Line
                 fig.add_trace(
                     go.Scatter(
                         x=[start_time, end_time],
                         y=[sr["price"], sr["price"]],
                         mode="lines",
-                        line=dict(color="blue", width=1),
-                        name=sr["type"],
+                        line=dict(color=style["color"], width=style["width"], dash=style["dash"]),
+                        name=level_type,
                         showlegend=False,
                     ),
                     row=1,
                     col=1,
                 )
-                # Add price text annotation
+
+                # Add Annotation (Label + Price)
+                # Logic: If it's a Major Level, show Type + Price. If standard, just Price.
+                if level_type in ["PDH", "PDL", "PWH", "PWL", "PMH", "PML"]:
+                    label_text = f"<b>{level_type}</b>: {sr['price']:.4f}"
+                else:
+                    label_text = f"{sr['price']:.4f}"
+
                 fig.add_annotation(
                     x=end_time,
                     y=sr["price"],
-                    text=f"{sr['price']}",
+                    text=label_text,
                     showarrow=False,
                     xanchor="left",
                     yanchor="middle",
-                    font=dict(size=10, color="blue"),
+                    font=dict(size=10, color=style["color"]),
                     xshift=5,
                 )
 
+        # ... (Rest of layout setup remains the same) ...
         last_candle = ohlc.index.max().tz_convert("US/Pacific").strftime("%Y-%m-%d %H:%M")
-        # Extend x-axis to ensure last candle is fully visible
-        x_range_end = ohlc.index[-1] + pd.Timedelta(minutes=120)  # Increased buffer to 30 minutes
+        x_range_end = ohlc.index[-1] + pd.Timedelta(minutes=120)
+
         fig.update_layout(
-            title=f"{symbol} | Support and Resistance Levels | Last Candle: {last_candle} (PT) | TF: {tf_str}",
+            title=f"{symbol} | Key Levels | Last: {last_candle}",
             xaxis_title="Time",
             yaxis_title="Price",
             xaxis_rangeslider_visible=False,
@@ -231,8 +249,7 @@ class LevelsDetector(DetectorsBase):
         fig.update_xaxes(
             type="date",
             tickformat="%H:%M",
-            tickmode="linear",
-            dtick=7200000,  # 2-hour intervals
+            dtick=7200000,
             tickangle=45,
             row=1,
             col=1,

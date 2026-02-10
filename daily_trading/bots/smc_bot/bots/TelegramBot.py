@@ -2,7 +2,6 @@ import asyncio
 import io
 import html
 import re
-import re
 from typing import Optional
 
 import aiohttp

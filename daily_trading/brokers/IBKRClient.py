@@ -54,7 +54,7 @@ class IBKRClient:
         "1m": ("1 min", "2 D"),
         "5m": ("5 mins", "5 D"),
         "15m": ("15 mins", "2 W"),
-        "1h": ("1 hour", "1 M"),
+        "1h": ("1 hour", "3 M"),
         "1d": ("1 day", "1 Y"),
     }
     _order_lock: ClassVar[asyncio.Lock] = asyncio.Lock()
@@ -407,16 +407,13 @@ class IBKRClient:
                         unrealized = float(v.value)
 
             # 2. DEFINE SESSION START (ASIA OPEN)
-            # We treat the trading day as starting at 21:00 UTC (5 PM NY Time)
+            # Use fixed UTC 23:00 (not tied to local time zones).
             tz = timezone.utc
             utc_now = datetime.now(tz)
 
-            # If it is currently past 21:00, the session started today at 21:00.
-            # If it is before 21:00 (e.g., 02:00), the session started YESTERDAY at 21:00.
-            if utc_now.hour >= 21:
-                session_start = utc_now.replace(hour=21, minute=0, second=0, microsecond=0)
-            else:
-                session_start = (utc_now - timedelta(days=1)).replace(hour=21, minute=0, second=0, microsecond=0)
+            session_start = utc_now.replace(hour=23, minute=0, second=0, microsecond=0)
+            if utc_now < session_start:
+                session_start = session_start - timedelta(days=1)
 
             # Fetch trades starting from a buffer before session start to match positions opened prior to 21:00 UTC
             prefetch_start = session_start - timedelta(days=1)
@@ -588,6 +585,15 @@ class IBKRClient:
                     header = f"{icon} <b>[{t['tag']}]</b> {t['symbol']} {t['direction']} ({int(t['qty'])}) <b>${t['pnl']:+.2f}</b>"
                     details = f"   ⏳ {t_entry} @ {t['entry_price']:,.2f} ➜ {t_exit} @ {t['exit_price']:,.2f}"
                     lines.append(f"\n{header}\n{details}")
+
+                totals_by_symbol = {}
+                for t in consolidated_trades:
+                    totals_by_symbol[t["symbol"]] = totals_by_symbol.get(t["symbol"], 0.0) + t["pnl"]
+                lines.append("────────────────")
+                lines.append("📌 **Totals By Symbol:**")
+                for sym, pnl in sorted(totals_by_symbol.items()):
+                    icon = "🟢" if pnl >= 0 else "🔴"
+                    lines.append(f"{icon} {sym}: <b>${pnl:+.2f}</b>")
             else:
                 lines.append("💤 No round-trip trades this session.")
 

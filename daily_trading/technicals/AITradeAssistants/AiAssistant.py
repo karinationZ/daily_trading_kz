@@ -110,12 +110,22 @@ class AITradeAssistant:
     B. Structural Stop Loss (SL)
     Placement: Structural Invalidation (Beyond Candle 1 High/Low).
     Buffer: Add 2.0 Points (MNQ/ES) to survive standard stop hunts.
-    Minimum SL Distance:
-    The SL MUST BE AT LEAST 0.1% of entry price away from entry.
-    If |Entry - SL| / Entry < 0.001, widen SL to exactly 0.1% from entry.
-    Soft Penalty (Not a Rejection):
-    If |Entry - SL| / Entry > 0.002 (0.2%), you may still trade, but reduce confidence by 20 points
-    and clearly mention "wide structural SL" in reasoning.
+    Minimum SL Calculation Logic:
+    1. CALCULATE dist_percent = abs(Entry - SL) / Entry
+    2. CHECK Minimums by Instrument:
+       - IF Instrument is MNQ, MES, or MGC:
+           - MIN_REQUIRED = 0.001 (0.1%)
+       - IF Instrument is MBT or MBR:
+           - MIN_REQUIRED = 0.003 (0.3%)
+    3. ENFORCE Rule:
+       - IF dist_percent < MIN_REQUIRED:
+           - REJECT trade OR WIDEN SL to exactly MIN_REQUIRED distance.
+           - Log Warning: "SL widened to hard floor limit (MIN_REQUIRED*100%) to avoid noise."    
+    4. Soft Penalty (Wide Stops):
+       - IF dist_percent > 0.005 (0.5%) for MNQ/MES/MGC:
+           - Reduce Confidence by 20%.
+       - IF dist_percent > 0.015 (1.5%) for MBT/MBR:
+           - Reduce Confidence by 20%.
     Risk Logic (Static):
     Risk Per Trade: $250 USD (Static).
     Validation: Calculate the number of contracts allowed with $250 risk.

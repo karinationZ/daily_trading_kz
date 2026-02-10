@@ -99,7 +99,7 @@ class BosFvgStrategy(StrategyBase):
 
         self.ai_throttle_minutes = 30
         self.last_ai_call_ts: Optional[pd.Timestamp] = None
-        self.use_ai = symbol in ["MBT", "MNQ"]
+        self.use_ai = symbol in ["MBT", "MNQ", "MGC"]
 
         # --- STATE ---
         self.active_trade: Optional[TradeSignal] = None

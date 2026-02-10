@@ -418,17 +418,50 @@ class IBKRClient:
             else:
                 session_start = (utc_now - timedelta(days=1)).replace(hour=21, minute=0, second=0, microsecond=0)
 
-            # Fetch trades starting from that time
-            api_time_filter = session_start.strftime('%Y%m%d-%H:%M:%S')
+            # Fetch trades starting from a buffer before session start to match positions opened prior to 21:00 UTC
+            prefetch_start = session_start - timedelta(days=1)
+            api_time_filter = prefetch_start.strftime('%Y%m%d-%H:%M:%S')
             executions = await asyncio.wait_for(self.ib.reqExecutionsAsync(ExecutionFilter(time=api_time_filter)), timeout=15)
 
-            todays_fills = sorted([f for f in executions if f.time.astimezone(tz) >= session_start], key=lambda x: (x.time, x.execution.execId))
+            # Split fills into pre-session and session so we can seed inventory
+            pre_session_fills = sorted(
+                [f for f in executions if f.time.astimezone(tz) < session_start],
+                key=lambda x: (x.time, x.execution.execId),
+            )
+            todays_fills = sorted(
+                [f for f in executions if f.time.astimezone(tz) >= session_start],
+                key=lambda x: (x.time, x.execution.execId),
+            )
 
             # 3. FIFO MATCHING LOGIC
             consolidated_trades = []
             open_inventory = {}
             calculated_total_pnl = 0.0
 
+            # 3A. Seed inventory with pre-session fills (no PnL counted)
+            for fill in pre_session_fills:
+                sym = fill.contract.symbol
+                side = fill.execution.side
+                price = fill.execution.avgPrice
+                qty = abs(float(fill.execution.shares))
+                fill_time = fill.time.astimezone(tz)
+
+                if sym not in open_inventory:
+                    open_inventory[sym] = []
+                needed_side = "SLD" if side == "BOT" else "BOT"
+
+                while qty > 0 and open_inventory[sym] and open_inventory[sym][0]["side"] == needed_side:
+                    match = open_inventory[sym][0]
+                    match_qty = min(qty, match["qty"])
+                    qty -= match_qty
+                    match["qty"] -= match_qty
+                    if match["qty"] <= 0:
+                        open_inventory[sym].pop(0)
+
+                if qty > 0:
+                    open_inventory[sym].append({"price": price, "qty": qty, "side": side, "time": fill_time})
+
+            # 3B. Session fills (PnL counted)
             for fill in todays_fills:
                 sym = fill.contract.symbol
                 side = fill.execution.side

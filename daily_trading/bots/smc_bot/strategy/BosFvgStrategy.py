@@ -351,7 +351,7 @@ class BosFvgStrategy(StrategyBase):
         # 2. EXIT CHECK (Stop Loss, Take Profit, Zombies, Cutoff)
         # ==================================================================
         if self.trade_status == TradeStatus.FILLED:
-            # self.processed_zone_ids.add(self.active_trade.metadata.get("fvg_id"))
+            self.processed_zone_ids.add(self.active_trade.metadata.get("fvg_id"))
             # --- ZOMBIE KILLER (Safety) ---
             if self.active_trade.sl <= 0 or self.active_trade.price <= 0:
                 self.log.error(f"🧟 ZOMBIE TRADE DETECTED ({self.symbol}). Cleaning up.")

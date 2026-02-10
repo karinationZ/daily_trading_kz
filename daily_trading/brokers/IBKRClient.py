@@ -398,13 +398,15 @@ class IBKRClient:
                 return "⚠️ No managed accounts."
             account_id = accounts[0]
 
-            net_liq = unrealized = 0.0
+            net_liq = unrealized = realized = 0.0
             for v in values:
                 if v.account == account_id and v.currency == "USD":
                     if v.tag == "NetLiquidation":
                         net_liq = float(v.value)
                     elif v.tag == "UnrealizedPnL":
                         unrealized = float(v.value)
+                    elif v.tag == "RealizedPnL":
+                        realized = float(v.value)
 
             # 2. DEFINE SESSION START (ASIA OPEN)
             # Use fixed UTC 23:00 (not tied to local time zones).
@@ -419,6 +421,42 @@ class IBKRClient:
             prefetch_start = session_start - timedelta(days=1)
             api_time_filter = prefetch_start.strftime('%Y%m%d-%H:%M:%S')
             executions = await asyncio.wait_for(self.ib.reqExecutionsAsync(ExecutionFilter(time=api_time_filter)), timeout=15)
+            # Attempt Account Summary commissions (best-effort; may be unavailable or zero).
+            commission_total = None
+            try:
+                try:
+                    # ib_async signature may accept no args; prefer that first.
+                    acct_summary = await self.ib.reqAccountSummaryAsync()
+                except TypeError:
+                    # Fallback for alternate signatures (ib_insync style).
+                    acct_summary = await self.ib.reqAccountSummaryAsync(
+                        "All",
+                        "NetLiquidation,UnrealizedPnL,RealizedPnL,Commission,TotalCommission",
+                    )
+                commission_tags = {}
+                for s in acct_summary:
+                    if s.account == account_id and s.currency == "USD" and "Commission" in s.tag:
+                        try:
+                            commission_tags[s.tag] = float(s.value)
+                        except Exception:
+                            commission_tags[s.tag] = s.value
+                if commission_tags:
+                    # Prefer TotalCommission if present, otherwise any single Commission tag.
+                    if "TotalCommission" in commission_tags:
+                        commission_total = float(commission_tags["TotalCommission"])
+                    elif "Commission" in commission_tags:
+                        commission_total = float(commission_tags["Commission"])
+                logger.info(f"AccountSummary commission tags: {commission_tags}")
+            except Exception as e:
+                logger.warning(f"AccountSummary commissions not available: {e}")
+            commissions = {}
+            if hasattr(self.ib, "commissions"):
+                try:
+                    commissions = {c.execId: c.commission for c in self.ib.commissions()}
+                except Exception:
+                    commissions = {}
+            logger.info(f"Commission entries loaded: {len(commissions)}")
+            logger.info(f"RealizedPnL (IBKR): {realized:,.2f}")
 
             # Split fills into pre-session and session so we can seed inventory
             pre_session_fills = sorted(
@@ -465,6 +503,14 @@ class IBKRClient:
                 price = fill.execution.avgPrice
                 qty = abs(float(fill.execution.shares))
                 fill_time = fill.time.astimezone(tz)
+                commission = 0.0
+                if getattr(fill, "commissionReport", None) is not None:
+                    try:
+                        commission = float(fill.commissionReport.commission or 0.0)
+                    except Exception:
+                        commission = 0.0
+                if commission == 0.0:
+                    commission = float(commissions.get(fill.execution.execId, 0.0) or 0.0)
 
                 # Tag (Strategy Name)
                 ref_tag = fill.execution.orderRef or "Unknown"
@@ -484,6 +530,10 @@ class IBKRClient:
 
                     diff = price - match["price"] if is_long else match["price"] - price
                     pnl = diff * match_qty * mult
+                    # Apply commissions from both legs proportionally to matched quantity
+                    entry_comm = match.get("commission", 0.0) * (match_qty / match["qty"]) if match["qty"] else 0.0
+                    exit_comm = commission * (match_qty / qty) if qty else 0.0
+                    pnl -= entry_comm + exit_comm
                     calculated_total_pnl += pnl
 
                     consolidated_trades.append(
@@ -497,22 +547,35 @@ class IBKRClient:
                             "entry_price": match["price"],
                             "exit_price": price,
                             "tag": ref_tag,
+                            "commission": entry_comm + exit_comm,
                         }
                     )
 
                     qty -= match_qty
                     match["qty"] -= match_qty
+                    match["commission"] = max(0.0, match.get("commission", 0.0) - entry_comm)
                     if match["qty"] <= 0:
                         open_inventory[sym].pop(0)
 
                 if qty > 0:
-                    open_inventory[sym].append({"price": price, "qty": qty, "side": side, "time": fill_time})
+                    open_inventory[sym].append({"price": price, "qty": qty, "side": side, "time": fill_time, "commission": commission})
 
             # 4. REPORT GENERATION
             # If inventory remains, it's an OPEN position, not a "weird count" mismatch
 
+            # Use IBKR account realized PnL directly for session summary
+            if commission_total is not None:
+                calculated_total_pnl = realized + commission_total
+            else:
+                calculated_total_pnl = realized
             pnl_icon = "🟢" if calculated_total_pnl >= 0 else "🔴"
+            net_pnl = realized
+            net_pnl_icon = "🟢" if net_pnl >= 0 else "🔴"
             session_label = session_start.strftime('%d %b %H:%M')
+
+            commission_note = ""
+            if commission_total is None:
+                commission_note = " (IBKR commission data unavailable)"
 
             lines = [
                 f"📅 **REPORT: {utc_now.strftime('%Y-%m-%d')}**",
@@ -520,7 +583,8 @@ class IBKRClient:
                 f"👤 Account: `{account_id}`",
                 "────────────────",
                 f"💰 Net Liq: ${net_liq:,.2f}",
-                f"{pnl_icon} Session PnL: ${calculated_total_pnl:,.2f}",
+                f"{pnl_icon} Session PnL (Gross): ${calculated_total_pnl:,.2f}",
+                f"{net_pnl_icon} Session PnL (Net): ${net_pnl:,.2f}{commission_note}",
                 f"🎲 Open PnL: ${unrealized:,.2f}",
                 "────────────────",
             ]

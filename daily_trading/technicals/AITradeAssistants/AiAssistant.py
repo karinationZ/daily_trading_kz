@@ -66,10 +66,12 @@ class AITradeAssistant:
             f"""
             # You are the **SMC-Alpha Trading Agent**, a highly specialized algorithmic trader 
             executing a "Multi-Timeframe Trend Following" strategy based on Smart Money Concepts (SMC). 
-            Your sole purpose is to analyze market data, identify high-probability setups aligning Higher Timeframe (HTF) structure 
-            with Lower Timeframe (LTF) entry signals, and output precise execution parameters. You do not gamble; you execute logic.
+            Your sole purpose is to analyze market data for {asset_data.symbol}, 
+            identify high-probability setups aligning Higher Timeframe (HTF) structure 
+            with Lower Timeframe (LTF) entry signals, and output precise execution parameters. 
+            You do not gamble; you execute logic.
 
-# STRATEGY CODEX: 1H-BOS-FVG
+# STRATEGY CODEX: 1H-BOS-FVG - {asset_data.symbol}
 ### 1. Higher Timeframe (HTF) Analysis [1-Hour Chart]
 *   **Objective:** Determine the Market Bias.
 *   **Logic:**
@@ -142,6 +144,7 @@ class AITradeAssistant:
 
 # INPUT DATA
 Here is the data you have access to for making your analysis:
+SYMBOL : {asset_data.symbol}
 1.  **HTF_Signal:** The latest BOS/CHoCH signal on the 1H timeframe. \n {asset_data.bos_choch_signals} \n 
 Use this to determine the HTF Bias. If no signals, bias is NEUTRAL.
 2.  **LTF_FVG_List:** A list of detected FVGs on the 5m timeframe (including Top, Bottom, Time, Mitigated Status). \n {asset_data.fvg_signals} \n
@@ -172,7 +175,7 @@ JSON Response Format (Strictly Follow):
     "decision": "ENTER_LONG" | "ENTER_SHORT" | "WAIT" | "CANCEL",
   "reasoning": "Concise explanation of HTF bias, selected FVG, and validation checks.",
   "parameters": {
-        "symbol": "Ticker",
+    "symbol": {SYMBOL},
     "direction": "LONG" | "SHORT",
     "entry_price": 0.00,
     "stop_loss": 0.00,

@@ -40,9 +40,10 @@ class DailySweepDeepStrategy(StrategyBase):
             timezone: ZoneInfo,
             main_tf: str = "5m",
             risk: float = 150.0,
+            tp_multiple: float = 1.5,
             fvg_mitigation: float = 0.75,
             sl_buffer: float = 0.0,
-            fvg_max_age_minutes: int = 120,
+            fvg_max_age_minutes: int = 30,
             priority: int = 1,
     ):
         super().__init__(main_tf, priority=priority)
@@ -55,6 +56,7 @@ class DailySweepDeepStrategy(StrategyBase):
 
         # Risk / Entry Config
         self.risk = risk
+        self.tp_multiple = tp_multiple
         self.entry_depth = fvg_mitigation  # 0.75 = 75% mitigation (deep pullback)
         self.sl_buffer_points = sl_buffer
         self.fvg_max_age_minutes = fvg_max_age_minutes
@@ -86,7 +88,7 @@ class DailySweepDeepStrategy(StrategyBase):
     # HELPERS: Bias / Sweep / FVG
     # -------------------------------------------------------------------------
 
-    def _get_level_map(self, df_htf: pd.DataFrame) -> dict:
+    def get_level_map(self, df_htf: pd.DataFrame) -> dict:
         """
         Build a dict of major levels for quick access (PDH/PDL/PWH/PWL/PMH/PML).
         """
@@ -96,8 +98,9 @@ class DailySweepDeepStrategy(StrategyBase):
             level_map[lvl["type"]] = lvl
         return level_map
 
-    def _validate_sweep(
-            self, df_htf: pd.DataFrame, level_map: dict, bias: BIAS
+    @staticmethod
+    def validate_sweep(
+            df_htf: pd.DataFrame, level_map: dict, bias: BIAS
     ) -> Optional[Tuple[str, float, pd.Timestamp, float, float]]:
         """
         Validate 1H sweep:
@@ -368,8 +371,8 @@ class DailySweepDeepStrategy(StrategyBase):
         if trend_bias == BIAS.NEUTRAL:
             return SignalSummary(direction="NEUTRAL")
 
-        level_map = self._get_level_map(df_htf)
-        sweep = self._validate_sweep(df_htf, level_map, trend_bias)
+        level_map = self.get_level_map(df_htf)
+        sweep = self.validate_sweep(df_htf, level_map, trend_bias)
         if not sweep:
             return SignalSummary(direction="NEUTRAL")
 
@@ -401,24 +404,10 @@ class DailySweepDeepStrategy(StrategyBase):
 
             entry, sl, tp2 = entry_sl_tp
 
-            # TP1: nearest internal 1H liquidity (pivot highs/lows)
-            pivot_highs, pivot_lows = self.htf_bos_detector.calculate_pivots(df_htf)
-            if trend_bias == BIAS.LONG:
-                above = [p["level"] for p in pivot_highs if p["level"] > entry]
-                tp1 = min(above) if above else None
-            else:
-                below = [p["level"] for p in pivot_lows if p["level"] < entry]
-                tp1 = max(below) if below else None
-
-            # Final TP preference: TP1 (internal liquidity) then TP2 (external level)
-            tp = tp1 if tp1 is not None else tp2
-            if tp is None:
-                return SignalSummary(direction="NEUTRAL")
-
             # Position sizing using existing risk engine
             pos_math = self.calculate_trade_position(
                 symbol=self.symbol,
-                tp_multiple=1.0,  # size only; TP is set explicitly below
+                tp_multiple=self.tp_multiple,
                 risk=self.risk,
                 entry_price=entry,
                 sl=sl,
@@ -427,6 +416,8 @@ class DailySweepDeepStrategy(StrategyBase):
 
             if pos_math["size"] <= 0 or pos_math["sl"] <= 0:
                 return SignalSummary(direction="NEUTRAL")
+
+            tp = pos_math["tp"]
 
             new_trade = TradeSignal(
                 action=TradeAction.ENTER,
@@ -442,8 +433,6 @@ class DailySweepDeepStrategy(StrategyBase):
                     "sweep_level": sweep_level,
                     "sweep_price": sweep_price,
                     "sweep_ts": sweep_ts,
-                    "tp1": tp1,
-                    "tp2": tp2,
                 },
             )
 

@@ -161,7 +161,10 @@ class BosFvgStrategy(StrategyBase):
         entry = params.get("entry_price")
         sl = params.get("stop_loss")
         tp = params.get("take_profit")
-        size = params.get("size") or 1
+        size = params.get("size")
+        size = int(size)
+        if size < 1:
+            size = 1
         if entry is None or sl is None or tp is None:
             return None, formatted_ai_message
 

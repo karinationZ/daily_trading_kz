@@ -20,7 +20,7 @@ from daily_trading.bots.smc_bot.strategy.StrategyBase import (
 from daily_trading.settings import logger
 
 
-class DailySweepDeepMitigationStrategy(StrategyBase):
+class DailySweepDeepStrategy(StrategyBase):
     """
     STRATEGY: Daily Sweep + Deep Mitigation (SMC)
 
@@ -35,15 +35,15 @@ class DailySweepDeepMitigationStrategy(StrategyBase):
     """
 
     def __init__(
-        self,
-        symbol: str,
-        timezone: ZoneInfo,
-        main_tf: str = "5m",
-        risk: float = 150.0,
-        deep_mitigation: float = 0.75,
-        sl_buffer_points: float = 0.0,
-        fvg_max_age_minutes: int = 120,
-        priority: int = 1,
+            self,
+            symbol: str,
+            timezone: ZoneInfo,
+            main_tf: str = "5m",
+            risk: float = 150.0,
+            fvg_mitigation: float = 0.75,
+            sl_buffer: float = 0.0,
+            fvg_max_age_minutes: int = 120,
+            priority: int = 1,
     ):
         super().__init__(main_tf, priority=priority)
 
@@ -55,8 +55,8 @@ class DailySweepDeepMitigationStrategy(StrategyBase):
 
         # Risk / Entry Config
         self.risk = risk
-        self.entry_depth = deep_mitigation  # 0.75 = 75% mitigation (deep pullback)
-        self.sl_buffer_points = sl_buffer_points
+        self.entry_depth = fvg_mitigation  # 0.75 = 75% mitigation (deep pullback)
+        self.sl_buffer_points = sl_buffer
         self.fvg_max_age_minutes = fvg_max_age_minutes
 
         # Session Config
@@ -85,25 +85,6 @@ class DailySweepDeepMitigationStrategy(StrategyBase):
     # -------------------------------------------------------------------------
     # HELPERS: Bias / Sweep / FVG
     # -------------------------------------------------------------------------
-    def _determine_trend_bias(self, df_htf: pd.DataFrame) -> BIAS:
-        """
-        Determine 1H bias using HH/HL vs LL/LH.
-        Bullish: latest high is HH and latest low is HL.
-        Bearish: latest high is LH and latest low is LL.
-        """
-        pivot_highs, pivot_lows = self.htf_bos_detector.calculate_pivots(df_htf)
-        if len(pivot_highs) < 1 or len(pivot_lows) < 1:
-            return BIAS.NEUTRAL
-
-        last_high = pivot_highs[-1]
-        last_low = pivot_lows[-1]
-
-        if last_high["type"] == "HH" and last_low["type"] == "HL":
-            return BIAS.LONG
-        if last_high["type"] == "LH" and last_low["type"] == "LL":
-            return BIAS.SHORT
-
-        return BIAS.NEUTRAL
 
     def _get_level_map(self, df_htf: pd.DataFrame) -> dict:
         """
@@ -116,7 +97,7 @@ class DailySweepDeepMitigationStrategy(StrategyBase):
         return level_map
 
     def _validate_sweep(
-        self, df_htf: pd.DataFrame, level_map: dict, bias: BIAS
+            self, df_htf: pd.DataFrame, level_map: dict, bias: BIAS
     ) -> Optional[Tuple[str, float, pd.Timestamp, float, float]]:
         """
         Validate 1H sweep:
@@ -133,7 +114,7 @@ class DailySweepDeepMitigationStrategy(StrategyBase):
 
         if bias == BIAS.LONG:
             candidates = []
-            for level_type in ["PDL", "PWL"]:
+            for level_type in ["PDL", "PWL", "PML"]:
                 level = level_map.get(level_type)
                 if not level:
                     continue
@@ -148,7 +129,7 @@ class DailySweepDeepMitigationStrategy(StrategyBase):
 
         if bias == BIAS.SHORT:
             candidates = []
-            for level_type in ["PDH", "PWH"]:
+            for level_type in ["PDH", "PWH", "PMH"]:
                 level = level_map.get(level_type)
                 if not level:
                     continue
@@ -194,13 +175,13 @@ class DailySweepDeepMitigationStrategy(StrategyBase):
         return None
 
     def _calc_entry_sl_tp(
-        self,
-        fvg: dict,
-        bias: BIAS,
-        sweep_high: float,
-        sweep_low: float,
-        level_map: dict,
-        entry_current_price: float,
+            self,
+            fvg: dict,
+            bias: BIAS,
+            sweep_high: float,
+            sweep_low: float,
+            level_map: dict,
+            entry_current_price: float,
     ) -> Optional[Tuple[float, float, float]]:
         """
         Compute entry (75% mitigation), SL beyond sweep swing, and TP1/TP2.
@@ -349,7 +330,8 @@ class DailySweepDeepMitigationStrategy(StrategyBase):
             else:
                 exit_type, exit_price, exit_reason = await self.check_broker_exit(ib_client, self.symbol, sl, tp)
                 if not exit_type:
-                    exit_type, exit_price, exit_reason = self.check_sl_tp_failure(curr, sl, tp, self.active_trade.direction)
+                    exit_type, exit_price, exit_reason = self.check_sl_tp_failure(curr, sl, tp,
+                                                                                  self.active_trade.direction)
                     if exit_type:
                         self.log.error(f"🚨 BROKER FAILURE DETECTED: Price ({exit_price}) passed limits. Forcing Exit.")
 
@@ -382,7 +364,7 @@ class DailySweepDeepMitigationStrategy(StrategyBase):
         # ==================================================================
         # 3. HTF TREND ANALYSIS + SWEEP VALIDATION
         # ==================================================================
-        trend_bias = self._determine_trend_bias(df_htf)
+        trend_bias = self.htf_bos_detector.get_current_trend(df_htf)
         if trend_bias == BIAS.NEUTRAL:
             return SignalSummary(direction="NEUTRAL")
 

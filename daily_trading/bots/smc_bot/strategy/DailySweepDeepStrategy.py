@@ -43,7 +43,6 @@ class DailySweepDeepStrategy(StrategyBase):
             tp_multiple: float = 1.5,
             fvg_mitigation: float = 0.75,
             sl_buffer: float = 0.0,
-            fvg_max_age_minutes: int = 30,
             priority: int = 1,
     ):
         super().__init__(main_tf, priority=priority)
@@ -59,7 +58,6 @@ class DailySweepDeepStrategy(StrategyBase):
         self.tp_multiple = tp_multiple
         self.entry_depth = fvg_mitigation  # 0.75 = 75% mitigation (deep pullback)
         self.sl_buffer_points = sl_buffer
-        self.fvg_max_age_minutes = fvg_max_age_minutes
 
         # Session Config
         if timezone == ZoneInfo("America/New_York"):
@@ -147,9 +145,15 @@ class DailySweepDeepStrategy(StrategyBase):
 
         return None
 
-    def _select_fvg_after_sweep(self, df_ltf: pd.DataFrame, bias: BIAS, sweep_ts: pd.Timestamp) -> Optional[dict]:
+    def _select_fvg_after_sweep(
+            self,
+            df_ltf: pd.DataFrame,
+            bias: BIAS,
+            sweep_ts: pd.Timestamp,
+    ) -> Optional[dict]:
         """
-        Select the most recent unmitigated FVG after the sweep close.
+        Select the MOST RECENT unmitigated FVG AFTER the sweep candle timestamp.
+        FVG list is assumed newest -> oldest (same as BosFvgStrategy).
         """
         result = self.ltf_fvg_detector.calculate_fvg(df_ltf, plot=False)
         fvg_signals = result.get("signals", [])
@@ -157,8 +161,6 @@ class DailySweepDeepStrategy(StrategyBase):
             return None
 
         target_bias_val = BIAS.LONG.num_value if bias == BIAS.LONG else BIAS.SHORT.num_value
-        max_age = timedelta(minutes=self.fvg_max_age_minutes)
-
         for fvg in fvg_signals:
             if fvg.get("bias") != target_bias_val:
                 continue
@@ -169,8 +171,8 @@ class DailySweepDeepStrategy(StrategyBase):
             if fvg_time is None:
                 continue
 
-            # Only accept FVGs created during/after the sweep impulse window.
-            if fvg_time < sweep_ts or fvg_time > sweep_ts + max_age:
+            # Only accept FVGs created after the sweep candle timestamp.
+            if fvg_time <= sweep_ts:
                 continue
 
             return fvg

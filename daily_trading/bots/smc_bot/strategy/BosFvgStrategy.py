@@ -126,6 +126,8 @@ class BosFvgStrategy(StrategyBase):
         ob_signals = active_swing + active_internal
         fvg_results = self.ltf_fvg_detector.calculate_fvg(df_ltf, plot=False)
         fvg_signals = fvg_results.get("signals", [])
+        pivot_high_points, pivot_low_points = self.ltf_fvg_detector.calculate_pivots(df_ltf)
+        pivots = {"5m_highs": pivot_high_points, "5m_lows": pivot_low_points}
         bos_choch_signals = self.htf_bos_detector.calculate_bos_choch(df_htf, plot=False).get("signals", [])
 
         asset_data = AssetData(
@@ -134,6 +136,7 @@ class BosFvgStrategy(StrategyBase):
             fvg_signals=fvg_signals,
             ob_signals=ob_signals,
             bos_choch_signals=bos_choch_signals,
+            high_lows=pivots,
             ohlc_1h=df_htf.tail(100).to_dict(orient="records"),
             ohlc_5m=df_ltf.tail(50).to_dict(orient="records"),
         )

@@ -101,9 +101,12 @@ class IBKRClient:
 
         contract_map = {
             # --- CASH SETTLED (Indices) ---
-            "MNQ": {"symbol": "MNQ", "exchange": "CME", "currency": "USD", "active_months": [3, 6, 9, 12], "min_days": 8, "physical_delivery": False},
-            "MES": {"symbol": "MES", "exchange": "CME", "currency": "USD", "active_months": [3, 6, 9, 12], "min_days": 8, "physical_delivery": False},
-            "MBT": {"symbol": "MBT", "exchange": "CME", "currency": "USD", "active_months": range(1, 13), "min_days": 2, "physical_delivery": False},
+            "MNQ": {"symbol": "MNQ", "exchange": "CME", "currency": "USD", "active_months": [3, 6, 9, 12],
+                    "min_days": 8, "physical_delivery": False},
+            "MES": {"symbol": "MES", "exchange": "CME", "currency": "USD", "active_months": [3, 6, 9, 12],
+                    "min_days": 8, "physical_delivery": False},
+            "MBT": {"symbol": "MBT", "exchange": "CME", "currency": "USD", "active_months": range(1, 13), "min_days": 2,
+                    "physical_delivery": False},
             # --- PHYSICAL DELIVERY (Commodities) ---
             # FIX: First Notice Day is often the last day of the PREVIOUS month.
             # Using Feb 1st - 3 days = Jan 29th is TOO LATE.
@@ -116,7 +119,8 @@ class IBKRClient:
                 "min_days": 8,
                 "physical_delivery": True,
             },
-            "MCL": {"symbol": "MCL", "exchange": "NYMEX", "currency": "USD", "active_months": range(1, 13), "min_days": 8, "physical_delivery": True},
+            "MCL": {"symbol": "MCL", "exchange": "NYMEX", "currency": "USD", "active_months": range(1, 13),
+                    "min_days": 8, "physical_delivery": True},
         }
 
         target = contract_map.get(symbol)
@@ -193,7 +197,8 @@ class IBKRClient:
         # Pick the nearest valid contract (which should now be April, since Feb is excluded)
         front_month = min(valid_contracts, key=lambda c: c.lastTradeDateOrContractMonth)
 
-        logger.info(f"✅ Resolved {symbol} -> {front_month.localSymbol} (Exp: {front_month.lastTradeDateOrContractMonth})")
+        logger.info(
+            f"✅ Resolved {symbol} -> {front_month.localSymbol} (Exp: {front_month.lastTradeDateOrContractMonth})")
 
         # Clear cache if we just switched contracts to force update
         self._conid_cache[symbol] = front_month
@@ -260,12 +265,12 @@ class IBKRClient:
         return sl_price, tp_price
 
     async def place_limit_order(
-        self,
-        symbol: str,
-        quantity: int,
-        price: float,
-        side: str,
-        order_ref: str = "TradingBot",
+            self,
+            symbol: str,
+            quantity: int,
+            price: float,
+            side: str,
+            order_ref: str = "TradingBot",
     ):
         contract = await self.get_futures_contract(symbol)
         price = self.round_to_tick(price, symbol)
@@ -280,14 +285,14 @@ class IBKRClient:
         return trade
 
     async def place_bracket_order(
-        self,
-        symbol: str,
-        quantity: int,
-        entry: float,
-        sl: float,
-        tp: float,
-        direction: str,
-        order_ref: str = "TradingBot",
+            self,
+            symbol: str,
+            quantity: int,
+            entry: float,
+            sl: float,
+            tp: float,
+            direction: str,
+            order_ref: str = "TradingBot",
     ):
         """Place Entry + SL + TP with thread-safe order ID management."""
 
@@ -420,7 +425,8 @@ class IBKRClient:
             # Fetch trades starting from a buffer before session start to match positions opened prior to 21:00 UTC
             prefetch_start = session_start - timedelta(days=1)
             api_time_filter = prefetch_start.strftime('%Y%m%d-%H:%M:%S')
-            executions = await asyncio.wait_for(self.ib.reqExecutionsAsync(ExecutionFilter(time=api_time_filter)), timeout=15)
+            executions = await asyncio.wait_for(self.ib.reqExecutionsAsync(ExecutionFilter(time=api_time_filter)),
+                                                timeout=15)
             # Attempt Account Summary commissions (best-effort; may be unavailable or zero).
             commission_total = None
             try:
@@ -558,7 +564,8 @@ class IBKRClient:
                         open_inventory[sym].pop(0)
 
                 if qty > 0:
-                    open_inventory[sym].append({"price": price, "qty": qty, "side": side, "time": fill_time, "commission": commission})
+                    open_inventory[sym].append(
+                        {"price": price, "qty": qty, "side": side, "time": fill_time, "commission": commission})
 
             # 4. REPORT GENERATION
             # If inventory remains, it's an OPEN position, not a "weird count" mismatch
@@ -573,18 +580,13 @@ class IBKRClient:
             net_pnl_icon = "🟢" if net_pnl >= 0 else "🔴"
             session_label = session_start.strftime('%d %b %H:%M')
 
-            commission_note = ""
-            if commission_total is None:
-                commission_note = " (IBKR commission data unavailable)"
-
             lines = [
                 f"📅 **REPORT: {utc_now.strftime('%Y-%m-%d')}**",
                 f"🕒 Session Start: {session_label} UTC",
                 f"👤 Account: `{account_id}`",
                 "────────────────",
                 f"💰 Net Liq: ${net_liq:,.2f}",
-                f"{pnl_icon} Session PnL (Gross): ${calculated_total_pnl:,.2f}",
-                f"{net_pnl_icon} Session PnL (Net): ${net_pnl:,.2f}{commission_note}",
+                f"{net_pnl_icon} Session PnL (Net): ${net_pnl:,.2f}",
                 f"🎲 Open PnL: ${unrealized:,.2f}",
                 "────────────────",
             ]

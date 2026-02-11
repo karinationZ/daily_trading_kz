@@ -482,6 +482,8 @@ class BosFvgStrategy(StrategyBase):
 
                     self.log.info(f"🚀 LIMIT ORDER PLACED: {new_trade.direction.name} @ {new_trade.price:.2f}")
                     return SignalSummary(direction=new_trade.direction.name, trade_signal=new_trade)
+                else:
+                    self.log.info(f"No valid setup found for {self.symbol}")
 
         # ==================================================================
         # 5. PENDING MANAGEMENT (Cutoff & Structure Update)

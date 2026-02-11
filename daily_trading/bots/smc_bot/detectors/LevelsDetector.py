@@ -94,9 +94,15 @@ class LevelsDetector(DetectorsBase):
 
         major_levels = []
 
-        # Get the EXACT timestamp of the very last candle in your data
-        # We use this to define "NOW"
-        last_candle_time = df.index[-1]
+        # CME session day start aligns to 18:00 America/New_York.
+        # Convert to NY timezone so DST is handled correctly (18:00 ET => 22:00/23:00 UTC).
+        ny_tz = "America/New_York"
+        df_local = df.tz_convert(ny_tz)
+        session_offset = "18h"
+
+        # Get the EXACT timestamp of the very last candle in your data (local tz)
+        # We use this to define "NOW" for closed-period logic.
+        last_candle_time = df_local.index[-1]
 
         # Helper Function to get the truly closed previous period
         def get_closed_level(resampled_df, period_name, strength):
@@ -110,7 +116,10 @@ class LevelsDetector(DetectorsBase):
 
             # Find the bin in resampled_df that corresponds to last_candle_time
             # 'asof' finds the nearest index label equal to or less than the value
-            current_period_idx = resampled_df.index.asof(last_candle_time)
+            # With label='right', the current period label is the smallest index >= last_candle_time
+            current_period_idx = resampled_df.index[resampled_df.index >= last_candle_time].min()
+            if pd.isna(current_period_idx):
+                return
 
             # Filter: Keep only fully completed periods (Strictly Less Than current period)
             completed_periods = resampled_df[resampled_df.index < current_period_idx]
@@ -118,27 +127,29 @@ class LevelsDetector(DetectorsBase):
             if not completed_periods.empty:
                 # The last item in this filtered list is the actual PREVIOUS period
                 prev_candle = completed_periods.iloc[-1]
-                start_time = completed_periods.index[-1]
+                # Convert local period label to UTC
+                start_time = completed_periods.index[-1].tz_convert("UTC")
 
                 major_levels.append({"type": f"P{period_name}H", "price": prev_candle['high'], "start_time": start_time, "strength": strength})
                 major_levels.append({"type": f"P{period_name}L", "price": prev_candle['low'], "start_time": start_time, "strength": strength})
 
         # --- 1. Daily Levels ---
-        if len(df) >= 24:
-            # Resample Daily
-            daily = df.resample('D').agg({'high': 'max', 'low': 'min'}).dropna()
+        if len(df_local) >= 2:
+            # Resample Daily with 18:00 ET session start (DST-aware).
+            # closed='left' ensures the boundary candle at session start belongs to the NEW session.
+            daily = df_local.resample('D', offset=session_offset, label='right', closed='left').agg({'high': 'max', 'low': 'min'}).dropna()
             get_closed_level(daily, "D", 2)
 
         # --- 2. Weekly Levels ---
-        if len(df) >= 120:
-            # Resample Weekly (Ends Sunday)
-            weekly = df.resample('W').agg({'high': 'max', 'low': 'min'}).dropna()
+        if len(df_local) >= 2:
+            # Resample Weekly with 18:00 ET session start (DST-aware)
+            weekly = df_local.resample('W', offset=session_offset, label='right', closed='left').agg({'high': 'max', 'low': 'min'}).dropna()
             get_closed_level(weekly, "W", 3)
 
         # --- 3. Monthly Levels ---
-        if len(df) >= 700:
-            # Resample Monthly (Month End)
-            monthly = df.resample('ME').agg({'high': 'max', 'low': 'min'}).dropna()
+        if len(df_local) >= 2:
+            # Resample Monthly with 18:00 ET session start (DST-aware)
+            monthly = df_local.resample('ME', offset=session_offset, label='right', closed='left').agg({'high': 'max', 'low': 'min'}).dropna()
             get_closed_level(monthly, "M", 4)
 
         return major_levels
@@ -195,6 +206,9 @@ class LevelsDetector(DetectorsBase):
                         start_time = ohlc.index[0]
                     else:
                         start_time = ohlc.index[idx_loc]
+                # Always extend PDH/PDL lines across the full visible chart
+                if sr["type"] in ["PDH", "PDL"]:
+                    start_time = ohlc.index[0]
 
                 end_time = ohlc.index[-1]
 

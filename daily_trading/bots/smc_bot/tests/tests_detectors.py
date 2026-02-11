@@ -201,12 +201,14 @@ async def test_support_resistance_levels():
     pathlib = f"/project/daily_trading/bots/smc_bot/tests/ohlc_data/{symbol.lower()}_1h.csv"
     ohlc = load_data(
         pathlib,
-        start_ts="2025-10-01 00:00:00+00:00",
-        end_ts="2025-10-31 00:00:00+00:00"
+        start_ts="2025-07-01 00:00:00+00:00",
+        end_ts="2025-07-30 00:00:00+00:00"
     )
+    # print(ohlc.tail(500).to_string())
 
     detector = LevelsDetector(main_tf="1h")
     results = detector.calculate_major_levels(ohlc)
+    print(results)
     fig = detector.plot_levels(ohlc, results)
     fig.show()
 

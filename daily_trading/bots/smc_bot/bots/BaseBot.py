@@ -787,7 +787,7 @@ class SMCBotBase:
         if tasks:
             logger.info(f"🔧 Running {len(tasks)} strategy tasks...")
             try:
-                results = await asyncio.wait_for(asyncio.gather(*tasks, return_exceptions=True), timeout=180)
+                results = await asyncio.wait_for(asyncio.gather(*tasks, return_exceptions=True), timeout=300)
 
                 # Check each result
                 for i, result in enumerate(results):

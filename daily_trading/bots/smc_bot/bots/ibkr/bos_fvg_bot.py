@@ -12,10 +12,12 @@ CONFIG = [
     {'name': 'MGC_NY_rr1.2_mit0.5_sl0.8', 'symbol': 'MGC', 'tz_name': 'NY', 'rr': 1.2, 'mit': 0.5, 'sl_buffer_mult': 0.8},
     {'name': 'MBT_NY_rr1.4_mit0.75_sl0.8', 'symbol': 'MBT', 'tz_name': 'NY', 'rr': 1.4, 'mit': 0.75, 'sl_buffer_mult': 0.8},
     # ASIA
+    {'name': 'MES_ASIA_rr1.8_mit0.75_sl0.1', 'symbol': 'MES', 'tz_name': 'ASIA', 'rr': 1.8, 'mit': 0.75,'sl_buffer_mult': 0.1},
     {'name': 'MGC_ASIA_rr1.2_mit0.5_sl0.8', 'symbol': 'MGC', 'tz_name': 'ASIA', 'rr': 1.2, 'mit': 0.5, 'sl_buffer_mult': 0.8},
     {'name': 'MNQ_ASIA_rr1.2_mit0.75_sl0.2', 'symbol': 'MNQ', 'tz_name': 'ASIA', 'rr': 1.2, 'mit': 0.75, 'sl_buffer_mult': 0.2},
     {'name': 'MBT_ASIA_rr1.2_mit0.95_sl0.5', 'symbol': 'MBT', 'tz_name': 'ASIA', 'rr': 1.2, 'mit': 0.95, 'sl_buffer_mult': 0.5},
     # LONDON
+    {'name': 'MES_LONDON_rr1.2_mit0.95_sl0.8', 'symbol': 'MES', 'tz_name': 'LONDON', 'rr': 1.2, 'mit': 0.95,'sl_buffer_mult': 0.8},
     {'name': 'MNQ_LONDON_rr1.2_mit0.75_sl0.5', 'symbol': 'MNQ', 'tz_name': 'LONDON', 'rr': 1.2, 'mit': 0.75, 'sl_buffer_mult': 0.5},
     {'name': 'MGC_LONDON_rr1.4_mit0.5_sl0.5', 'symbol': 'MGC', 'tz_name': 'LONDON', 'rr': 1.4, 'mit': 0.5, 'sl_buffer_mult': 0.5},
     {'name': 'MBT_LONDON_rr1.2_mit0.95_sl0.5', 'symbol': 'MBT', 'tz_name': 'LONDON', 'rr': 1.2, 'mit': 0.95, 'sl_buffer_mult': 0.5},

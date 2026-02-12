@@ -567,6 +567,29 @@ class IBKRClient:
                     open_inventory[sym].append(
                         {"price": price, "qty": qty, "side": side, "time": fill_time, "commission": commission})
 
+            # 3C. Reconcile with LIVE positions to avoid phantom inventory.
+            # If IBKR says we're flat, clear any unmatched execution leftovers.
+            live_positions = {p.contract.symbol: p for p in self.ib.positions()}
+            for sym in list(open_inventory.keys()):
+                pos = live_positions.get(sym)
+                if not pos or abs(float(pos.position)) < 1e-9:
+                    open_inventory.pop(sym, None)
+
+            # If live positions exist but weren't captured by executions, add them explicitly.
+            for sym, pos in live_positions.items():
+                if abs(float(pos.position)) < 1e-9:
+                    continue
+                if sym not in open_inventory:
+                    avg_cost = getattr(pos, "avgCost", 0.0)
+                    open_inventory[sym] = [
+                        {
+                            "price": avg_cost,
+                            "qty": abs(float(pos.position)),
+                            "side": "BOT" if pos.position > 0 else "SLD",
+                            "time": utc_now,
+                        }
+                    ]
+
             # 4. REPORT GENERATION
             # If inventory remains, it's an OPEN position, not a "weird count" mismatch
 
@@ -663,15 +686,16 @@ class IBKRClient:
             else:
                 lines.append("💤 No round-trip trades this session.")
 
-            # List Active Inventory (Partial fills or Open positions)
-            if any(open_inventory.values()):
+            # List Active Holdings (LIVE positions only)
+            positions = self.get_active_positions()
+            active_holdings = [p for p in positions if p.position != 0]
+            if active_holdings:
                 lines.append("────────────────")
                 lines.append("🏗️ **Active Inventory (Unclosed):**")
-                for sym, items in open_inventory.items():
-                    total_qty = sum(i['qty'] for i in items)
-                    if total_qty > 0:
-                        side = items[0]['side']
-                        lines.append(f"• {sym}: {side} {int(total_qty)} (Avg: {items[0]['price']:.2f})")
+                for p in active_holdings:
+                    side = "BOT" if p.position > 0 else "SLD"
+                    avg_cost = getattr(p, "avgCost", 0.0)
+                    lines.append(f"• {p.contract.symbol}: {side} {abs(int(p.position))} (Avg: {avg_cost:.2f})")
             else:
                 lines.append("────────────────")
                 lines.append("🧘 **Inventory: FLAT**")

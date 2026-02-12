@@ -50,15 +50,15 @@ class BosFvgStrategy(StrategyBase):
     """
 
     def __init__(
-        self,
-        symbol: str,
-        timezone: ZoneInfo,
-        main_tf="5m",  # LTF for Entry execution
-        risk: float = 150.0,
-        tp_multiple: float = 2.0,
-        fvg_mitigation_ratio: float = 0.5,  # 0.5 = Entry at 50% of FVG
-        sl_buffer_mult: float = 0.1,
-        priority: int = 1,
+            self,
+            symbol: str,
+            timezone: ZoneInfo,
+            main_tf="5m",  # LTF for Entry execution
+            risk: float = 150.0,
+            tp_multiple: float = 2.0,
+            fvg_mitigation_ratio: float = 0.5,  # 0.5 = Entry at 50% of FVG
+            sl_buffer_mult: float = 0.1,
+            priority: int = 1,
     ):
 
         super().__init__(main_tf, priority=priority)
@@ -99,7 +99,7 @@ class BosFvgStrategy(StrategyBase):
 
         self.ai_throttle_minutes = 30
         self.last_ai_call_ts: Optional[pd.Timestamp] = None
-        self.use_ai = symbol in ["MBT", "MNQ", "MGC"]
+        self.use_ai = symbol in ["MES", "MNQ", "MGC", "MBT"]
 
         # --- STATE ---
         self.active_trade: Optional[TradeSignal] = None
@@ -261,7 +261,8 @@ class BosFvgStrategy(StrategyBase):
 
             # E. Calculate Position Size
             pos_math = self.calculate_trade_position(
-                symbol=self.symbol, tp_multiple=self.tp_multiple, risk=self.risk, entry_price=entry, sl=sl, direction=htf_bias
+                symbol=self.symbol, tp_multiple=self.tp_multiple, risk=self.risk, entry_price=entry, sl=sl,
+                direction=htf_bias
             )
 
             # Gatekeeper (Risk Management)
@@ -411,7 +412,8 @@ class BosFvgStrategy(StrategyBase):
                 exit_type, exit_price, exit_reason = await self.check_broker_exit(ib_client, self.symbol, sl, tp)
 
                 if not exit_type:
-                    exit_type, exit_price, exit_reason = self.check_sl_tp_failure(curr, sl, tp, self.active_trade.direction)
+                    exit_type, exit_price, exit_reason = self.check_sl_tp_failure(curr, sl, tp,
+                                                                                  self.active_trade.direction)
                     if exit_type:
                         self.log.error(f"🚨 BROKER FAILURE DETECTED: Price ({exit_price}) passed limits. Forcing Exit.")
 

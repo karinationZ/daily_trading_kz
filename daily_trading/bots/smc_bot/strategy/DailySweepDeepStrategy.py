@@ -43,6 +43,10 @@ class DailySweepDeepStrategy(StrategyBase):
             tp_multiple: float = 1.5,
             fvg_mitigation: float = 0.75,
             sl_buffer: float = 0.0,
+            fvg_window_bars: int = 12,
+            require_ltf_reclaim: bool = False,
+            ltf_reclaim_window_bars: int = 6,
+            ltf_displacement_atr_mult: float = 1.0,
             priority: int = 1,
     ):
         super().__init__(main_tf, priority=priority)
@@ -58,6 +62,12 @@ class DailySweepDeepStrategy(StrategyBase):
         self.tp_multiple = tp_multiple
         self.entry_depth = fvg_mitigation  # 0.75 = 75% mitigation (deep pullback)
         self.sl_buffer_points = sl_buffer
+        # Allow FVGs created within N LTF candles after the sweep
+        self.fvg_window_bars = fvg_window_bars
+        # Optional LTF reclaim + displacement confirmation
+        self.require_ltf_reclaim = require_ltf_reclaim
+        self.ltf_reclaim_window_bars = ltf_reclaim_window_bars
+        self.ltf_displacement_atr_mult = ltf_displacement_atr_mult
 
         # Session Config
         if timezone == ZoneInfo("America/New_York"):
@@ -89,11 +99,16 @@ class DailySweepDeepStrategy(StrategyBase):
     def get_level_map(self, df_htf: pd.DataFrame) -> dict:
         """
         Build a dict of major levels for quick access (PDH/PDL/PWH/PWL/PMH/PML).
+        Also include HTF support/resistance levels to widen liquidity pool targets.
         """
         levels = self.levels_detector.calculate_major_levels(df_htf)
+        sr = self.levels_detector.calculate_support_resistance_levels(df_htf, plot=False)
         level_map = {}
         for lvl in levels:
             level_map[lvl["type"]] = lvl
+        # Use stronger S/R levels to avoid noise
+        level_map["SR_SUPPORTS"] = [l for l in sr.get("support_levels", []) if l.get("strength", 0) >= 2]
+        level_map["SR_RESISTANCES"] = [l for l in sr.get("resistance_levels", []) if l.get("strength", 0) >= 2]
         return level_map
 
     @staticmethod
@@ -122,6 +137,11 @@ class DailySweepDeepStrategy(StrategyBase):
                 lvl_price = level["price"]
                 if last["low"] < lvl_price and last["close"] > lvl_price:
                     candidates.append((level_type, lvl_price))
+            # Add HTF support levels as additional liquidity pools
+            for level in level_map.get("SR_SUPPORTS", []):
+                lvl_price = level["price"]
+                if last["low"] < lvl_price and last["close"] > lvl_price:
+                    candidates.append(("SR_SUPPORT", lvl_price))
             if not candidates:
                 return None
             # Choose the closest swept level to current price (most relevant reclaim)
@@ -137,6 +157,11 @@ class DailySweepDeepStrategy(StrategyBase):
                 lvl_price = level["price"]
                 if last["high"] > lvl_price and last["close"] < lvl_price:
                     candidates.append((level_type, lvl_price))
+            # Add HTF resistance levels as additional liquidity pools
+            for level in level_map.get("SR_RESISTANCES", []):
+                lvl_price = level["price"]
+                if last["high"] > lvl_price and last["close"] < lvl_price:
+                    candidates.append(("SR_RESISTANCE", lvl_price))
             if not candidates:
                 return None
             # Choose the closest swept level to current price (most relevant reclaim)
@@ -152,7 +177,7 @@ class DailySweepDeepStrategy(StrategyBase):
             sweep_ts: pd.Timestamp,
     ) -> Optional[dict]:
         """
-        Select the MOST RECENT unmitigated FVG AFTER the sweep candle timestamp.
+        Select the MOST RECENT unmitigated FVG created within N LTF candles AFTER sweep timestamp.
         FVG list is assumed newest -> oldest (same as BosFvgStrategy).
         """
         result = self.ltf_fvg_detector.calculate_fvg(df_ltf, plot=False)
@@ -161,6 +186,11 @@ class DailySweepDeepStrategy(StrategyBase):
             return None
 
         target_bias_val = BIAS.LONG.num_value if bias == BIAS.LONG else BIAS.SHORT.num_value
+        if len(df_ltf) >= 2:
+            bar_delta = df_ltf.index[-1] - df_ltf.index[-2]
+        else:
+            bar_delta = timedelta(minutes=5)
+        max_age = bar_delta * self.fvg_window_bars
         for fvg in fvg_signals:
             if fvg.get("bias") != target_bias_val:
                 continue
@@ -172,12 +202,51 @@ class DailySweepDeepStrategy(StrategyBase):
                 continue
 
             # Only accept FVGs created after the sweep candle timestamp.
-            if fvg_time <= sweep_ts:
+            if fvg_time <= sweep_ts or fvg_time > sweep_ts + max_age:
                 continue
 
             return fvg
 
         return None
+
+    def _confirm_ltf_reclaim_displacement(
+            self,
+            df_ltf: pd.DataFrame,
+            bias: BIAS,
+            sweep_ts: pd.Timestamp,
+            level_price: float,
+    ) -> bool:
+        """
+        Optional filter: after the sweep timestamp, require a 5m reclaim candle
+        with displacement (large body vs ATR) back inside the swept level.
+        """
+        if not self.require_ltf_reclaim:
+            return True
+
+        # Use last N LTF candles AFTER sweep_ts
+        ltf_after = df_ltf[df_ltf.index > sweep_ts]
+        if ltf_after.empty:
+            return False
+
+        window = ltf_after.tail(self.ltf_reclaim_window_bars)
+        atr = self.ltf_fvg_detector.get_current_atr(df_ltf)
+        min_body = atr * self.ltf_displacement_atr_mult
+
+        for _, row in window.iterrows():
+            body = abs(row["close"] - row["open"])
+
+            if bias == BIAS.LONG:
+                reclaimed = row["low"] < level_price and row["close"] > level_price
+                displaced = row["close"] > row["open"] and body >= min_body
+                if reclaimed and displaced:
+                    return True
+            else:
+                reclaimed = row["high"] > level_price and row["close"] < level_price
+                displaced = row["close"] < row["open"] and body >= min_body
+                if reclaimed and displaced:
+                    return True
+
+        return False
 
     def _calc_entry_sl_tp(
             self,
@@ -379,6 +448,10 @@ class DailySweepDeepStrategy(StrategyBase):
             return SignalSummary(direction="NEUTRAL")
 
         sweep_level, sweep_price, sweep_ts, sweep_high, sweep_low = sweep
+
+        # Optional LTF reclaim + displacement confirmation
+        if not self._confirm_ltf_reclaim_displacement(df_ltf, trend_bias, sweep_ts, sweep_price):
+            return SignalSummary(direction="NEUTRAL")
 
         # ==================================================================
         # 4. NEW ENTRY SEARCH (FVG AFTER SWEEP)

@@ -418,7 +418,7 @@ class IBKRClient:
             tz = timezone.utc
             utc_now = datetime.now(tz)
 
-            session_start = utc_now.replace(hour=23, minute=0, second=0, microsecond=0)
+            session_start = utc_now.replace(hour=22, minute=0, second=0, microsecond=0)
             if utc_now < session_start:
                 session_start = session_start - timedelta(days=1)
 

@@ -418,7 +418,7 @@ class IBKRClient:
             tz = timezone.utc
             utc_now = datetime.now(tz)
 
-            session_start = utc_now.replace(hour=22, minute=0, second=0, microsecond=0)
+            session_start = utc_now.replace(hour=23, minute=0, second=0, microsecond=0)
             if utc_now < session_start:
                 session_start = session_start - timedelta(days=1)
 
@@ -452,6 +452,8 @@ class IBKRClient:
 
             # 3. FIFO MATCHING LOGIC
             consolidated_trades = []
+            # Track open lots FIFO by symbol + strategy tag (orderRef).
+            # This prevents cross-strategy matching in the report.
             open_inventory = {}
             calculated_total_pnl = 0.0
 
@@ -462,21 +464,25 @@ class IBKRClient:
                 price = fill.execution.avgPrice
                 qty = abs(float(fill.execution.shares))
                 fill_time = _to_utc(fill.time)
+                ref_tag = fill.execution.orderRef or "Unknown"
 
-                if sym not in open_inventory:
-                    open_inventory[sym] = []
+                inv_key = (sym, ref_tag)
+                if inv_key not in open_inventory:
+                    open_inventory[inv_key] = []
                 needed_side = "SLD" if side == "BOT" else "BOT"
 
-                while qty > 0 and open_inventory[sym] and open_inventory[sym][0]["side"] == needed_side:
-                    match = open_inventory[sym][0]
+                while qty > 0 and open_inventory[inv_key] and open_inventory[inv_key][0]["side"] == needed_side:
+                    match = open_inventory[inv_key][0]
                     match_qty = min(qty, match["qty"])
                     qty -= match_qty
                     match["qty"] -= match_qty
                     if match["qty"] <= 0:
-                        open_inventory[sym].pop(0)
+                        open_inventory[inv_key].pop(0)
 
                 if qty > 0:
-                    open_inventory[sym].append({"price": price, "qty": qty, "side": side, "time": fill_time})
+                    open_inventory[inv_key].append(
+                        {"price": price, "qty": qty, "side": side, "time": fill_time}
+                    )
 
             # 3B. Session fills (PnL counted)
             for fill in todays_fills:
@@ -489,13 +495,14 @@ class IBKRClient:
                 # Tag (Strategy Name)
                 ref_tag = fill.execution.orderRef or "Unknown"
 
-                if sym not in open_inventory:
-                    open_inventory[sym] = []
+                inv_key = (sym, ref_tag)
+                if inv_key not in open_inventory:
+                    open_inventory[inv_key] = []
                 needed_side = "SLD" if side == "BOT" else "BOT"
 
                 # Check for match in inventory
-                while qty > 0 and open_inventory[sym] and open_inventory[sym][0]["side"] == needed_side:
-                    match = open_inventory[sym][0]
+                while qty > 0 and open_inventory[inv_key] and open_inventory[inv_key][0]["side"] == needed_side:
+                    match = open_inventory[inv_key][0]
                     match_qty = min(qty, match["qty"])
                     is_long = match["side"] == "BOT"
 
@@ -523,26 +530,30 @@ class IBKRClient:
                     qty -= match_qty
                     match["qty"] -= match_qty
                     if match["qty"] <= 0:
-                        open_inventory[sym].pop(0)
+                        open_inventory[inv_key].pop(0)
 
                 if qty > 0:
-                    open_inventory[sym].append({"price": price, "qty": qty, "side": side, "time": fill_time})
+                    open_inventory[inv_key].append(
+                        {"price": price, "qty": qty, "side": side, "time": fill_time}
+                    )
 
             # 3C. Reconcile with LIVE positions to avoid phantom inventory.
             # If IBKR says we're flat, clear any unmatched execution leftovers.
             live_positions = {p.contract.symbol: p for p in self.ib.positions()}
-            for sym in list(open_inventory.keys()):
+            for key in list(open_inventory.keys()):
+                sym = key[0] if isinstance(key, tuple) else key
                 pos = live_positions.get(sym)
                 if not pos or abs(float(pos.position)) < 1e-9:
-                    open_inventory.pop(sym, None)
+                    open_inventory.pop(key, None)
 
             # If live positions exist but weren't captured by executions, add them explicitly.
+            existing_syms = {k[0] if isinstance(k, tuple) else k for k in open_inventory.keys()}
             for sym, pos in live_positions.items():
                 if abs(float(pos.position)) < 1e-9:
                     continue
-                if sym not in open_inventory:
+                if sym not in existing_syms:
                     avg_cost = getattr(pos, "avgCost", 0.0)
-                    open_inventory[sym] = [
+                    open_inventory[(sym, "LIVE")] = [
                         {
                             "price": avg_cost,
                             "qty": abs(float(pos.position)),
@@ -579,14 +590,15 @@ class IBKRClient:
                 grouped = {}
 
                 def _entry_bucket(dt):
-                    return dt.replace(second=0, microsecond=0)
+                    # Round to nearest minute to allow small split fills
+                    # (e.g., 01:03:59 and 01:04:00) to consolidate together.
+                    return (dt + timedelta(seconds=30)).replace(second=0, microsecond=0)
 
                 for t in consolidated_trades:
                     key = (
                         t["symbol"],
-                        t["direction"],
-                        _entry_bucket(t["entry_dt"]),
                         t["tag"],
+                        _entry_bucket(t["entry_dt"]),
                     )
                     if key not in grouped:
                         grouped[key] = {

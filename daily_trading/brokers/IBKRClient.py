@@ -425,53 +425,29 @@ class IBKRClient:
             # Fetch trades starting from a buffer before session start to match positions opened prior to 21:00 UTC
             prefetch_start = session_start - timedelta(days=1)
             api_time_filter = prefetch_start.strftime('%Y%m%d-%H:%M:%S')
-            executions = await asyncio.wait_for(self.ib.reqExecutionsAsync(ExecutionFilter(time=api_time_filter)),
-                                                timeout=15)
-            # Attempt Account Summary commissions (best-effort; may be unavailable or zero).
-            commission_total = None
-            try:
-                try:
-                    # ib_async signature may accept no args; prefer that first.
-                    acct_summary = await self.ib.reqAccountSummaryAsync()
-                except TypeError:
-                    # Fallback for alternate signatures (ib_insync style).
-                    acct_summary = await self.ib.reqAccountSummaryAsync(
-                        "All",
-                        "NetLiquidation,UnrealizedPnL,RealizedPnL,Commission,TotalCommission",
-                    )
-                commission_tags = {}
-                for s in acct_summary:
-                    if s.account == account_id and s.currency == "USD" and "Commission" in s.tag:
-                        try:
-                            commission_tags[s.tag] = float(s.value)
-                        except Exception:
-                            commission_tags[s.tag] = s.value
-                if commission_tags:
-                    # Prefer TotalCommission if present, otherwise any single Commission tag.
-                    if "TotalCommission" in commission_tags:
-                        commission_total = float(commission_tags["TotalCommission"])
-                    elif "Commission" in commission_tags:
-                        commission_total = float(commission_tags["Commission"])
-                logger.info(f"AccountSummary commission tags: {commission_tags}")
-            except Exception as e:
-                logger.warning(f"AccountSummary commissions not available: {e}")
-            commissions = {}
-            if hasattr(self.ib, "commissions"):
-                try:
-                    commissions = {c.execId: c.commission for c in self.ib.commissions()}
-                except Exception:
-                    commissions = {}
-            logger.info(f"Commission entries loaded: {len(commissions)}")
+            executions = await asyncio.wait_for(
+                self.ib.reqExecutionsAsync(ExecutionFilter(time=api_time_filter)),
+                timeout=15
+            )
+            if not executions:
+                executions = await asyncio.wait_for(self.ib.reqExecutionsAsync(), timeout=15)
             logger.info(f"RealizedPnL (IBKR): {realized:,.2f}")
+
+            def _to_utc(dt):
+                if dt is None:
+                    return None
+                if dt.tzinfo is None:
+                    return dt.replace(tzinfo=timezone.utc)
+                return dt.astimezone(timezone.utc)
 
             # Split fills into pre-session and session so we can seed inventory
             pre_session_fills = sorted(
-                [f for f in executions if f.time.astimezone(tz) < session_start],
-                key=lambda x: (x.time, x.execution.execId),
+                [f for f in executions if _to_utc(f.time) and _to_utc(f.time) < session_start],
+                key=lambda x: (_to_utc(x.time), x.execution.execId),
             )
             todays_fills = sorted(
-                [f for f in executions if f.time.astimezone(tz) >= session_start],
-                key=lambda x: (x.time, x.execution.execId),
+                [f for f in executions if _to_utc(f.time) and _to_utc(f.time) >= session_start],
+                key=lambda x: (_to_utc(x.time), x.execution.execId),
             )
 
             # 3. FIFO MATCHING LOGIC
@@ -485,7 +461,7 @@ class IBKRClient:
                 side = fill.execution.side
                 price = fill.execution.avgPrice
                 qty = abs(float(fill.execution.shares))
-                fill_time = fill.time.astimezone(tz)
+                fill_time = _to_utc(fill.time)
 
                 if sym not in open_inventory:
                     open_inventory[sym] = []
@@ -508,15 +484,7 @@ class IBKRClient:
                 side = fill.execution.side
                 price = fill.execution.avgPrice
                 qty = abs(float(fill.execution.shares))
-                fill_time = fill.time.astimezone(tz)
-                commission = 0.0
-                if getattr(fill, "commissionReport", None) is not None:
-                    try:
-                        commission = float(fill.commissionReport.commission or 0.0)
-                    except Exception:
-                        commission = 0.0
-                if commission == 0.0:
-                    commission = float(commissions.get(fill.execution.execId, 0.0) or 0.0)
+                fill_time = _to_utc(fill.time)
 
                 # Tag (Strategy Name)
                 ref_tag = fill.execution.orderRef or "Unknown"
@@ -536,10 +504,6 @@ class IBKRClient:
 
                     diff = price - match["price"] if is_long else match["price"] - price
                     pnl = diff * match_qty * mult
-                    # Apply commissions from both legs proportionally to matched quantity
-                    entry_comm = match.get("commission", 0.0) * (match_qty / match["qty"]) if match["qty"] else 0.0
-                    exit_comm = commission * (match_qty / qty) if qty else 0.0
-                    pnl -= entry_comm + exit_comm
                     calculated_total_pnl += pnl
 
                     consolidated_trades.append(
@@ -553,19 +517,16 @@ class IBKRClient:
                             "entry_price": match["price"],
                             "exit_price": price,
                             "tag": ref_tag,
-                            "commission": entry_comm + exit_comm,
                         }
                     )
 
                     qty -= match_qty
                     match["qty"] -= match_qty
-                    match["commission"] = max(0.0, match.get("commission", 0.0) - entry_comm)
                     if match["qty"] <= 0:
                         open_inventory[sym].pop(0)
 
                 if qty > 0:
-                    open_inventory[sym].append(
-                        {"price": price, "qty": qty, "side": side, "time": fill_time, "commission": commission})
+                    open_inventory[sym].append({"price": price, "qty": qty, "side": side, "time": fill_time})
 
             # 3C. Reconcile with LIVE positions to avoid phantom inventory.
             # If IBKR says we're flat, clear any unmatched execution leftovers.
@@ -594,10 +555,7 @@ class IBKRClient:
             # If inventory remains, it's an OPEN position, not a "weird count" mismatch
 
             # Use IBKR account realized PnL directly for session summary
-            if commission_total is not None:
-                calculated_total_pnl = realized + commission_total
-            else:
-                calculated_total_pnl = realized
+            calculated_total_pnl = realized
             pnl_icon = "🟢" if calculated_total_pnl >= 0 else "🔴"
             net_pnl = realized
             net_pnl_icon = "🟢" if net_pnl >= 0 else "🔴"
@@ -686,16 +644,13 @@ class IBKRClient:
             else:
                 lines.append("💤 No round-trip trades this session.")
 
-            # List Active Holdings (LIVE positions only)
             positions = self.get_active_positions()
             active_holdings = [p for p in positions if p.position != 0]
             if active_holdings:
                 lines.append("────────────────")
-                lines.append("🏗️ **Active Inventory (Unclosed):**")
+                lines.append("🏗️**Active Holdings:**")
                 for p in active_holdings:
-                    side = "BOT" if p.position > 0 else "SLD"
-                    avg_cost = getattr(p, "avgCost", 0.0)
-                    lines.append(f"• {p.contract.symbol}: {side} {abs(int(p.position))} (Avg: {avg_cost:.2f})")
+                    lines.append(f"• {p.contract.symbol}")
             else:
                 lines.append("────────────────")
                 lines.append("🧘 **Inventory: FLAT**")

@@ -502,11 +502,8 @@ class IBKRClient:
 
         # Build report - clean and simple like your original
         lines = [
-            "=" * 50,
-            "📊 **DAILY TRADING SUMMARY**",
-            "=" * 50,
-            f"Session: {start_pt.strftime('%Y-%m-%d %H:%M')} PT – {end_pt.strftime('%H:%M')} PT",
-            f"Account: {account_id}",
+            "\n📊 **DAILY TRADING SUMMARY**\n",
+            f"Start: {start_pt.strftime('%Y-%m-%d %H:%M')} PT – {end_pt.strftime('%H:%M')} PT",
             "",
             "📈 **ACCOUNT SUMMARY:**",
             f"💰 Net Liq: ${net_liq:,.2f}",
@@ -534,7 +531,7 @@ class IBKRClient:
             lines.append("")
 
         # Footer
-        lines.extend(["-" * 50, f"Report generated: {end_pt.strftime('%Y-%m-%d %H:%M:%S')} PT", "=" * 50])
+        lines.extend([f"\nReport generated: {end_pt.strftime('%Y-%m-%d %H:%M:%S')} PT\n"])
 
         return "\n".join(lines)
 

@@ -35,19 +35,19 @@ class DailySweepDeepStrategy(StrategyBase):
     """
 
     def __init__(
-            self,
-            symbol: str,
-            timezone: ZoneInfo,
-            main_tf: str = "5m",
-            risk: float = 150.0,
-            tp_multiple: float = 1.5,
-            fvg_mitigation: float = 0.75,
-            sl_buffer: float = 0.0,
-            fvg_window_bars: int = 12,
-            require_ltf_reclaim: bool = False,
-            ltf_reclaim_window_bars: int = 6,
-            ltf_displacement_atr_mult: float = 1.0,
-            priority: int = 1,
+        self,
+        symbol: str,
+        timezone: ZoneInfo,
+        main_tf: str = "5m",
+        risk: float = 150.0,
+        tp_multiple: float = 1.5,
+        fvg_mitigation: float = 0.75,
+        sl_buffer: float = 0.0,
+        fvg_window_bars: int = 12,
+        require_ltf_reclaim: bool = False,
+        ltf_reclaim_window_bars: int = 6,
+        ltf_displacement_atr_mult: float = 1.0,
+        priority: int = 1,
     ):
         super().__init__(main_tf, priority=priority)
 
@@ -107,14 +107,12 @@ class DailySweepDeepStrategy(StrategyBase):
         for lvl in levels:
             level_map[lvl["type"]] = lvl
         # Use stronger S/R levels to avoid noise
-        level_map["SR_SUPPORTS"] = [l for l in sr.get("support_levels", []) if l.get("strength", 0) >= 2]
-        level_map["SR_RESISTANCES"] = [l for l in sr.get("resistance_levels", []) if l.get("strength", 0) >= 2]
+        level_map["SR_SUPPORTS"] = [lev for lev in sr.get("support_levels", []) if lev.get("strength", 0) >= 2]
+        level_map["SR_RESISTANCES"] = [lev for lev in sr.get("resistance_levels", []) if lev.get("strength", 0) >= 2]
         return level_map
 
     @staticmethod
-    def validate_sweep(
-            df_htf: pd.DataFrame, level_map: dict, bias: BIAS
-    ) -> Optional[Tuple[str, float, pd.Timestamp, float, float]]:
+    def validate_sweep(df_htf: pd.DataFrame, level_map: dict, bias: BIAS) -> Optional[Tuple[str, float, pd.Timestamp, float, float]]:
         """
         Validate 1H sweep:
         - Long: sweep below PDL/PWL and close back above.
@@ -171,10 +169,10 @@ class DailySweepDeepStrategy(StrategyBase):
         return None
 
     def _select_fvg_after_sweep(
-            self,
-            df_ltf: pd.DataFrame,
-            bias: BIAS,
-            sweep_ts: pd.Timestamp,
+        self,
+        df_ltf: pd.DataFrame,
+        bias: BIAS,
+        sweep_ts: pd.Timestamp,
     ) -> Optional[dict]:
         """
         Select the MOST RECENT unmitigated FVG created within N LTF candles AFTER sweep timestamp.
@@ -210,11 +208,11 @@ class DailySweepDeepStrategy(StrategyBase):
         return None
 
     def _confirm_ltf_reclaim_displacement(
-            self,
-            df_ltf: pd.DataFrame,
-            bias: BIAS,
-            sweep_ts: pd.Timestamp,
-            level_price: float,
+        self,
+        df_ltf: pd.DataFrame,
+        bias: BIAS,
+        sweep_ts: pd.Timestamp,
+        level_price: float,
     ) -> bool:
         """
         Optional filter: after the sweep timestamp, require a 5m reclaim candle
@@ -249,13 +247,13 @@ class DailySweepDeepStrategy(StrategyBase):
         return False
 
     def _calc_entry_sl_tp(
-            self,
-            fvg: dict,
-            bias: BIAS,
-            sweep_high: float,
-            sweep_low: float,
-            level_map: dict,
-            entry_current_price: float,
+        self,
+        fvg: dict,
+        bias: BIAS,
+        sweep_high: float,
+        sweep_low: float,
+        level_map: dict,
+        entry_current_price: float,
     ) -> Optional[Tuple[float, float, float]]:
         """
         Compute entry (75% mitigation), SL beyond sweep swing, and TP1/TP2.
@@ -404,8 +402,7 @@ class DailySweepDeepStrategy(StrategyBase):
             else:
                 exit_type, exit_price, exit_reason = await self.check_broker_exit(ib_client, self.symbol, sl, tp)
                 if not exit_type:
-                    exit_type, exit_price, exit_reason = self.check_sl_tp_failure(curr, sl, tp,
-                                                                                  self.active_trade.direction)
+                    exit_type, exit_price, exit_reason = self.check_sl_tp_failure(curr, sl, tp, self.active_trade.direction)
                     if exit_type:
                         self.log.error(f"🚨 BROKER FAILURE DETECTED: Price ({exit_price}) passed limits. Forcing Exit.")
 

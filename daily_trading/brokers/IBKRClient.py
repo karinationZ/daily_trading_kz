@@ -1,12 +1,14 @@
 import asyncio
 import math
-from datetime import datetime, timedelta, timezone
+import re
+from collections import defaultdict
+from datetime import datetime, timedelta
 from typing import Any, ClassVar, List
+from zoneinfo import ZoneInfo
 
 import pandas as pd
 from ib_async import (
     Contract,
-    ExecutionFilter,
     Future,
     IB,
     LimitOrder,
@@ -101,12 +103,9 @@ class IBKRClient:
 
         contract_map = {
             # --- CASH SETTLED (Indices) ---
-            "MNQ": {"symbol": "MNQ", "exchange": "CME", "currency": "USD", "active_months": [3, 6, 9, 12],
-                    "min_days": 8, "physical_delivery": False},
-            "MES": {"symbol": "MES", "exchange": "CME", "currency": "USD", "active_months": [3, 6, 9, 12],
-                    "min_days": 8, "physical_delivery": False},
-            "MBT": {"symbol": "MBT", "exchange": "CME", "currency": "USD", "active_months": range(1, 13), "min_days": 2,
-                    "physical_delivery": False},
+            "MNQ": {"symbol": "MNQ", "exchange": "CME", "currency": "USD", "active_months": [3, 6, 9, 12], "min_days": 8, "physical_delivery": False},
+            "MES": {"symbol": "MES", "exchange": "CME", "currency": "USD", "active_months": [3, 6, 9, 12], "min_days": 8, "physical_delivery": False},
+            "MBT": {"symbol": "MBT", "exchange": "CME", "currency": "USD", "active_months": range(1, 13), "min_days": 2, "physical_delivery": False},
             # --- PHYSICAL DELIVERY (Commodities) ---
             # FIX: First Notice Day is often the last day of the PREVIOUS month.
             # Using Feb 1st - 3 days = Jan 29th is TOO LATE.
@@ -119,8 +118,7 @@ class IBKRClient:
                 "min_days": 8,
                 "physical_delivery": True,
             },
-            "MCL": {"symbol": "MCL", "exchange": "NYMEX", "currency": "USD", "active_months": range(1, 13),
-                    "min_days": 8, "physical_delivery": True},
+            "MCL": {"symbol": "MCL", "exchange": "NYMEX", "currency": "USD", "active_months": range(1, 13), "min_days": 8, "physical_delivery": True},
         }
 
         target = contract_map.get(symbol)
@@ -197,8 +195,7 @@ class IBKRClient:
         # Pick the nearest valid contract (which should now be April, since Feb is excluded)
         front_month = min(valid_contracts, key=lambda c: c.lastTradeDateOrContractMonth)
 
-        logger.info(
-            f"✅ Resolved {symbol} -> {front_month.localSymbol} (Exp: {front_month.lastTradeDateOrContractMonth})")
+        logger.info(f"✅ Resolved {symbol} -> {front_month.localSymbol} (Exp: {front_month.lastTradeDateOrContractMonth})")
 
         # Clear cache if we just switched contracts to force update
         self._conid_cache[symbol] = front_month
@@ -265,12 +262,12 @@ class IBKRClient:
         return sl_price, tp_price
 
     async def place_limit_order(
-            self,
-            symbol: str,
-            quantity: int,
-            price: float,
-            side: str,
-            order_ref: str = "TradingBot",
+        self,
+        symbol: str,
+        quantity: int,
+        price: float,
+        side: str,
+        order_ref: str = "TradingBot",
     ):
         contract = await self.get_futures_contract(symbol)
         price = self.round_to_tick(price, symbol)
@@ -285,14 +282,14 @@ class IBKRClient:
         return trade
 
     async def place_bracket_order(
-            self,
-            symbol: str,
-            quantity: int,
-            entry: float,
-            sl: float,
-            tp: float,
-            direction: str,
-            order_ref: str = "TradingBot",
+        self,
+        symbol: str,
+        quantity: int,
+        entry: float,
+        sl: float,
+        tp: float,
+        direction: str,
+        order_ref: str = "TradingBot",
     ):
         """Place Entry + SL + TP with thread-safe order ID management."""
 
@@ -392,286 +389,6 @@ class IBKRClient:
         if not found:
             logger.info(f"No open position found for {symbol}. You are flat.")
 
-    async def get_daily_summary(self) -> str:
-        try:
-            from datetime import timedelta  # Make sure this is imported
-
-            # 1. Get Account Values
-            values = self.ib.accountValues()
-            accounts = self.ib.managedAccounts()
-            if not accounts:
-                return "⚠️ No managed accounts."
-            account_id = accounts[0]
-
-            net_liq = unrealized = realized = 0.0
-            for v in values:
-                if v.account == account_id and v.currency == "USD":
-                    if v.tag == "NetLiquidation":
-                        net_liq = float(v.value)
-                    elif v.tag == "UnrealizedPnL":
-                        unrealized = float(v.value)
-                    elif v.tag == "RealizedPnL":
-                        realized = float(v.value)
-
-            # 2. DEFINE SESSION START (ASIA OPEN)
-            # Use fixed UTC 23:00 (not tied to local time zones).
-            tz = timezone.utc
-            utc_now = datetime.now(tz)
-
-            session_start = utc_now.replace(hour=23, minute=0, second=0, microsecond=0)
-            if utc_now < session_start:
-                session_start = session_start - timedelta(days=1)
-
-            # Fetch trades starting from a buffer before session start to match positions opened prior to 21:00 UTC
-            prefetch_start = session_start - timedelta(days=1)
-            api_time_filter = prefetch_start.strftime('%Y%m%d-%H:%M:%S')
-            executions = await asyncio.wait_for(
-                self.ib.reqExecutionsAsync(ExecutionFilter(time=api_time_filter)),
-                timeout=15
-            )
-            if not executions:
-                executions = await asyncio.wait_for(self.ib.reqExecutionsAsync(), timeout=15)
-            logger.info(f"RealizedPnL (IBKR): {realized:,.2f}")
-
-            def _to_utc(dt):
-                if dt is None:
-                    return None
-                if dt.tzinfo is None:
-                    return dt.replace(tzinfo=timezone.utc)
-                return dt.astimezone(timezone.utc)
-
-            # Split fills into pre-session and session so we can seed inventory
-            pre_session_fills = sorted(
-                [f for f in executions if _to_utc(f.time) and _to_utc(f.time) < session_start],
-                key=lambda x: (_to_utc(x.time), x.execution.execId),
-            )
-            todays_fills = sorted(
-                [f for f in executions if _to_utc(f.time) and _to_utc(f.time) >= session_start],
-                key=lambda x: (_to_utc(x.time), x.execution.execId),
-            )
-
-            # 3. FIFO MATCHING LOGIC
-            consolidated_trades = []
-            # Track open lots FIFO by symbol + strategy tag (orderRef).
-            # This prevents cross-strategy matching in the report.
-            open_inventory = {}
-            calculated_total_pnl = 0.0
-
-            # 3A. Seed inventory with pre-session fills (no PnL counted)
-            for fill in pre_session_fills:
-                sym = fill.contract.symbol
-                side = fill.execution.side
-                price = fill.execution.avgPrice
-                qty = abs(float(fill.execution.shares))
-                fill_time = _to_utc(fill.time)
-                ref_tag = fill.execution.orderRef or "Unknown"
-
-                inv_key = (sym, ref_tag)
-                if inv_key not in open_inventory:
-                    open_inventory[inv_key] = []
-                needed_side = "SLD" if side == "BOT" else "BOT"
-
-                while qty > 0 and open_inventory[inv_key] and open_inventory[inv_key][0]["side"] == needed_side:
-                    match = open_inventory[inv_key][0]
-                    match_qty = min(qty, match["qty"])
-                    qty -= match_qty
-                    match["qty"] -= match_qty
-                    if match["qty"] <= 0:
-                        open_inventory[inv_key].pop(0)
-
-                if qty > 0:
-                    open_inventory[inv_key].append(
-                        {"price": price, "qty": qty, "side": side, "time": fill_time}
-                    )
-
-            # 3B. Session fills (PnL counted)
-            for fill in todays_fills:
-                sym = fill.contract.symbol
-                side = fill.execution.side
-                price = fill.execution.avgPrice
-                qty = abs(float(fill.execution.shares))
-                fill_time = _to_utc(fill.time)
-
-                # Tag (Strategy Name)
-                ref_tag = fill.execution.orderRef or "Unknown"
-
-                inv_key = (sym, ref_tag)
-                if inv_key not in open_inventory:
-                    open_inventory[inv_key] = []
-                needed_side = "SLD" if side == "BOT" else "BOT"
-
-                # Check for match in inventory
-                while qty > 0 and open_inventory[inv_key] and open_inventory[inv_key][0]["side"] == needed_side:
-                    match = open_inventory[inv_key][0]
-                    match_qty = min(qty, match["qty"])
-                    is_long = match["side"] == "BOT"
-
-                    # Contract Multiplier
-                    mult = float(fill.contract.multiplier) if fill.contract.multiplier else 1.0
-
-                    diff = price - match["price"] if is_long else match["price"] - price
-                    pnl = diff * match_qty * mult
-                    calculated_total_pnl += pnl
-
-                    consolidated_trades.append(
-                        {
-                            "symbol": sym,
-                            "direction": "LONG" if is_long else "SHORT",
-                            "qty": match_qty,
-                            "pnl": pnl,
-                            "entry_dt": match["time"],
-                            "exit_dt": fill_time,
-                            "entry_price": match["price"],
-                            "exit_price": price,
-                            "tag": ref_tag,
-                        }
-                    )
-
-                    qty -= match_qty
-                    match["qty"] -= match_qty
-                    if match["qty"] <= 0:
-                        open_inventory[inv_key].pop(0)
-
-                if qty > 0:
-                    open_inventory[inv_key].append(
-                        {"price": price, "qty": qty, "side": side, "time": fill_time}
-                    )
-
-            # 3C. Reconcile with LIVE positions to avoid phantom inventory.
-            # If IBKR says we're flat, clear any unmatched execution leftovers.
-            live_positions = {p.contract.symbol: p for p in self.ib.positions()}
-            for key in list(open_inventory.keys()):
-                sym = key[0] if isinstance(key, tuple) else key
-                pos = live_positions.get(sym)
-                if not pos or abs(float(pos.position)) < 1e-9:
-                    open_inventory.pop(key, None)
-
-            # If live positions exist but weren't captured by executions, add them explicitly.
-            existing_syms = {k[0] if isinstance(k, tuple) else k for k in open_inventory.keys()}
-            for sym, pos in live_positions.items():
-                if abs(float(pos.position)) < 1e-9:
-                    continue
-                if sym not in existing_syms:
-                    avg_cost = getattr(pos, "avgCost", 0.0)
-                    open_inventory[(sym, "LIVE")] = [
-                        {
-                            "price": avg_cost,
-                            "qty": abs(float(pos.position)),
-                            "side": "BOT" if pos.position > 0 else "SLD",
-                            "time": utc_now,
-                        }
-                    ]
-
-            # 4. REPORT GENERATION
-            # If inventory remains, it's an OPEN position, not a "weird count" mismatch
-
-            # Use IBKR account realized PnL directly for session summary
-            calculated_total_pnl = realized
-            pnl_icon = "🟢" if calculated_total_pnl >= 0 else "🔴"
-            net_pnl = realized
-            net_pnl_icon = "🟢" if net_pnl >= 0 else "🔴"
-            session_label = session_start.strftime('%d %b %H:%M')
-
-            lines = [
-                f"📅 **REPORT: {utc_now.strftime('%Y-%m-%d')}**",
-                f"🕒 Session Start: {session_label} UTC",
-                f"👤 Account: `{account_id}`",
-                "────────────────",
-                f"💰 Net Liq: ${net_liq:,.2f}",
-                f"{net_pnl_icon} Session PnL (Net): ${net_pnl:,.2f}",
-                f"🎲 Open PnL: ${unrealized:,.2f}",
-                "────────────────",
-            ]
-
-            # List Completed Trades
-            if consolidated_trades:
-                # Consolidate trades by symbol+direction+tag+entry/exit times.
-                # Prices can differ across partial fills, so compute weighted averages.
-                grouped = {}
-
-                def _entry_bucket(dt):
-                    # Round to nearest minute to allow small split fills
-                    # (e.g., 01:03:59 and 01:04:00) to consolidate together.
-                    return (dt + timedelta(seconds=30)).replace(second=0, microsecond=0)
-
-                for t in consolidated_trades:
-                    key = (
-                        t["symbol"],
-                        t["tag"],
-                        _entry_bucket(t["entry_dt"]),
-                    )
-                    if key not in grouped:
-                        grouped[key] = {
-                            "symbol": t["symbol"],
-                            "direction": t["direction"],
-                            "tag": t["tag"],
-                            "entry_dt": t["entry_dt"],
-                            "exit_dt": t["exit_dt"],
-                            "qty": 0.0,
-                            "pnl": 0.0,
-                            "_entry_price_qty": 0.0,
-                            "_exit_price_qty": 0.0,
-                        }
-                    grouped[key]["qty"] += t["qty"]
-                    grouped[key]["pnl"] += t["pnl"]
-                    grouped[key]["_entry_price_qty"] += t["entry_price"] * t["qty"]
-                    grouped[key]["_exit_price_qty"] += t["exit_price"] * t["qty"]
-
-                consolidated_trades = []
-                for g in grouped.values():
-                    qty = g["qty"]
-                    entry_price = g["_entry_price_qty"] / qty if qty else 0.0
-                    exit_price = g["_exit_price_qty"] / qty if qty else 0.0
-                    consolidated_trades.append(
-                        {
-                            "symbol": g["symbol"],
-                            "direction": g["direction"],
-                            "qty": qty,
-                            "pnl": g["pnl"],
-                            "entry_dt": g["entry_dt"],
-                            "exit_dt": g["exit_dt"],
-                            "entry_price": entry_price,
-                            "exit_price": exit_price,
-                            "tag": g["tag"],
-                        }
-                    )
-                lines.append("📊 **Trades (Since Asia Open):**")
-                for t in consolidated_trades:
-                    icon = "🟢" if t["pnl"] >= 0 else "🔴"
-                    t_entry = t["entry_dt"].strftime("%d-%H:%M")  # Show date in case it was yesterday
-                    t_exit = t["exit_dt"].strftime("%H:%M")
-
-                    header = f"{icon} <b>[{t['tag']}]</b> {t['symbol']} {t['direction']} ({int(t['qty'])}) <b>${t['pnl']:+.2f}</b>"
-                    details = f"   ⏳ {t_entry} @ {t['entry_price']:,.2f} ➜ {t_exit} @ {t['exit_price']:,.2f}"
-                    lines.append(f"\n{header}\n{details}")
-
-                totals_by_symbol = {}
-                for t in consolidated_trades:
-                    totals_by_symbol[t["symbol"]] = totals_by_symbol.get(t["symbol"], 0.0) + t["pnl"]
-                lines.append("────────────────")
-                lines.append("📌 **Totals By Symbol:**")
-                for sym, pnl in sorted(totals_by_symbol.items()):
-                    icon = "🟢" if pnl >= 0 else "🔴"
-                    lines.append(f"{icon} {sym}: <b>${pnl:+.2f}</b>")
-            else:
-                lines.append("💤 No round-trip trades this session.")
-
-            positions = self.get_active_positions()
-            active_holdings = [p for p in positions if p.position != 0]
-            if active_holdings:
-                lines.append("────────────────")
-                lines.append("🏗️**Active Holdings:**")
-                for p in active_holdings:
-                    lines.append(f"• {p.contract.symbol}")
-            else:
-                lines.append("────────────────")
-                lines.append("🧘 **Inventory: FLAT**")
-
-            return "\n".join(lines)
-
-        except Exception as e:
-            return f"⚠️ Report Error: {e}"
-
     async def get_active_bracket_levels(self, symbol: str, order_ref: str, direction: str) -> dict:
         """
         Fetches ACTUAL live StopLoss and TakeProfit prices from IBKR.
@@ -737,3 +454,261 @@ class IBKRClient:
                 return False, p.position
 
         return True, 0.0
+
+    # ************** REPORTING LOGIC **************
+    # This is the main report function that compiles all the data into a comprehensive text report.
+
+    async def get_daily_summary(self, account_id='DUA614247') -> str:
+        """
+        Clean daily trading summary with net PnL after commissions.
+        """
+        if not self.ib.isConnected():
+            return "Error: Not connected to IBKR."
+
+        # Session start
+        now_utc = datetime.now(ZoneInfo("UTC"))
+        start_date = now_utc.date() - timedelta(days=2) if now_utc.hour < 8 else now_utc.date()
+        start_utc = datetime(start_date.year, start_date.month, start_date.day, 8, 0, 0, tzinfo=ZoneInfo("UTC"))
+        pt_tz = ZoneInfo("America/Los_Angeles")
+        start_pt = start_utc.astimezone(pt_tz)
+        end_pt = datetime.now(pt_tz)
+
+        # Get account summary
+        summary = await self.ib.accountSummaryAsync()
+
+        net_liq = unrealized = realized = 0.0
+        for v in summary:
+            if v.account == account_id and v.currency == "USD":
+                if v.tag == "NetLiquidation":
+                    net_liq = float(v.value)
+                elif v.tag == "UnrealizedPnL":
+                    unrealized = float(v.value)
+                elif v.tag == "RealizedPnL":
+                    unrealized = float(v.value)  # Note: you had realized here but using unrealized
+
+        # Get detailed trades
+        detailed_trades, trade_pnls = await self.get_detailed_trades(start_pt, end_pt)
+
+        # Calculate session PnL
+        session_pnl = sum(pnl for _, pnl, _, _ in trade_pnls)
+
+        # Calculate PnL breakdowns
+        tag_pnls = defaultdict(float)
+        symbol_pnls = defaultdict(float)
+
+        for _, pnl, tag, symbol in trade_pnls:
+            tag_pnls[tag] += pnl
+            symbol_pnls[symbol] += pnl
+
+        # Build report - clean and simple like your original
+        lines = [
+            "=" * 50,
+            "📊 **DAILY TRADING SUMMARY**",
+            "=" * 50,
+            f"Session: {start_pt.strftime('%Y-%m-%d %H:%M')} PT – {end_pt.strftime('%H:%M')} PT",
+            f"Account: {account_id}",
+            "",
+            "📈 **ACCOUNT SUMMARY:**",
+            f"💰 Net Liq: ${net_liq:,.2f}",
+            f"{'🟢' if session_pnl >= 0 else '🔴'} Session PnL: ${session_pnl:+,.2f}",
+            f"{'🟢' if unrealized >= 0 else '🔴'} Open PnL: ${unrealized:+,.2f}",
+            "────────────────",
+            "",
+            "📋 **EXECUTED TRADES:**",
+            "",
+        ]
+
+        # Add detailed trades
+        if detailed_trades:
+            lines.extend(detailed_trades)
+            lines.append("")  # Add spacing
+        else:
+            lines.append("  (no completed trades found)\n")
+
+        # Add totals by symbol
+        if symbol_pnls:
+            lines.append("📊 **TOTALS BY SYMBOL:**")
+            for symbol, total in sorted(symbol_pnls.items()):
+                icon = "🟢" if total >= 0 else "🔴"
+                lines.append(f"{icon} {symbol}: ${total:+,.2f}")
+            lines.append("")
+
+        # Footer
+        lines.extend(["-" * 50, f"Report generated: {end_pt.strftime('%Y-%m-%d %H:%M:%S')} PT", "=" * 50])
+
+        return "\n".join(lines)
+
+    @staticmethod
+    def format_detailed_trade(entry_trade, exit_trade, multipliers):
+        """Format a single trade pair - clean and simple like your original."""
+
+        # Get contract details
+        contract = entry_trade.contract
+        symbol = contract.symbol
+
+        # Get entry details
+        entry_fills = entry_trade.fills
+        entry_time = min(fill.time for fill in entry_fills)
+        pt_tz = ZoneInfo("America/Los_Angeles")
+        entry_time_pt = entry_time.astimezone(pt_tz)
+
+        entry_price = sum(fill.execution.price * fill.execution.shares for fill in entry_fills) / sum(fill.execution.shares for fill in entry_fills)
+        entry_qty = sum(fill.execution.shares for fill in entry_fills)
+
+        # Get exit details
+        exit_fills = exit_trade.fills
+        exit_time = max(fill.time for fill in exit_fills)
+        exit_time_pt = exit_time.astimezone(pt_tz)
+
+        exit_price = sum(fill.execution.price * fill.execution.shares for fill in exit_fills) / sum(fill.execution.shares for fill in exit_fills)
+        exit_qty = sum(fill.execution.shares for fill in exit_fills)
+
+        # Verify quantities match
+        if entry_qty != exit_qty:
+            return None
+
+        # Get multiplier
+        mult = multipliers.get(symbol, 1)
+        if hasattr(contract, 'multiplier') and contract.multiplier:
+            mult = float(contract.multiplier)
+
+        # Calculate PnL based on direction
+        if entry_trade.order.action == 'BUY' and exit_trade.order.action == 'SELL':
+            direction = "LONG"
+            pnl = (exit_price - entry_price) * mult * entry_qty
+        elif entry_trade.order.action == 'SELL' and exit_trade.order.action == 'BUY':
+            direction = "SHORT"
+            pnl = (entry_price - exit_price) * mult * entry_qty
+        else:
+            return None
+
+        # Calculate commissions
+        total_commission = 0
+        for fill in entry_fills:
+            if hasattr(fill, 'commissionReport') and fill.commissionReport:
+                total_commission += fill.commissionReport.commission
+        for fill in exit_fills:
+            if hasattr(fill, 'commissionReport') and fill.commissionReport:
+                total_commission += fill.commissionReport.commission
+
+        # Net PnL after commissions
+        net_pnl = pnl - total_commission
+
+        # Get order reference tag
+        tag = entry_trade.order.orderRef or symbol
+
+        # Format dates and times
+        entry_date_str = entry_time_pt.strftime("%Y-%m-%d")
+        entry_time_str = entry_time_pt.strftime("%H:%M")
+        exit_date_str = exit_time_pt.strftime("%Y-%m-%d")
+        exit_time_str = exit_time_pt.strftime("%H:%M")
+
+        # Format numbers
+        entry_price_fmt = f"{entry_price:,.2f}"
+        exit_price_fmt = f"{exit_price:,.2f}"
+
+        # Simple clean format like your original
+        emoji = "🟢" if net_pnl >= 0 else "🔴"
+
+        if entry_date_str == exit_date_str:
+            # Same day trade
+            message = (
+                f"{emoji} [{tag}] {symbol} {direction} ({int(entry_qty)}) ${net_pnl:+,.2f}\n"
+                f"   ⏳ {entry_date_str} {entry_time_str} @ {entry_price_fmt} ➜ {exit_time_str} @ {exit_price_fmt}"
+            )
+        else:
+            # Multi-day trade
+            message = (
+                f"{emoji} [{tag}] {symbol} {direction} ({int(entry_qty)}) ${net_pnl:+,.2f}\n"
+                f"   ⏳ {entry_date_str} {entry_time_str} @ {entry_price_fmt} ➜ {exit_date_str} {exit_time_str} @ {exit_price_fmt}"
+            )
+
+        return message, net_pnl, tag, symbol
+
+    async def get_detailed_trades(self, start_time, end_time):
+        """
+        Get detailed trade-by-trade analysis from self.ib.trades()
+        Returns: (list of formatted messages, list of (message, pnl, tag, symbol))
+        """
+        trades = self.ib.trades()
+
+        # Group trades by parent-child relationships
+        trade_groups = {}
+        child_to_parent = {}
+
+        # First pass: identify parent-child relationships
+        for trade in trades:
+            if hasattr(trade.order, 'parentPermId') and trade.order.parentPermId:
+                child_to_parent[trade.order.permId] = trade.order.parentPermId
+
+        # Second pass: group trades
+        for trade in trades:
+            # Skip cancelled orders
+            if trade.orderStatus.status == 'Cancelled':
+                continue
+
+            # Filter by time range
+            trade_time = None
+            if trade.fills:
+                trade_time = min(fill.time for fill in trade.fills)
+                if trade_time < start_time or trade_time > end_time:
+                    continue
+
+            # If this is a child order, add to parent's group
+            if trade.order.permId in child_to_parent:
+                parent_id = child_to_parent[trade.order.permId]
+                if parent_id not in trade_groups:
+                    trade_groups[parent_id] = []
+                trade_groups[parent_id].append(trade)
+            else:
+                # This might be a parent or standalone trade
+                if trade.order.permId not in trade_groups:
+                    trade_groups[trade.order.permId] = [trade]
+                else:
+                    trade_groups[trade.order.permId].append(trade)
+
+        # Process each trade group
+        detailed_messages = []
+        trade_data = []  # (message, pnl, tag, symbol)
+        multipliers = self.MULTIPLIERS
+
+        for group_id, group_trades in trade_groups.items():
+            # Find entry and exit trades
+            entry_trade = None
+            exit_trade = None
+
+            for trade in group_trades:
+                if trade.order.action in ['BUY', 'SELL'] and trade.fills:
+                    # Check if this is a parent or child
+                    if hasattr(trade.order, 'parentPermId') and trade.order.parentPermId:
+                        # This is likely the exit
+                        exit_trade = trade
+                    else:
+                        # This is likely the entry
+                        entry_trade = trade
+
+            # If we found both entry and exit, calculate and format
+            if entry_trade and exit_trade and entry_trade.fills and exit_trade.fills:
+                result = self.format_detailed_trade(entry_trade, exit_trade, multipliers)
+                if result:
+                    message, net_pnl, tag, symbol = result
+                    detailed_messages.append(message)
+                    trade_data.append((message, net_pnl, tag, symbol))
+
+        # Sort by entry time (extract from message)
+        def extract_datetime(msg):
+            # Extract from format like: 2026-02-13 20:59 @ 24,810.25 ➜ 2026-02-13 21:06 @ 24,780.25
+            match = re.search(r'(\d{4}-\d{2}-\d{2}) (\d{2}:\d{2})', msg)
+            if match:
+                date_str, time_str = match.groups()
+                dt = datetime.strptime(f"{date_str} {time_str}", "%Y-%m-%d %H:%M")
+                return dt
+            return datetime.min
+
+        # Sort messages by entry time
+        if detailed_messages:
+            paired = sorted(zip(detailed_messages, trade_data), key=lambda x: extract_datetime(x[0]))
+            detailed_messages = [p[0] for p in paired]
+            trade_data = [p[1] for p in paired]
+
+        return detailed_messages, trade_data

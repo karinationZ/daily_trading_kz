@@ -64,7 +64,7 @@ class AITradeAssistant:
     async def build_bos_fvg_prompt(asset_data: AssetData) -> str:
         """Build the prompt for Gemini API based on ICT Smart Money Concepts."""
         prompt = (
-                f"""
+            f"""
                     # You are the **SMC-Alpha Trading Agent**, a highly specialized algorithmic trader
                     executing a "Multi-Timeframe Trend Following" strategy based on Smart Money Concepts (SMC).
                     Your sole purpose is to analyze market data for {asset_data.symbol},
@@ -170,7 +170,7 @@ class AITradeAssistant:
         You must respond with a JSON object ONLY. No conversational filler.
         Use the input symbol exactly (do not output "Unknown"). Use UTC timestamps for `bos_ts` and `fvg_id`.
         Always include `direction` and `size` inside `parameters`. """
-                + """
+            + """
         JSON Response Format (Strictly Follow):
         {
             "decision": "ENTER_LONG" | "ENTER_SHORT" | "WAIT" | "CANCEL",
@@ -199,7 +199,8 @@ class AITradeAssistant:
         - Patience: if no fresh unmitigated FVG aligned with bias, WAIT.
         - Invalidation clarity: SL must be beyond structural invalidation + buffer.
         - TP realism: TP must respect nearby structure; if 1.2R is blocked, WAIT.
-        """)
+        """
+        )
         return prompt
 
     async def call_gemini_api(self, prompt: str):
@@ -313,8 +314,7 @@ async def main():
 
     ai_agent = AITradeAssistant(symbol="MBT", model=GEMINI_PRO, debug=False)
     if want_to_pay_for_analyses:
-        formatted_ai_message, raw_message = await ai_agent.analyze_asset_trade_data(prompt_type=PromptType.BOS_FVG,
-                                                                                    asset_data=asset_data)
+        formatted_ai_message, raw_message = await ai_agent.analyze_asset_trade_data(prompt_type=PromptType.BOS_FVG, asset_data=asset_data)
         logger.info(formatted_ai_message)
     else:
         prompt = await ai_agent.build_bos_fvg_prompt(asset_data)

@@ -1,274 +1,219 @@
-Below is the **same content rewritten as simple, clean text** so it can be dropped directly into **notebook.lm** or any plain markdown notebook.
-No emojis, no flair, no narrative fluff — just structure and logic.
+# MIDAS: Market Intelligence & Decision Analytics System
+
+**System Architecture & Implementation Blueprint**
+*Version 2.0 (Unified)*
 
 ---
 
-# MIDAS Architecture (Updated)
+## 1. Executive Summary
 
-## Core Idea
+MIDAS upgrades a standard algorithmic trading bot into an Agentic AI system. It decouples **Execution** (speed) from **Intelligence** (reasoning) and introduces a **Memory Layer** to prevent repeated mistakes.
 
-The architecture has been updated to clearly separate **strategy**, **tactical decision-making**, **execution**, and **learning**.
-
-The AI inside the trade loop is **not** the General.
-It is a tactical decision-maker.
+The core philosophy: **Your execution logic remains pure Python. Intelligence wraps around it.**
 
 ---
 
-## Roles and Responsibilities
+## 2. The Four Pillars (Roles)
 
-### 1. The General (Macro / Strategy Layer)
+The system is divided into four distinct roles to ensure separation of concerns:
 
-Role:
+### 1. The Soldier (Execution Engine)
+*   **Identity:** Existing Python Script (`BosFvgStrategy.py`).
+*   **Role:** The "Hands." Detects setups, manages orders, handles risk checks.
+*   **Behavior:** Deterministic. It never waits for AI if safety is at risk.
+*   **Key Upgrade:** Before entering, it gathers intel and asks *The Tactician* for permission.
 
-* Provides market-wide context
-* Does NOT decide individual trades
+### 2. The General (Situational Awareness)
+*   **Identity:** Background Python Service (`analyst.py`).
+*   **Role:** The "Eyes." Monitors the broader battlefield.
+*   **Behavior:** Runs every 30 minutes. Checks Economic Calendar (News) and Volatility Regimes (ATR/VIX).
+*   **Output:** Updates the `market_conditions` database table.
 
-Responsibilities:
+### 3. The Tactician (Live Decision Maker)
+*   **Identity:** Gemini 1.5 Pro (API Call).
+*   **Role:** The "Fast Brain." Makes the specific trade decision inside the loop.
+*   **Behavior:** Receives a "Target Package" (Technicals + General's Report + Memory).
+*   **Output:** `ENGAGE`, `ADJUST` (parameters), or `ABORT`.
 
-* News awareness (economic calendar)
-* Volatility regime detection (ATR percentiles, VIX, etc.)
-* Market risk classification
-
-Runs:
-
-* As a separate service
-* Periodically (e.g., every 30 minutes)
-
-Output:
-
-* Writes market state to `market_conditions` table
-
-Example output:
-
-* News: CLEAR / UPCOMING
-* Volatility: LOW / MEDIUM / HIGH / EXTREME
-* Market risk: NORMAL / ELEVATED
-
-The General answers:
-
-> “Is this a safe environment to trade?”
+### 4. The Coach (Learning & Memory)
+*   **Identity:** Claude 3.5 Sonnet/Opus (Nightly Job).
+*   **Role:** The "Slow Brain." Analyzes outcomes to update long-term memory.
+*   **Behavior:** Runs post-market. Reviews execution, grades setups, and embeds lessons into the Vector Database (ChromaDB).
 
 ---
 
-### 2. The Tactician (AI in Trade Loop)
+## 3. The Data Pipeline (The "Golden Triangle")
 
-Role:
+When The Soldier detects a setup, it does not call the AI immediately. It assembles a **Target Package** from three sources:
 
-* Makes the **specific trade decision**
-* Interprets setups using context and memory
+1.  **Technicals (Real-time):** The chart pattern (FVG, BOS, Price).
+2.  **Context (From The General):** Is the environment safe?
+3.  **Memory (From The Coach):** Have similar setups worked recently?
 
-This is the AI call (Gemini) inside the trade loop.
+### The Data Flow
 
-Responsibilities:
-
-* Evaluate the current setup
-* Decide whether to:
-
-  * Enter
-  * Adjust parameters
-  * Skip the trade
-
-The Tactician does NOT:
-
-* Scan news directly
-* Execute trades
-* Learn post-trade
-
-The Tactician answers:
-
-> “Given this setup, this environment, and past experience — what should we do?”
+```mermaid
+graph TD
+    A[Soldier Detects Setup] --> B{Check News Filter};
+    B -- News Risk --> C[Abort & Log];
+    B -- Clear --> D[Query Vector DB Memory];
+    D --> E[Assemble Target Package];
+    E --> F[Call Tactician Gemini];
+    F --> G{Tactician Decision};
+    G -- Abort --> H[Log Rejection];
+    G -- Adjust --> I[Modify Parameters];
+    G -- Engage --> J[Execute Trade];
+    J --> K[Log Outcome to DB];
+    K --> L[Coach Reviews Nightly];
+    L --> M[Update Vector DB];
+```
 
 ---
 
-### 3. The Soldier (Execution Bot)
+## 4. The Tactician's Interface
 
-Role:
+This is the specific data structure passed to Gemini (The Tactician) inside the trade loop.
 
-* Detect setups
-* Execute orders
-* Enforce risk rules
+### A. Input: The Target Package (Prompt)
 
-This is your existing Python strategy.
+The Soldier sends this JSON structure to The Tactician:
 
-Responsibilities:
+```json
+{
+  "role": "SYSTEM",
+  "content": "You are The Tactician, an SMC execution expert.",
+  "data": {
+    "1_TECHNICALS": {
+      "symbol": "MES",
+      "time": "10:30 EST",
+      "trend_bias_1h": "BULLISH",
+      "pattern": "5m_FVG_UNMITIGATED",
+      "price_action": {
+        "current": 5850.25,
+        "entry_zone_top": 5852.00,
+        "entry_zone_bottom": 5848.00
+      }
+    },
+    "2_BATTLEFIELD_CONDITIONS": {
+      "source": "The General",
+      "volatility_state": "EXTREME",
+      "atr_percentile": 92,
+      "news_status": "CLEAR",
+      "next_event": "FOMC_MINUTES (120 mins)"
+    },
+    "3_INTELLIGENCE_REPORT": {
+      "source": "Vector Memory",
+      "similar_trades_found": 12,
+      "win_rate_in_this_context": "41%",
+      "common_failure_reason": "STOP_HUNT",
+      "coach_warning": "In EXTREME volatility, standard entries fail. Deepen entry to 0.9 or SKIP."
+    }
+  }
+}
+```
 
-* Detect BOS and FVG
-* Query:
+### B. Output: The Order
 
-  * The General (market conditions)
-  * The Coach’s memory (historical context)
-* Call The Tactician (AI)
-* Execute or skip based on response
-* Log everything
+The Tactician must respond with strictly formatted JSON:
 
-Minimal changes:
-
-* Add context gathering
-* Add logging
-* Core execution logic stays unchanged
-
-The Soldier answers:
-
-> “I see a setup. Should I act?”
-
----
-
-### 4. The Coach (Post-Trade Learning)
-
-Role:
-
-* Learn from outcomes
-* Build long-term memory
-
-Runs:
-
-* After market close (daily)
-
-Responsibilities:
-
-* Analyze closed trades
-* Identify success/failure reasons
-* Extract lessons
-* Embed trade context into vector memory
-
-Uses:
-
-* Slower, deeper AI (Claude)
-* Vector database (ChromaDB)
-
-The Coach answers:
-
-> “What did we learn, and should we do this again?”
-
----
-
-## Updated Hierarchy
-
-1. General
-   Macro environment and risk context
-
-2. Tactician
-   Tactical trade decision (AI in loop)
-
-3. Soldier
-   Detection and execution
-
-4. Coach
-   Post-trade analysis and memory
+```json
+{
+  "decision": "ADJUST", 
+  "reasoning": "Technicals are valid, but battlefield conditions (EXTREME volatility) and Intelligence Report suggest high risk of stop run. Adjusting entry deeper.",
+  "parameters": {
+    "action": "BUY_LIMIT",
+    "entry_price": 5848.50, 
+    "stop_loss": 5840.00,
+    "size_multiplier": 0.5
+  }
+}
+```
 
 ---
 
-## Data Passed to the Tactician
+## 5. Technical Architecture
 
-The Soldier sends a single structured package containing three parts.
+### Hardware & Stack
+*   **Server:** Mac Mini (M-Series, 16GB+ RAM)
+*   **Power:** UPS Backup (Essential)
+*   **Orchestration:** Docker Compose
+*   **Database:** PostgreSQL + TimescaleDB (Time-series data)
+*   **Vector Store:** ChromaDB (Local embeddings)
 
-### A. Technicals (What the chart shows)
+### Database Schema
 
-* Symbol
-* Current price
-* Higher-timeframe bias
-* Detected setup (FVG, BOS, etc.)
-* Recent OHLC data
+#### 1. `market_conditions` (Managed by The General)
+| Column | Type | Description |
+| :--- | :--- | :--- |
+| `timestamp` | DATETIME | Time of snapshot |
+| `volatility` | VARCHAR | LOW, MEDIUM, HIGH, EXTREME |
+| `news_risk` | BOOLEAN | True if within blackout window |
+| `bias` | VARCHAR | LONG, SHORT, NEUTRAL (Macro bias) |
 
-Purpose:
+#### 2. `trade_signals` (Managed by Soldier & Coach)
+| Column | Type | Description |
+| :--- | :--- | :--- |
+| `id` | UUID | Unique Trade ID |
+| `input_package` | JSONB | The full data sent to Tactician |
+| `ai_decision` | JSONB | The Tactician's response |
+| `result_pnl` | FLOAT | Final R-Multiple (filled post-close) |
+| `coach_grade` | INT | 0-100 Score (filled nightly) |
+| `regime_tag` | VARCHAR | Context tag (e.g., "HIGH_VOL_CHOP") |
 
-* Describe the opportunity
-
----
-
-### B. Strategic Context (From the General)
-
-* News status
-* Volatility regime
-* Market risk level
-
-Purpose:
-
-* Describe the environment
-
----
-
-### C. Memory (From the Coach / Vector DB)
-
-* Number of similar historical trades
-* Win rate in similar conditions
-* Common failure reasons
-* Known adjustments (e.g., deeper entries)
-
-Purpose:
-
-* Describe past experience
+#### 3. `rejected_signals` (The Shadow Log)
+*Stores trades the Tactician said "NO" to. Used by the Coach to verify if skipping was the right decision.*
 
 ---
 
-## Tactician Prompt Structure (Conceptual)
+## 6. Implementation Roadmap
 
-System role:
+### Phase 1: Infrastructure (The Vault)
+1.  Install Docker on Mac Mini.
+2.  Deploy **TimescaleDB** container.
+3.  Modify `BosFvgStrategy.py` to log every detected signal to the DB (Passively).
+4.  **Goal:** Build a dataset of potential trades.
 
-* “You are the Tactician, an expert execution decision-maker.”
+### Phase 2: The General (The Eyes)
+1.  Create `analyst.py`.
+2.  Implement Scraper for Economic Calendar.
+3.  Implement Volatility Logic (Pandas rolling ATR).
+4.  Schedule to run every 30 mins via Cron.
+5.  **Goal:** Bot is aware of News and Volatility.
 
-Sections:
+### Phase 3: The Coach (The Memory)
+1.  Deploy **ChromaDB** container.
+2.  Create `coach.py`.
+3.  Script the nightly review:
+    *   Query `trade_signals` for closed trades.
+    *   Send to Claude: "Analyze this execution."
+    *   Embed result into ChromaDB.
+4.  **Goal:** System builds a searchable history of "What works."
 
-1. Tactical Situation (Technicals)
-2. Battlefield Conditions (Macro context)
-3. Intelligence Report (Historical memory)
-
-Mission:
-
-* Decide one of:
-
-  * Engage (standard)
-  * Adjust (parameters)
-  * Abort (skip)
-
----
-
-## Tactician Output (Conceptual)
-
-Structured response:
-
-* Decision: ENGAGE / ADJUST / ABORT
-* Reasoning
-* Parameters (if applicable)
-
-  * Entry
-  * Stop
-  * Size
-* Confidence score
-
-The Soldier executes exactly what is returned.
+### Phase 4: The Tactician (The Brain)
+1.  Update `BosFvgStrategy.py` to query ChromaDB + General DB.
+2.  Construct the "Target Package."
+3.  Send to Gemini API.
+4.  Parse JSON response and execute logic (`ENGAGE` / `ADJUST` / `ABORT`).
+5.  **Goal:** Fully closed Agentic Loop.
 
 ---
 
-## Key Architectural Principles
+## 7. Example Scenarios
 
-* Strategy and execution remain deterministic
-* Intelligence is layered, not entangled
-* AI decisions are contextual, not blind
-* Learning happens after the fact, not in real time
-* Memory influences future decisions automatically
+### Scenario A: The News Block
+*   **Soldier:** Detects FVG.
+*   **General:** `market_conditions` table shows `news_risk: TRUE` (CPI in 10 mins).
+*   **Action:** Soldier keeps "Safety Mode" on. Trade is blocked locally. **Tactician is never even called** (Saves API costs).
 
----
+### Scenario B: The Volatility Adjustment
+*   **Soldier:** Detects FVG.
+*   **General:** Volatility is `HIGH`.
+*   **Memory:** "In HIGH vol, standard stops get hit 60% of time."
+*   **Tactician:** Reads Memory. Returns `decision: ADJUST`. Sets Stop Loss 2 points wider and reduces position size.
+*   **Result:** Price wicks down, misses original stop, hits wider stop, then rallies. **Trade Saved.**
 
-## Mental Model Summary
-
-* The Soldier sees the chart
-* The General checks the weather
-* The Coach remembers past battles
-* The Tactician decides how to fight *this* one
-
-This prevents:
-
-* Repeating the same mistakes
-* Trading blindly into news
-* Ignoring volatility regimes
-* Treating every setup as equal
-
----
-
-If you want, next steps could be:
-
-* A **one-page notebook diagram**
-* A **JSON schema for the Tactician input**
-* A **minimal diff showing how the old .md changes**
-* A **decision flowchart (Soldier → General → Memory → Tactician)**
+### Scenario C: The "Smart" Skip
+*   **Soldier:** Detects FVG.
+*   **Memory:** "This specific setup (Counter-trend FVG) has a 15% win rate in current conditions."
+*   **Tactician:** Returns `decision: ABORT`.
+*   **Coach (Next Day):** Simulates the trade using historical data. Confirms it would have been a loss. Updates Memory: "Good decision to skip."

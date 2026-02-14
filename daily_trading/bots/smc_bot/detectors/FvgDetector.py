@@ -14,18 +14,18 @@ from daily_trading.settings import logger
 
 class FvgDetector(DetectorsBase):
     def __init__(
-            self,
-            main_tf,
-            pivot_period=5,
-            left_bars=5,
-            right_bars=1,
-            show_bull=True,
-            show_bear=True,
-            fvg_threshold=0.25,
-            mode="Present",
-            back=180,
-            show_labels=False,
-            show_fulfilled=True,
+        self,
+        main_tf,
+        pivot_period=5,
+        left_bars=5,
+        right_bars=1,
+        show_bull=True,
+        show_bear=True,
+        fvg_threshold=0.25,
+        mode="Present",
+        back=180,
+        show_labels=False,
+        show_fulfilled=True,
     ):
         super().__init__(main_tf=main_tf, left_bars=left_bars, right_bars=right_bars)
         self.pivot_period = pivot_period
@@ -104,7 +104,7 @@ class FvgDetector(DetectorsBase):
 
                 # Check Mitigation (Numpy Slicing - Fast)
                 # Look at all lows AFTER this candle
-                future_lows = low[real_idx + 1:]
+                future_lows = low[real_idx + 1 :]
 
                 # Find if any future low <= bottom
                 # np.argmax returns index of first True, or 0 if none
@@ -153,7 +153,7 @@ class FvgDetector(DetectorsBase):
 
                 # Check Mitigation
                 # Look at all highs AFTER this candle
-                future_highs = high[real_idx + 1:]
+                future_highs = high[real_idx + 1 :]
 
                 mitigation_mask = future_highs >= top
                 mitigated = False

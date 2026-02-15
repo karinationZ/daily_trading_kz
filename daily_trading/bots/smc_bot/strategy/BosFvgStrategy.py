@@ -141,7 +141,7 @@ class BosFvgStrategy(StrategyBase):
             ohlc_5m=df_ltf.tail(50).to_dict(orient="records"),
         )
 
-        ai_agent = AITradeAssistant(symbol=self.symbol, model=GEMINI_PRO, debug=self.debug)
+        ai_agent = AITradeAssistant(symbol=self.symbol, debug=self.debug)
         formatted_ai_message, raw_message = await ai_agent.analyze_asset_trade_data(
             prompt_type=PromptType.BOS_FVG,
             asset_data=asset_data,

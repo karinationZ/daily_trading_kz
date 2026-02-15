@@ -24,7 +24,6 @@ from daily_trading.settings import logger
 from daily_trading.technicals.AITradeAssistants.AiAssistant import (
     AITradeAssistant,
     AssetData,
-    GEMINI_PRO,
     PromptType,
 )
 

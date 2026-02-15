@@ -13,7 +13,8 @@ from daily_trading.bots.smc_bot.detectors.SupplyDemandZonesDetector import Suppl
 from daily_trading.settings import GEMINI_API_KEY, logger
 from daily_trading.utils.common import load_data
 
-GEMINI_PRO = "gemini-3-pro-preview"
+# GEMINI_PRO = "gemini-3-pro-preview"
+GEMINI_FLASH = "gemini-2.0-flash"
 TEST_PROMPT = """
         Tell me about SMC trading OB, very short 1 sentence (5 words). Your response must be in the format:{"message": "your message here",
             "entry": null,
@@ -53,7 +54,7 @@ class Ohlc:
 
 
 class AITradeAssistant:
-    def __init__(self, symbol: str, model=GEMINI_PRO, debug=False):
+    def __init__(self, symbol: str, model=GEMINI_FLASH, debug=False):
         self.api_key = GEMINI_API_KEY
         self.model = model
         self.symbol = symbol.upper()
@@ -312,7 +313,7 @@ async def main():
         ohlc_5m=ohlc_5m.tail(300).to_dict(orient="records"),
     )
 
-    ai_agent = AITradeAssistant(symbol="MBT", model=GEMINI_PRO, debug=False)
+    ai_agent = AITradeAssistant(symbol="MBT", model=GEMINI_FLASH, debug=False)
     if want_to_pay_for_analyses:
         formatted_ai_message, raw_message = await ai_agent.analyze_asset_trade_data(prompt_type=PromptType.BOS_FVG, asset_data=asset_data)
         logger.info(formatted_ai_message)

@@ -637,6 +637,20 @@ class IBKRClient:
         """
         trades = self.ib.trades()
 
+        # DEBUGGING: Log critical info
+        logger.info(f"🔍 DEBUG - Session window: {start_time.strftime('%Y-%m-%d %H:%M:%S %Z')} → {end_time.strftime('%Y-%m-%d %H:%M:%S %Z')}")
+        logger.info(f"🔍 DEBUG - Total trades in ib.trades(): {len(trades)}")
+        logger.info(f"🔍 DEBUG - System timezone: {datetime.now().astimezone().tzinfo}")
+
+        # Log first few trades for inspection
+        for i, trade in enumerate(trades[:3]):
+            if trade.fills:
+                first_fill = trade.fills[0]
+                logger.info(f"🔍 DEBUG - Trade {i}: Symbol={trade.contract.symbol}, "
+                           f"Fill time={first_fill.time}, "
+                           f"Fill time tzinfo={first_fill.time.tzinfo}, "
+                           f"Status={trade.orderStatus.status}")
+
         # Group trades by parent-child relationships
         trade_groups = {}
         child_to_parent = {}
@@ -647,9 +661,13 @@ class IBKRClient:
                 child_to_parent[trade.order.permId] = trade.order.parentPermId
 
         # Second pass: group trades
+        filtered_out_count = 0
+        included_count = 0
+
         for trade in trades:
             # Skip cancelled orders
             if trade.orderStatus.status == 'Cancelled':
+                logger.debug(f"🔍 Skipped cancelled: {trade.contract.symbol}")
                 continue
 
             # Filter by time range
@@ -661,10 +679,22 @@ class IBKRClient:
                 if trade_time.tzinfo is None:
                     # Naive datetime - assume it's in PT (system timezone should be PT)
                     pt_tz = ZoneInfo("America/Los_Angeles")
+                    trade_time_original = trade_time
                     trade_time = trade_time.replace(tzinfo=pt_tz)
+                    logger.debug(f"🔍 Converted naive time: {trade_time_original} → {trade_time}")
 
-                if trade_time < start_time or trade_time > end_time:
+                # DEBUG: Log filter decision
+                is_before_start = trade_time < start_time
+                is_after_end = trade_time > end_time
+
+                if is_before_start or is_after_end:
+                    filtered_out_count += 1
+                    logger.info(f"🔍 FILTERED OUT: {trade.contract.symbol} at {trade_time.strftime('%Y-%m-%d %H:%M:%S %Z')} "
+                               f"(before_start={is_before_start}, after_end={is_after_end})")
                     continue
+                else:
+                    included_count += 1
+                    logger.info(f"🔍 INCLUDED: {trade.contract.symbol} at {trade_time.strftime('%Y-%m-%d %H:%M:%S %Z')}")
 
             # If this is a child order, add to parent's group
             if trade.order.permId in child_to_parent:
@@ -678,6 +708,9 @@ class IBKRClient:
                     trade_groups[trade.order.permId] = [trade]
                 else:
                     trade_groups[trade.order.permId].append(trade)
+
+        # DEBUG: Summary
+        logger.info(f"🔍 DEBUG SUMMARY - Filtered out: {filtered_out_count}, Included: {included_count}, Trade groups: {len(trade_groups)}")
 
         # Process each trade group
         detailed_messages = []

@@ -13,8 +13,8 @@ from daily_trading.bots.smc_bot.detectors.SupplyDemandZonesDetector import Suppl
 from daily_trading.settings import GEMINI_API_KEY, logger
 from daily_trading.utils.common import load_data
 
-# GEMINI_PRO = "gemini-3-pro-preview"
-GEMINI_FLASH = "gemini-2.0-flash"
+GEMINI_PRO = "gemini-3-pro-preview"
+# GEMINI_FLASH = "gemini-2.0-flash"
 TEST_PROMPT = """
         Tell me about SMC trading OB, very short 1 sentence (5 words). Your response must be in the format:{"message": "your message here",
             "entry": null,
@@ -54,12 +54,75 @@ class Ohlc:
 
 
 class AITradeAssistant:
-    def __init__(self, symbol: str, model=GEMINI_FLASH, debug=False):
+    # Point values for position sizing (DO NOT let Flash calculate this)
+    POINT_VALUE = {
+        "MNQ": 2.0,
+        "MES": 5.0,
+        "MGC": 10.0,
+        "MBT": 0.10,
+        "SIL": 1000.0,
+        "MCL": 100.0,
+    }
+
+    RISK_PER_TRADE = 250.0  # USD
+    MIN_SIZE = 1  # Minimum viable position size
+    MAX_SIZE = 10  # Maximum position size cap
+
+    def __init__(self, symbol: str, model=GEMINI_PRO, debug=False):
         self.api_key = GEMINI_API_KEY
         self.model = model
         self.symbol = symbol.upper()
         self.client = genai.Client()
         self.debug = debug
+
+    def _calculate_position_size(self, symbol: str, entry: float, sl: float) -> int:
+        """
+        Calculate position size deterministically in Python (DO NOT trust Flash for arithmetic).
+
+        Formula:
+        1. sl_distance_dollars = |Entry - SL| * Point_Value
+        2. raw_contracts = RISK_PER_TRADE / sl_distance_dollars
+        3. size = FLOOR(raw_contracts)
+        4. size = CLAMP(size, MIN_SIZE, MAX_SIZE)
+
+        Returns:
+            int: Position size (contracts) bounded by [MIN_SIZE, MAX_SIZE]
+        """
+        # Validation
+        if not entry or not sl or entry == sl:
+            logger.warning(f"⚠️ Invalid entry/SL for sizing: entry={entry}, sl={sl}. Defaulting to MIN_SIZE.")
+            return self.MIN_SIZE
+
+        # Get point value
+        point_value = self.POINT_VALUE.get(symbol)
+        if not point_value:
+            logger.error(f"❌ Unknown symbol {symbol} for sizing. Defaulting to MIN_SIZE.")
+            return self.MIN_SIZE
+
+        # Step 1: Calculate SL distance in dollars
+        sl_distance_points = abs(entry - sl)
+        sl_distance_dollars = sl_distance_points * point_value
+
+        # Step 2: Prevent division by zero
+        if sl_distance_dollars < 1.0:
+            logger.warning(f"⚠️ SL too tight ({sl_distance_dollars:.2f}). Rejecting by returning MIN_SIZE.")
+            return self.MIN_SIZE
+
+        # Step 3: Calculate raw contracts
+        raw_contracts = self.RISK_PER_TRADE / sl_distance_dollars
+
+        # Step 4: Floor and enforce minimum/maximum bounds
+        size = int(raw_contracts)  # Floor to nearest integer
+        size = max(size, self.MIN_SIZE)  # Enforce minimum
+        size = min(size, self.MAX_SIZE)  # Enforce maximum cap
+
+        if int(raw_contracts) > self.MAX_SIZE:
+            logger.warning(f"⚠️ Size capped: Raw={raw_contracts:.2f} > MAX_SIZE={self.MAX_SIZE}. Using {size}.")
+
+        logger.info(f"✅ Position Size Calculated: {symbol} | Entry={entry}, SL={sl}, "
+                   f"Distance=${sl_distance_dollars:.2f}, Raw={raw_contracts:.2f}, Final Size={size}")
+
+        return size
 
     @staticmethod
     async def build_bos_fvg_prompt(asset_data: AssetData) -> str:
@@ -133,7 +196,6 @@ class AITradeAssistant:
             Risk Logic (Static):
             Risk Per Trade: $250 USD (Static).
             Validation: Calculate the number of contracts allowed with $250 risk.
-            Position Size Calculation (CRITICAL - FOLLOW EXACTLY)
             Contracts = $250 / ( |Entry - SL| * Point_Value )
             If Contracts < 1 (Stop is too wide for $250 risk), REJECT the trade.
             C. Dynamic Take Profit (TP)
@@ -171,7 +233,7 @@ class AITradeAssistant:
         # OUTPUT FORMAT
         You must respond with a JSON object ONLY. No conversational filler.
         Use the input symbol exactly (do not output "Unknown"). Use UTC timestamps for `bos_ts` and `fvg_id`.
-        Always include `direction` and calculated `size` inside `parameters`. """
+        Always include `direction` and `size` inside `parameters`. """
             + """
         JSON Response Format (Strictly Follow):
         {
@@ -183,7 +245,7 @@ class AITradeAssistant:
             "entry_price": 0.00,
             "stop_loss": 0.00,
             "take_profit": 0.00,
-            "risk_reward_ratio": {target_rr},
+            "risk_reward_ratio": {rr},
             "size": {size},
             "fvg_timestamp": "YYYY-MM-DD HH:MM:SS"},
           "metadata": {
@@ -252,6 +314,20 @@ class AITradeAssistant:
         sl = params.get("stop_loss")
         tp = params.get("take_profit")
         size = params.get("size")
+
+        # VALIDATION: Check if AI's size is reasonable
+        if entry and sl and symbol in self.POINT_VALUE:
+            calculated_size = self._calculate_position_size(symbol, entry, sl)
+            ai_size = size or 0
+
+            if ai_size != calculated_size:
+                logger.warning(f"⚠️ AI size mismatch: AI={ai_size}, Calculated={calculated_size}. "
+                              f"Using calculated value.")
+                size = calculated_size
+                params["size"] = size
+            else:
+                logger.info(f"✅ AI size validated: {size}")
+
         rr = params.get("risk_reward_ratio")
         confidence = metadata.get("confidence_score")
         fvg_id = params.get("fvg_id") or metadata.get("fvg_id")
@@ -314,7 +390,7 @@ async def main():
         ohlc_5m=ohlc_5m.tail(300).to_dict(orient="records"),
     )
 
-    ai_agent = AITradeAssistant(symbol="MBT", model=GEMINI_FLASH, debug=False)
+    ai_agent = AITradeAssistant(symbol="MBT", model=GEMINI_PRO, debug=False)
     if want_to_pay_for_analyses:
         formatted_ai_message, raw_message = await ai_agent.analyze_asset_trade_data(prompt_type=PromptType.BOS_FVG, asset_data=asset_data)
         logger.info(formatted_ai_message)

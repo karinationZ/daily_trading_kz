@@ -1,14 +1,18 @@
 import asyncio
+import json
 import math
+import os
 import re
 from collections import defaultdict
 from datetime import datetime, timedelta
+from pathlib import Path
 from typing import Any, ClassVar, List
 from zoneinfo import ZoneInfo
 
 import pandas as pd
 from ib_async import (
     Contract,
+    ExecutionFilter,
     Future,
     IB,
     LimitOrder,
@@ -61,6 +65,8 @@ class IBKRClient:
     }
     _order_lock: ClassVar[asyncio.Lock] = asyncio.Lock()
 
+    FILLS_DIR = Path.home() / ".daily_trading" / "fills"
+
     def __init__(self, host: str = "127.0.0.1", port: int = 4002, client_id: int = 1):
         self.ib = IB()
         self.host = host
@@ -74,7 +80,50 @@ class IBKRClient:
             await self.ib.connectAsync(self.host, self.port, clientId=self.client_id)
             # CRITICAL: Tell IBKR you want LIVE data (Type 1)
             self.ib.reqMarketDataType(1)
+            # Persist fills to disk so they survive TWS/bot restarts
+            self.ib.execDetailsEvent += self._on_exec_details
             logger.info("Connected to IBKR and set Market Data Type to LIVE")
+
+    def _on_exec_details(self, trade, fill):
+        """Save every fill to a daily JSON file for reliable summary reporting."""
+        try:
+            self._save_fill(fill)
+        except Exception as e:
+            logger.error(f"Failed to save fill: {e}")
+
+    def _save_fill(self, fill):
+        """Append a fill record to today's fills file."""
+        utc = ZoneInfo("UTC")
+        fill_time = self._ensure_utc(fill.time)
+        date_str = fill_time.strftime("%Y-%m-%d")
+
+        self.FILLS_DIR.mkdir(parents=True, exist_ok=True)
+        fills_file = self.FILLS_DIR / f"{date_str}.json"
+
+        record = {
+            "execId": fill.execution.execId,
+            "symbol": fill.contract.symbol,
+            "side": fill.execution.side,
+            "shares": float(fill.execution.shares),
+            "price": float(fill.execution.price),
+            "time": fill_time.isoformat(),
+            "orderRef": fill.execution.orderRef or "",
+            "permId": fill.execution.permId,
+            "commission": float(fill.commissionReport.commission)
+            if fill.commissionReport and fill.commissionReport.commission and fill.commissionReport.commission > 0
+            else 0.0,
+        }
+
+        # Read existing, dedup by execId, write back
+        existing = []
+        if fills_file.exists():
+            existing = json.loads(fills_file.read_text())
+
+        exec_ids = {r["execId"] for r in existing}
+        if record["execId"] not in exec_ids:
+            existing.append(record)
+            fills_file.write_text(json.dumps(existing, indent=2))
+            logger.info(f"💾 Saved fill: {record['symbol']} {record['side']} {record['shares']}@{record['price']}")
 
     def disconnect(self):
         self.ib.disconnect()
@@ -491,6 +540,29 @@ class IBKRClient:
             return dt.replace(tzinfo=utc)
         return dt.astimezone(utc)
 
+    def _load_saved_fills(self, start_utc, end_utc):
+        """Load fills from daily JSON files covering the session window."""
+        utc = ZoneInfo("UTC")
+        fills = []
+        if not self.FILLS_DIR.exists():
+            return fills
+
+        # Session can span 2 calendar days, load both
+        start_date = start_utc.strftime("%Y-%m-%d")
+        end_date = end_utc.strftime("%Y-%m-%d")
+
+        dates_to_check = {start_date, end_date}
+        for date_str in dates_to_check:
+            fills_file = self.FILLS_DIR / f"{date_str}.json"
+            if fills_file.exists():
+                try:
+                    records = json.loads(fills_file.read_text())
+                    fills.extend(records)
+                except (json.JSONDecodeError, Exception) as e:
+                    logger.warning(f"Failed to read fills file {fills_file}: {e}")
+
+        return fills
+
     async def get_daily_summary(self, account_id='DUA614247') -> str:
         """
         Deterministic, timezone-safe daily trading summary.
@@ -647,156 +719,201 @@ class IBKRClient:
 
         return message, net_pnl, tag, symbol
 
+    @staticmethod
+    def _format_record_trade(entry_recs, exit_recs, symbol, direction, tag, multipliers):
+        """Format a completed trade from dict fill records."""
+        pt_tz = ZoneInfo("America/Los_Angeles")
+        utc = ZoneInfo("UTC")
+
+        def parse_time(t):
+            dt = datetime.fromisoformat(t)
+            if dt.tzinfo is None:
+                dt = dt.replace(tzinfo=utc)
+            return dt
+
+        entry_time_pt = min(parse_time(r["time"]) for r in entry_recs).astimezone(pt_tz)
+        exit_time_pt = max(parse_time(r["time"]) for r in exit_recs).astimezone(pt_tz)
+
+        # Weighted average prices
+        entry_shares = sum(r["shares"] for r in entry_recs)
+        entry_price = sum(r["price"] * r["shares"] for r in entry_recs) / entry_shares
+
+        exit_shares = sum(r["shares"] for r in exit_recs)
+        exit_price = sum(r["price"] * r["shares"] for r in exit_recs) / exit_shares
+
+        qty = min(entry_shares, exit_shares)
+        mult = multipliers.get(symbol, 1)
+
+        if direction == "LONG":
+            pnl = (exit_price - entry_price) * mult * qty
+        else:
+            pnl = (entry_price - exit_price) * mult * qty
+
+        total_commission = sum(r.get("commission", 0.0) for r in entry_recs + exit_recs)
+        net_pnl = pnl - total_commission
+
+        entry_date_str = entry_time_pt.strftime("%Y-%m-%d")
+        entry_time_str = entry_time_pt.strftime("%H:%M")
+        exit_date_str = exit_time_pt.strftime("%Y-%m-%d")
+        exit_time_str = exit_time_pt.strftime("%H:%M")
+        entry_price_fmt = f"{entry_price:,.2f}"
+        exit_price_fmt = f"{exit_price:,.2f}"
+
+        emoji = "🟢" if net_pnl >= 0 else "🔴"
+
+        if entry_date_str == exit_date_str:
+            message = (
+                f"{emoji} [{tag}] {symbol} {direction} ({int(qty)}) ${net_pnl:+,.2f}\n"
+                f"   ⏳ {entry_date_str} {entry_time_str} @ {entry_price_fmt} ➜ {exit_time_str} @ {exit_price_fmt}"
+            )
+        else:
+            message = (
+                f"{emoji} [{tag}] {symbol} {direction} ({int(qty)}) ${net_pnl:+,.2f}\n"
+                f"   ⏳ {entry_date_str} {entry_time_str} @ {entry_price_fmt} ➜ {exit_date_str} {exit_time_str} @ {exit_price_fmt}"
+            )
+
+        return message, net_pnl, tag, symbol
+
     async def get_detailed_trades(self, start_time_utc, end_time_utc):
         """
-        Fill-based, bracket-aware trade analysis.
+        Fill-based trade analysis using FIFO position tracking per symbol.
 
-        Uses reqExecutionsAsync() to get fills that survive API reconnections
-        (unlike ib.trades() which only has fills from the current session).
-
-        Groups fills by bracket order (permId linkage), then pairs
-        entry fills with exit fills to produce completed round-trip trades.
-
-        All timestamps normalized to UTC before any comparison.
+        Uses reqExecutionsAsync() + ib.fills() merge to get all fills
+        (survives API reconnections). Groups by symbol, sorts by time,
+        and tracks running position to detect completed round-trip trades.
 
         Returns: (list of formatted messages, list of (message, pnl, tag, symbol))
         """
         utc = ZoneInfo("UTC")
 
         logger.info(f"📊 Session window (UTC): {start_time_utc.strftime('%Y-%m-%d %H:%M:%S')} → {end_time_utc.strftime('%Y-%m-%d %H:%M:%S')}")
-        logger.info(f"📊 System timezone: {datetime.now().astimezone().tzinfo}")
 
-        # ── Step 1: Get ALL fills from TWS (survives reconnections) ──
-        all_fills = await self.ib.reqExecutionsAsync()
-        logger.info(f"📊 reqExecutionsAsync returned {len(all_fills)} fills")
-
-        # Also check ib.fills() for any fills only in memory
+        # ── Step 1: Get fills from API ──
+        filter_time = start_time_utc.strftime("%Y%m%d %H:%M:%S")
+        exec_filter = ExecutionFilter(time=filter_time)
+        all_fills = await self.ib.reqExecutionsAsync(exec_filter)
         memory_fills = self.ib.fills()
-        logger.info(f"📊 ib.fills() returned {len(memory_fills)} fills")
 
-        # Merge: use execId as dedup key
+        # Merge API fills, dedup by execId
         fill_by_exec_id = {}
         for f in all_fills:
             fill_by_exec_id[f.execution.execId] = f
         for f in memory_fills:
             fill_by_exec_id[f.execution.execId] = f
 
-        all_fills_deduped = list(fill_by_exec_id.values())
-        logger.info(f"📊 Total unique fills after merge: {len(all_fills_deduped)}")
+        api_exec_ids = set(fill_by_exec_id.keys())
+        logger.info(f"📊 API fills: {len(fill_by_exec_id)} unique (reqExec={len(all_fills)}, memory={len(memory_fills)})")
 
-        # Log sample fills for debugging
-        for i, f in enumerate(all_fills_deduped[:5]):
-            raw_time = f.time
-            norm_time = self._ensure_utc(raw_time)
-            logger.info(
-                f"📊 Fill[{i}]: {f.contract.symbol} {f.execution.side} "
-                f"qty={f.execution.shares} @ {f.execution.price} "
-                f"permId={f.execution.permId} orderRef={f.execution.orderRef} "
-                f"raw_time={raw_time} (tzinfo={raw_time.tzinfo}) norm_utc={norm_time.strftime('%Y-%m-%d %H:%M:%S')}"
-            )
+        # ── Step 2: Load saved fills from disk (survives TWS/bot restarts) ──
+        saved_fills = self._load_saved_fills(start_time_utc, end_time_utc)
+        logger.info(f"📊 Saved fills from disk: {len(saved_fills)}")
 
-        # ── Step 2: Get bracket relationships from ib.trades() ──
-        # This gives us parentPermId linkage (fills don't have it directly)
-        trades = self.ib.trades()
-        logger.info(f"📊 ib.trades() returned {len(trades)} trade objects")
+        # Also save any API fills we have now (for future sessions)
+        for f in fill_by_exec_id.values():
+            try:
+                self._save_fill(f)
+            except Exception:
+                pass
 
-        # Build permId → parentPermId map and permId → orderRef map
-        perm_to_parent = {}
-        perm_to_order_ref = {}
-        for trade in trades:
-            perm_id = trade.order.permId
-            parent_perm_id = getattr(trade.order, 'parentPermId', 0)
-            if parent_perm_id and parent_perm_id != 0:
-                perm_to_parent[perm_id] = parent_perm_id
-            perm_to_order_ref[perm_id] = trade.order.orderRef or ""
+        # ── Step 3: Build unified fill records, filter to session window ──
+        # Use a simple dict format so we can merge API fills + saved fills
+        unified_fills = {}  # execId → fill_record dict
 
-        # ── Step 3: Group fills into bracket groups ──
-        # Each fill has execution.permId → use perm_to_parent to find bracket root
-        bracket_groups = defaultdict(list)  # root_permId → [Fill, ...]
+        # Add saved fills first
+        for sf in saved_fills:
+            unified_fills[sf["execId"]] = sf
 
-        for fill in all_fills_deduped:
-            perm_id = fill.execution.permId
-            # Walk up to the bracket root
-            root_id = perm_id
-            if perm_id in perm_to_parent:
-                root_id = perm_to_parent[perm_id]
+        # Add/override with API fills (richer data)
+        for f in fill_by_exec_id.values():
+            fill_time_utc = self._ensure_utc(f.time)
+            commission = 0.0
+            if hasattr(f, 'commissionReport') and f.commissionReport:
+                comm = f.commissionReport.commission
+                if comm and comm > 0:
+                    commission = float(comm)
+            unified_fills[f.execution.execId] = {
+                "execId": f.execution.execId,
+                "symbol": f.contract.symbol,
+                "side": f.execution.side,
+                "shares": float(f.execution.shares),
+                "price": float(f.execution.price),
+                "time": fill_time_utc.isoformat(),
+                "orderRef": f.execution.orderRef or "",
+                "permId": f.execution.permId,
+                "commission": commission,
+            }
 
-            bracket_groups[root_id].append(fill)
+        # Filter to session window and group by symbol
+        symbol_fills = defaultdict(list)
+        for record in unified_fills.values():
+            fill_time = datetime.fromisoformat(record["time"])
+            if fill_time.tzinfo is None:
+                fill_time = fill_time.replace(tzinfo=utc)
+            if fill_time < start_time_utc or fill_time > end_time_utc:
+                continue
+            symbol_fills[record["symbol"]].append(record)
 
-        logger.info(f"📊 Bracket groups formed: {len(bracket_groups)}")
+        logger.info(f"📊 Symbols with session fills: {dict((s, len(fl)) for s, fl in symbol_fills.items())}")
 
-        # ── Step 4: For each bracket group, identify entry/exit fills ──
+        # ── Step 4: FIFO position tracking per symbol ──
         detailed_messages = []
         trade_data = []
         multipliers = self.MULTIPLIERS
 
-        for root_id, fills in bracket_groups.items():
-            symbol = fills[0].contract.symbol
-            contract = fills[0].contract
+        for symbol, fills in symbol_fills.items():
+            # Sort fill records by time
+            fills.sort(key=lambda r: r["time"])
 
-            # Separate BUY and SELL fills
-            buy_fills = [f for f in fills if f.execution.side == 'BOT']
-            sell_fills = [f for f in fills if f.execution.side == 'SLD']
+            position = 0.0
+            trade_fills = []
 
-            buy_qty = sum(f.execution.shares for f in buy_fills)
-            sell_qty = sum(f.execution.shares for f in sell_fills)
+            for record in fills:
+                qty = record["shares"]
+                signed_qty = qty if record["side"] == "BOT" else -qty
 
-            logger.info(
-                f"📊 Group {root_id} ({symbol}): "
-                f"BUY fills={len(buy_fills)} (qty={buy_qty}), "
-                f"SELL fills={len(sell_fills)} (qty={sell_qty})"
-            )
+                prev_position = position
+                position += signed_qty
+                trade_fills.append(record)
 
-            if not buy_fills or not sell_fills:
-                # Only one side → open position, not a completed trade
-                if buy_fills or sell_fills:
-                    side_fills = buy_fills or sell_fills
-                    logger.info(f"📊   → Open position (only {'BUY' if buy_fills else 'SELL'} side)")
-                continue
-
-            # Determine direction: the side with the EARLIEST fill is the entry
-            earliest_buy = min(self._ensure_utc(f.time) for f in buy_fills)
-            earliest_sell = min(self._ensure_utc(f.time) for f in sell_fills)
-
-            if earliest_buy < earliest_sell:
-                direction = "LONG"
-                entry_fills = buy_fills
-                exit_fills = sell_fills
-            else:
-                direction = "SHORT"
-                entry_fills = sell_fills
-                exit_fills = buy_fills
-
-            # ── Session filter: exit must be within session window ──
-            latest_exit_utc = max(self._ensure_utc(f.time) for f in exit_fills)
-
-            if latest_exit_utc < start_time_utc or latest_exit_utc > end_time_utc:
-                pt_tz = ZoneInfo("America/Los_Angeles")
                 logger.info(
-                    f"📊   → Skipping (exit {latest_exit_utc.strftime('%H:%M:%S')} UTC "
-                    f"/ {latest_exit_utc.astimezone(pt_tz).strftime('%H:%M:%S')} PT "
-                    f"outside session window)"
+                    f"📊 {symbol}: {record['side']} {qty} @ {record['price']} "
+                    f"ref={record['orderRef']} pos: {prev_position} → {position}"
                 )
-                continue
 
-            # Get order ref tag from the entry's permId
-            entry_perm_id = entry_fills[0].execution.permId
-            tag = perm_to_order_ref.get(entry_perm_id, "") or perm_to_order_ref.get(root_id, "") or symbol
+                # Position returned to zero → completed round-trip
+                if abs(position) < 1e-9 and trade_fills:
+                    buy_recs = [r for r in trade_fills if r["side"] == "BOT"]
+                    sell_recs = [r for r in trade_fills if r["side"] == "SLD"]
 
-            logger.info(
-                f"📊   → {direction} trade, exit at {latest_exit_utc.strftime('%H:%M:%S')} UTC, tag={tag}"
-            )
+                    if buy_recs and sell_recs:
+                        earliest_buy = min(r["time"] for r in buy_recs)
+                        earliest_sell = min(r["time"] for r in sell_recs)
 
-            result = self._format_fill_based_trade(
-                entry_fills, exit_fills, symbol, contract, direction, tag, multipliers
-            )
-            if result:
-                message, net_pnl, tag, symbol = result
-                detailed_messages.append(message)
-                trade_data.append((message, net_pnl, tag, symbol))
-                logger.info(f"📊   → ✅ {symbol} {direction} PnL=${net_pnl:+.2f}")
-            else:
-                logger.warning(f"📊   → ❌ format returned None for group {root_id}")
+                        if earliest_buy < earliest_sell:
+                            direction = "LONG"
+                            entry_recs = buy_recs
+                            exit_recs = sell_recs
+                        else:
+                            direction = "SHORT"
+                            entry_recs = sell_recs
+                            exit_recs = buy_recs
+
+                        tag = entry_recs[0]["orderRef"] or symbol
+
+                        result = self._format_record_trade(
+                            entry_recs, exit_recs, symbol, direction, tag, multipliers
+                        )
+                        if result:
+                            message, net_pnl, tag, sym = result
+                            detailed_messages.append(message)
+                            trade_data.append((message, net_pnl, tag, sym))
+                            logger.info(f"📊   → ✅ {symbol} {direction} PnL=${net_pnl:+.2f}")
+
+                    trade_fills = []
+                    position = 0.0
+
+            if trade_fills and abs(position) > 1e-9:
+                logger.info(f"📊 {symbol}: open position ({position:+.0f}), skipping")
 
         # Sort by entry time
         def extract_datetime(msg):

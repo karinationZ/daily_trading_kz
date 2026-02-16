@@ -305,11 +305,11 @@ async def test_bos_detector():
 def test_csv_merge():
     ohlc_dir = f"{PROJECT_DIR}/bots/smc_bot/tests/ohlc_data"
     symbol = "mbt"
-    files = []
+    files = [f"{ohlc_dir}/{symbol}.csv"]
     for i in range(1, 10):
         if os.path.exists(f"{ohlc_dir}/{symbol}_{i}.csv"):
             files.append(f"{ohlc_dir}/{symbol}_{i}.csv")
-    merge_csv_no_dups(files, out_file=f"{ohlc_dir}/{symbol}_15m.csv")
+    merge_csv_no_dups(files, out_file=f"{ohlc_dir}/{symbol}.csv")
 
 
 @pytest.mark.asyncio

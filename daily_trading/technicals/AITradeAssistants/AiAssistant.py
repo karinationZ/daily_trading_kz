@@ -183,7 +183,7 @@ class AITradeAssistant:
             "entry_price": 0.00,
             "stop_loss": 0.00,
             "take_profit": 0.00,
-            "risk_reward_ratio": 1.2,
+            "risk_reward_ratio": {target_rr},
             "size": {size},
             "fvg_timestamp": "YYYY-MM-DD HH:MM:SS"},
           "metadata": {

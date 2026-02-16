@@ -352,52 +352,52 @@ class AITradeAssistant:
         )
 
 
-async def main():
-    """
-    Futures: GC, ES, NQ
-    Crypto: BTCUSDT, ETHUSDT, XAUTUSDT
-    """
-    symbol = "MGC"
-    want_to_pay_for_analyses = True  # change to False for free prompt only
-
-    pathlib = "/project/daily_trading/bots/smc_bot/tests/ohlc_data/mbt_1h.csv"
-    ohlc_1h = load_data(pathlib, start_ts="2025-10-01 00:00:00+00:00", end_ts="2025-10-25 00:00:00+00:00")
-    pathlib = "/project/daily_trading/bots/smc_bot/tests/ohlc_data/mbt.csv"
-    ohlc_5m = load_data(pathlib, start_ts="2025-10-01 00:00:00+00:00", end_ts="2025-10-25 00:00:00+00:00")
-    # client = IBKRClient(host=HOST, port=PORT, client_id=CLIENT_ID)
-    #
-    # # 1. CONNECT
-    # await client.connect()
-    # await asyncio.sleep(2)
-    # ohlc = await client.get_klines("MGC", "5m")
-
-    fvg_detector = FvgDetector(main_tf="5m", pivot_period=5, fvg_threshold=0.25)
-    fvg_results = fvg_detector.calculate_fvg(ohlc_5m)
-
-    detector = BosChochDetector(main_tf="1h", show_bull=True, show_bear=True, left_bars=8, right_bars=3)
-    results = detector.calculate_bos_choch(ohlc_1h)
-
-    detector = SupplyDemandZonesDetector(fvg_based_only=False, swing_length=50, internal_length=5)
-    active_swing, active_internal = detector.calculate(ohlc_5m)
-    ob_results = active_swing + active_internal
-    asset_data = AssetData(
-        symbol=symbol,
-        current_price=ohlc_5m["close"].iloc[-1],
-        fvg_signals=fvg_results,
-        ob_signals=ob_results,
-        bos_choch_signals=results,
-        ohlc_1h=ohlc_1h.tail(200).to_dict(orient="records"),
-        ohlc_5m=ohlc_5m.tail(300).to_dict(orient="records"),
-    )
-
-    ai_agent = AITradeAssistant(symbol="MBT", model=GEMINI_PRO, debug=False)
-    if want_to_pay_for_analyses:
-        formatted_ai_message, raw_message = await ai_agent.analyze_asset_trade_data(prompt_type=PromptType.BOS_FVG, asset_data=asset_data)
-        logger.info(formatted_ai_message)
-    else:
-        prompt = await ai_agent.build_bos_fvg_prompt(asset_data)
-        logger.info(prompt)
-
-
-if __name__ == "__main__":
-    asyncio.run(main())
+# async def main():
+#     """
+#     Futures: GC, ES, NQ
+#     Crypto: BTCUSDT, ETHUSDT, XAUTUSDT
+#     """
+#     symbol = "MGC"
+#     want_to_pay_for_analyses = True  # change to False for free prompt only
+#
+#     pathlib = "/project/daily_trading/bots/smc_bot/tests/ohlc_data/mbt_1h.csv"
+#     ohlc_1h = load_data(pathlib, start_ts="2025-10-01 00:00:00+00:00", end_ts="2025-10-25 00:00:00+00:00")
+#     pathlib = "/project/daily_trading/bots/smc_bot/tests/ohlc_data/mbt.csv"
+#     ohlc_5m = load_data(pathlib, start_ts="2025-10-01 00:00:00+00:00", end_ts="2025-10-25 00:00:00+00:00")
+#     # client = IBKRClient(host=HOST, port=PORT, client_id=CLIENT_ID)
+#     #
+#     # # 1. CONNECT
+#     # await client.connect()
+#     # await asyncio.sleep(2)
+#     # ohlc = await client.get_klines("MGC", "5m")
+#
+#     fvg_detector = FvgDetector(main_tf="5m", pivot_period=5, fvg_threshold=0.25)
+#     fvg_results = fvg_detector.calculate_fvg(ohlc_5m)
+#
+#     detector = BosChochDetector(main_tf="1h", show_bull=True, show_bear=True, left_bars=8, right_bars=3)
+#     results = detector.calculate_bos_choch(ohlc_1h)
+#
+#     detector = SupplyDemandZonesDetector(fvg_based_only=False, swing_length=50, internal_length=5)
+#     active_swing, active_internal = detector.calculate(ohlc_5m)
+#     ob_results = active_swing + active_internal
+#     asset_data = AssetData(
+#         symbol=symbol,
+#         current_price=ohlc_5m["close"].iloc[-1],
+#         fvg_signals=fvg_results,
+#         ob_signals=ob_results,
+#         bos_choch_signals=results,
+#         ohlc_1h=ohlc_1h.tail(200).to_dict(orient="records"),
+#         ohlc_5m=ohlc_5m.tail(300).to_dict(orient="records"),
+#     )
+#
+#     ai_agent = AITradeAssistant(symbol="MBT", model=GEMINI_PRO, debug=False)
+#     if want_to_pay_for_analyses:
+#         formatted_ai_message, raw_message = await ai_agent.analyze_asset_trade_data(prompt_type=PromptType.BOS_FVG, asset_data=asset_data)
+#         logger.info(formatted_ai_message)
+#     else:
+#         prompt = await ai_agent.build_bos_fvg_prompt(asset_data)
+#         logger.info(prompt)
+#
+#
+# if __name__ == "__main__":
+#     asyncio.run(main())

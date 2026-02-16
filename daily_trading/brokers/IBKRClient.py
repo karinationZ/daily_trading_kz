@@ -465,18 +465,13 @@ class IBKRClient:
         if not self.ib.isConnected():
             return "Error: Not connected to IBKR."
 
-        # Session start - Trading day starts at 8 AM PT
+        # Session start - Trading day starts at midnight PT (00:00)
         pt_tz = ZoneInfo("America/Los_Angeles")
         now_pt = datetime.now(pt_tz)
 
-        # If before 8 AM PT, use previous day's session
-        if now_pt.hour < 8:
-            session_date = (now_pt.date() - timedelta(days=1))
-        else:
-            session_date = now_pt.date()
-
-        # Session starts at 8:00 AM PT
-        start_pt = datetime(session_date.year, session_date.month, session_date.day, 8, 0, 0, tzinfo=pt_tz)
+        # Session starts at midnight (00:00) of current day in PT
+        session_date = now_pt.date()
+        start_pt = datetime(session_date.year, session_date.month, session_date.day, 0, 0, 0, tzinfo=pt_tz)
         end_pt = now_pt
 
         logger.info(f"📅 Session window: {start_pt.strftime('%Y-%m-%d %H:%M %Z')} → {end_pt.strftime('%H:%M %Z')}")
@@ -717,28 +712,47 @@ class IBKRClient:
         trade_data = []  # (message, pnl, tag, symbol)
         multipliers = self.MULTIPLIERS
 
+        logger.info(f"🔍 DEBUG - Processing {len(trade_groups)} trade groups...")
+
         for group_id, group_trades in trade_groups.items():
+            logger.debug(f"🔍 Processing group {group_id}: {len(group_trades)} trades")
+
             # Find entry and exit trades
             entry_trade = None
             exit_trade = None
 
             for trade in group_trades:
+                logger.debug(f"🔍   Trade: {trade.contract.symbol} {trade.order.action} "
+                            f"parentPermId={getattr(trade.order, 'parentPermId', None)} "
+                            f"fills={len(trade.fills) if trade.fills else 0}")
+
                 if trade.order.action in ['BUY', 'SELL'] and trade.fills:
                     # Check if this is a parent or child
                     if hasattr(trade.order, 'parentPermId') and trade.order.parentPermId:
                         # This is likely the exit
                         exit_trade = trade
+                        logger.debug(f"🔍     → Identified as EXIT trade")
                     else:
                         # This is likely the entry
                         entry_trade = trade
+                        logger.debug(f"🔍     → Identified as ENTRY trade")
+
+            # Debug: Report what was found
+            logger.info(f"🔍 Group {group_id}: Entry={'✓' if entry_trade else '✗'}, Exit={'✓' if exit_trade else '✗'}")
 
             # If we found both entry and exit, calculate and format
             if entry_trade and exit_trade and entry_trade.fills and exit_trade.fills:
+                logger.info(f"🔍   → Formatting trade pair...")
                 result = self.format_detailed_trade(entry_trade, exit_trade, multipliers)
                 if result:
                     message, net_pnl, tag, symbol = result
                     detailed_messages.append(message)
                     trade_data.append((message, net_pnl, tag, symbol))
+                    logger.info(f"🔍   → ✅ Trade formatted: {symbol} PnL=${net_pnl:+.2f}")
+                else:
+                    logger.warning(f"🔍   → ❌ format_detailed_trade returned None")
+            else:
+                logger.warning(f"🔍   → ❌ Incomplete pair - skipping (Entry={bool(entry_trade)}, Exit={bool(exit_trade)})")
 
         # Sort by entry time (extract from message)
         def extract_datetime(msg):
@@ -755,5 +769,7 @@ class IBKRClient:
             paired = sorted(zip(detailed_messages, trade_data), key=lambda x: extract_datetime(x[0]))
             detailed_messages = [p[0] for p in paired]
             trade_data = [p[1] for p in paired]
+
+        logger.info(f"🔍 DEBUG FINAL - Successfully formatted {len(detailed_messages)} completed trades")
 
         return detailed_messages, trade_data

@@ -655,41 +655,12 @@ class IBKRClient:
             if hasattr(trade.order, 'parentPermId') and trade.order.parentPermId:
                 child_to_parent[trade.order.permId] = trade.order.parentPermId
 
-        # Second pass: group trades
-        filtered_out_count = 0
-        included_count = 0
-
+        # Second pass: group ALL trades first (don't filter by time yet)
         for trade in trades:
             # Skip cancelled orders
             if trade.orderStatus.status == 'Cancelled':
                 logger.debug(f"🔍 Skipped cancelled: {trade.contract.symbol}")
                 continue
-
-            # Filter by time range
-            trade_time = None
-            if trade.fills:
-                trade_time = min(fill.time for fill in trade.fills)
-
-                # Ensure trade_time is timezone-aware (IBKR returns in system timezone)
-                if trade_time.tzinfo is None:
-                    # Naive datetime - assume it's in PT (system timezone should be PT)
-                    pt_tz = ZoneInfo("America/Los_Angeles")
-                    trade_time_original = trade_time
-                    trade_time = trade_time.replace(tzinfo=pt_tz)
-                    logger.debug(f"🔍 Converted naive time: {trade_time_original} → {trade_time}")
-
-                # DEBUG: Log filter decision
-                is_before_start = trade_time < start_time
-                is_after_end = trade_time > end_time
-
-                if is_before_start or is_after_end:
-                    filtered_out_count += 1
-                    logger.info(f"🔍 FILTERED OUT: {trade.contract.symbol} at {trade_time.strftime('%Y-%m-%d %H:%M:%S %Z')} "
-                               f"(before_start={is_before_start}, after_end={is_after_end})")
-                    continue
-                else:
-                    included_count += 1
-                    logger.info(f"🔍 INCLUDED: {trade.contract.symbol} at {trade_time.strftime('%Y-%m-%d %H:%M:%S %Z')}")
 
             # If this is a child order, add to parent's group
             if trade.order.permId in child_to_parent:
@@ -705,7 +676,7 @@ class IBKRClient:
                     trade_groups[trade.order.permId].append(trade)
 
         # DEBUG: Summary
-        logger.info(f"🔍 DEBUG SUMMARY - Filtered out: {filtered_out_count}, Included: {included_count}, Trade groups: {len(trade_groups)}")
+        logger.info(f"🔍 DEBUG SUMMARY - Trade groups created: {len(trade_groups)}")
 
         # Process each trade group
         detailed_messages = []
@@ -740,9 +711,23 @@ class IBKRClient:
             # Debug: Report what was found
             logger.info(f"🔍 Group {group_id}: Entry={'✓' if entry_trade else '✗'}, Exit={'✓' if exit_trade else '✗'}")
 
-            # If we found both entry and exit, calculate and format
+            # If we found both entry and exit, check time filter and format
             if entry_trade and exit_trade and entry_trade.fills and exit_trade.fills:
-                logger.info(f"🔍   → Formatting trade pair...")
+                # Filter by EXIT time (include if exit happened within session window)
+                exit_fills = exit_trade.fills
+                exit_time = max(fill.time for fill in exit_fills)
+
+                # Ensure exit_time is timezone-aware
+                if exit_time.tzinfo is None:
+                    pt_tz = ZoneInfo("America/Los_Angeles")
+                    exit_time = exit_time.replace(tzinfo=pt_tz)
+
+                # Check if exit is within session window
+                if exit_time < start_time or exit_time > end_time:
+                    logger.info(f"🔍   → ⏭️ Skipping - Exit outside session window: {exit_time.strftime('%Y-%m-%d %H:%M:%S %Z')}")
+                    continue
+
+                logger.info(f"🔍   → Formatting trade pair (exit at {exit_time.strftime('%Y-%m-%d %H:%M:%S %Z')})...")
                 result = self.format_detailed_trade(entry_trade, exit_trade, multipliers)
                 if result:
                     message, net_pnl, tag, symbol = result

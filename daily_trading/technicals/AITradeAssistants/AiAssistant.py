@@ -66,7 +66,7 @@ class AITradeAssistant:
 
     RISK_PER_TRADE = 250.0  # USD
     MIN_SIZE = 1  # Minimum viable position size
-    MAX_SIZE = 10  # Maximum position size cap
+    MAX_SIZE = 15  # Maximum position size cap
 
     def __init__(self, symbol: str, model=GEMINI_PRO, debug=False):
         self.api_key = GEMINI_API_KEY

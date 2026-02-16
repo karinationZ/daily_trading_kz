@@ -456,25 +456,61 @@ class IBKRClient:
         return True, 0.0
 
     # ************** REPORTING LOGIC **************
-    # This is the main report function that compiles all the data into a comprehensive text report.
+
+    @staticmethod
+    def _compute_session_window(now_utc: datetime) -> tuple[datetime, datetime]:
+        """
+        Compute the trading session window: previous day 14:30 PT → current day 14:00 PT.
+
+        All math is done in PT then returned as UTC.
+        This is timezone-safe and deterministic regardless of system timezone.
+        """
+        pt = ZoneInfo("America/Los_Angeles")
+        now_pt = now_utc.astimezone(pt)
+
+        # Session end: today at 14:00 PT
+        session_end = now_pt.replace(hour=14, minute=0, second=0, microsecond=0)
+
+        # Session start: yesterday at 14:30 PT
+        yesterday_pt = now_pt - timedelta(days=1)
+        session_start = yesterday_pt.replace(hour=14, minute=30, second=0, microsecond=0)
+
+        # If we haven't reached today's 14:00 yet, use up to now
+        if now_pt < session_end:
+            session_end = now_pt
+
+        # Convert to UTC for all comparisons
+        utc = ZoneInfo("UTC")
+        return session_start.astimezone(utc), session_end.astimezone(utc)
+
+    @staticmethod
+    def _ensure_utc(dt: datetime) -> datetime:
+        """Normalize any datetime to UTC. Naive datetimes are assumed UTC."""
+        utc = ZoneInfo("UTC")
+        if dt.tzinfo is None:
+            return dt.replace(tzinfo=utc)
+        return dt.astimezone(utc)
 
     async def get_daily_summary(self, account_id='DUA614247') -> str:
         """
-        Clean daily trading summary with net PnL after commissions.
+        Deterministic, timezone-safe daily trading summary.
+        Covers prev day 14:30 PT → current day 14:00 PT.
+        Uses reqExecutionsAsync for fill data that survives reconnections.
         """
         if not self.ib.isConnected():
             return "Error: Not connected to IBKR."
 
-        # Session start - Trading day starts at midnight PT (00:00)
+        utc = ZoneInfo("UTC")
         pt_tz = ZoneInfo("America/Los_Angeles")
-        now_pt = datetime.now(pt_tz)
+        now_utc = datetime.now(utc)
 
-        # Session starts at midnight (00:00) of current day in PT
-        session_date = now_pt.date()
-        start_pt = datetime(session_date.year, session_date.month, session_date.day, 0, 0, 0, tzinfo=pt_tz)
-        end_pt = now_pt
+        # Compute session window: prev day 14:30 PT → current day 14:00 PT
+        session_start_utc, session_end_utc = self._compute_session_window(now_utc)
 
-        logger.info(f"📅 Session window: {start_pt.strftime('%Y-%m-%d %H:%M %Z')} → {end_pt.strftime('%H:%M %Z')}")
+        # Log session boundaries
+        logger.info(f"📅 Session window (UTC): {session_start_utc.strftime('%Y-%m-%d %H:%M')} → {session_end_utc.strftime('%Y-%m-%d %H:%M')}")
+        logger.info(f"📅 Session window (PT):  {session_start_utc.astimezone(pt_tz).strftime('%Y-%m-%d %H:%M')} → {session_end_utc.astimezone(pt_tz).strftime('%Y-%m-%d %H:%M')}")
+        logger.info(f"📅 System time: UTC={now_utc.strftime('%H:%M')} PT={now_utc.astimezone(pt_tz).strftime('%H:%M')}")
 
         # Get account summary
         summary = await self.ib.accountSummaryAsync()
@@ -489,8 +525,8 @@ class IBKRClient:
                 elif v.tag == "RealizedPnL":
                     realized = float(v.value)
 
-        # Get detailed trades
-        detailed_trades, trade_pnls = await self.get_detailed_trades(start_pt, end_pt)
+        # Get detailed trades using fill-based approach
+        detailed_trades, trade_pnls = await self.get_detailed_trades(session_start_utc, session_end_utc)
 
         # Calculate session PnL
         session_pnl = sum(pnl for _, pnl, _, _ in trade_pnls)
@@ -503,10 +539,14 @@ class IBKRClient:
             tag_pnls[tag] += pnl
             symbol_pnls[symbol] += pnl
 
-        # Build report - clean and simple like your original
+        # Display times in PT for readability
+        start_pt = session_start_utc.astimezone(pt_tz)
+        end_pt = session_end_utc.astimezone(pt_tz)
+        now_pt = now_utc.astimezone(pt_tz)
+
         lines = [
             "\n📊 **DAILY TRADING SUMMARY**\n",
-            f"Start: {start_pt.strftime('%Y-%m-%d %H:%M')} PT – {end_pt.strftime('%H:%M')} PT",
+            f"Session: {start_pt.strftime('%Y-%m-%d %H:%M')} PT – {end_pt.strftime('%Y-%m-%d %H:%M')} PT",
             "",
             "📈 **ACCOUNT SUMMARY:**",
             f"💰 Net Liq: ${net_liq:,.2f}",
@@ -518,14 +558,12 @@ class IBKRClient:
             "",
         ]
 
-        # Add detailed trades
         if detailed_trades:
             lines.extend(detailed_trades)
-            lines.append("")  # Add spacing
+            lines.append("")
         else:
             lines.append("  (no completed trades found)\n")
 
-        # Add totals by symbol
         if symbol_pnls:
             lines.append("📊 **TOTALS BY SYMBOL:**")
             for symbol, total in sorted(symbol_pnls.items()):
@@ -533,270 +571,246 @@ class IBKRClient:
                 lines.append(f"{icon} {symbol}: ${total:+,.2f}")
             lines.append("")
 
-        # Footer
-        lines.extend([f"\nReport generated: {end_pt.strftime('%Y-%m-%d %H:%M:%S')} PT\n"])
+        lines.extend([f"\nReport generated: {now_pt.strftime('%Y-%m-%d %H:%M:%S')} PT\n"])
 
         return "\n".join(lines)
 
     @staticmethod
-    def format_detailed_trade(entry_trade, exit_trade, multipliers):
-        """Format a single trade pair - clean and simple like your original."""
+    def _format_fill_based_trade(entry_fills, exit_fills, symbol, contract, direction, tag, multipliers):
+        """
+        Format a completed trade from consolidated fill lists.
 
-        # Get contract details
-        contract = entry_trade.contract
-        symbol = contract.symbol
-
-        # Get entry details
-        entry_fills = entry_trade.fills
-        entry_time = min(fill.time for fill in entry_fills)
+        entry_fills / exit_fills: list of Fill objects (from ib_async)
+        Each Fill has: .time, .execution.price, .execution.shares, .commissionReport
+        """
         pt_tz = ZoneInfo("America/Los_Angeles")
-        entry_time_pt = entry_time.astimezone(pt_tz)
 
-        entry_price = sum(fill.execution.price * fill.execution.shares for fill in entry_fills) / sum(fill.execution.shares for fill in entry_fills)
-        entry_qty = sum(fill.execution.shares for fill in entry_fills)
+        entry_time = min(f.time for f in entry_fills)
+        entry_time_pt = IBKRClient._ensure_utc(entry_time).astimezone(pt_tz)
+        exit_time = max(f.time for f in exit_fills)
+        exit_time_pt = IBKRClient._ensure_utc(exit_time).astimezone(pt_tz)
 
-        # Get exit details
-        exit_fills = exit_trade.fills
-        exit_time = max(fill.time for fill in exit_fills)
-        exit_time_pt = exit_time.astimezone(pt_tz)
+        # Weighted average prices
+        entry_shares_total = sum(f.execution.shares for f in entry_fills)
+        entry_price = sum(f.execution.price * f.execution.shares for f in entry_fills) / entry_shares_total
 
-        exit_price = sum(fill.execution.price * fill.execution.shares for fill in exit_fills) / sum(fill.execution.shares for fill in exit_fills)
-        exit_qty = sum(fill.execution.shares for fill in exit_fills)
+        exit_shares_total = sum(f.execution.shares for f in exit_fills)
+        exit_price = sum(f.execution.price * f.execution.shares for f in exit_fills) / exit_shares_total
 
-        # Verify quantities match
-        if entry_qty != exit_qty:
-            return None
+        # Use the smaller of entry/exit qty (handles partial exits)
+        qty = min(entry_shares_total, exit_shares_total)
 
-        # Get multiplier
+        # Multiplier: prefer contract.multiplier, fall back to lookup
         mult = multipliers.get(symbol, 1)
         if hasattr(contract, 'multiplier') and contract.multiplier:
-            mult = float(contract.multiplier)
+            try:
+                mult = float(contract.multiplier)
+            except (ValueError, TypeError):
+                pass
 
-        # Calculate PnL based on direction
-        if entry_trade.order.action == 'BUY' and exit_trade.order.action == 'SELL':
-            direction = "LONG"
-            pnl = (exit_price - entry_price) * mult * entry_qty
-        elif entry_trade.order.action == 'SELL' and exit_trade.order.action == 'BUY':
-            direction = "SHORT"
-            pnl = (entry_price - exit_price) * mult * entry_qty
+        # PnL
+        if direction == "LONG":
+            pnl = (exit_price - entry_price) * mult * qty
         else:
-            return None
+            pnl = (entry_price - exit_price) * mult * qty
 
-        # Calculate commissions
-        total_commission = 0
-        for fill in entry_fills:
-            if hasattr(fill, 'commissionReport') and fill.commissionReport:
-                total_commission += fill.commissionReport.commission
-        for fill in exit_fills:
-            if hasattr(fill, 'commissionReport') and fill.commissionReport:
-                total_commission += fill.commissionReport.commission
+        # Commissions
+        total_commission = 0.0
+        for f in entry_fills + exit_fills:
+            if hasattr(f, 'commissionReport') and f.commissionReport:
+                comm = f.commissionReport.commission
+                if comm and comm > 0:
+                    total_commission += comm
 
-        # Net PnL after commissions
         net_pnl = pnl - total_commission
 
-        # Get order reference tag
-        tag = entry_trade.order.orderRef or symbol
-
-        # Format dates and times
+        # Format output
         entry_date_str = entry_time_pt.strftime("%Y-%m-%d")
         entry_time_str = entry_time_pt.strftime("%H:%M")
         exit_date_str = exit_time_pt.strftime("%Y-%m-%d")
         exit_time_str = exit_time_pt.strftime("%H:%M")
-
-        # Format numbers
         entry_price_fmt = f"{entry_price:,.2f}"
         exit_price_fmt = f"{exit_price:,.2f}"
 
-        # Simple clean format like your original
         emoji = "🟢" if net_pnl >= 0 else "🔴"
 
         if entry_date_str == exit_date_str:
-            # Same day trade
             message = (
-                f"{emoji} [{tag}] {symbol} {direction} ({int(entry_qty)}) ${net_pnl:+,.2f}\n"
+                f"{emoji} [{tag}] {symbol} {direction} ({int(qty)}) ${net_pnl:+,.2f}\n"
                 f"   ⏳ {entry_date_str} {entry_time_str} @ {entry_price_fmt} ➜ {exit_time_str} @ {exit_price_fmt}"
             )
         else:
-            # Multi-day trade
             message = (
-                f"{emoji} [{tag}] {symbol} {direction} ({int(entry_qty)}) ${net_pnl:+,.2f}\n"
+                f"{emoji} [{tag}] {symbol} {direction} ({int(qty)}) ${net_pnl:+,.2f}\n"
                 f"   ⏳ {entry_date_str} {entry_time_str} @ {entry_price_fmt} ➜ {exit_date_str} {exit_time_str} @ {exit_price_fmt}"
             )
 
         return message, net_pnl, tag, symbol
 
-    async def get_detailed_trades(self, start_time, end_time):
+    async def get_detailed_trades(self, start_time_utc, end_time_utc):
         """
-        Get detailed trade-by-trade analysis from self.ib.trades()
+        Fill-based, bracket-aware trade analysis.
+
+        Uses reqExecutionsAsync() to get fills that survive API reconnections
+        (unlike ib.trades() which only has fills from the current session).
+
+        Groups fills by bracket order (permId linkage), then pairs
+        entry fills with exit fills to produce completed round-trip trades.
+
+        All timestamps normalized to UTC before any comparison.
+
         Returns: (list of formatted messages, list of (message, pnl, tag, symbol))
         """
+        utc = ZoneInfo("UTC")
+
+        logger.info(f"📊 Session window (UTC): {start_time_utc.strftime('%Y-%m-%d %H:%M:%S')} → {end_time_utc.strftime('%Y-%m-%d %H:%M:%S')}")
+        logger.info(f"📊 System timezone: {datetime.now().astimezone().tzinfo}")
+
+        # ── Step 1: Get ALL fills from TWS (survives reconnections) ──
+        all_fills = await self.ib.reqExecutionsAsync()
+        logger.info(f"📊 reqExecutionsAsync returned {len(all_fills)} fills")
+
+        # Also check ib.fills() for any fills only in memory
+        memory_fills = self.ib.fills()
+        logger.info(f"📊 ib.fills() returned {len(memory_fills)} fills")
+
+        # Merge: use execId as dedup key
+        fill_by_exec_id = {}
+        for f in all_fills:
+            fill_by_exec_id[f.execution.execId] = f
+        for f in memory_fills:
+            fill_by_exec_id[f.execution.execId] = f
+
+        all_fills_deduped = list(fill_by_exec_id.values())
+        logger.info(f"📊 Total unique fills after merge: {len(all_fills_deduped)}")
+
+        # Log sample fills for debugging
+        for i, f in enumerate(all_fills_deduped[:5]):
+            raw_time = f.time
+            norm_time = self._ensure_utc(raw_time)
+            logger.info(
+                f"📊 Fill[{i}]: {f.contract.symbol} {f.execution.side} "
+                f"qty={f.execution.shares} @ {f.execution.price} "
+                f"permId={f.execution.permId} orderRef={f.execution.orderRef} "
+                f"raw_time={raw_time} (tzinfo={raw_time.tzinfo}) norm_utc={norm_time.strftime('%Y-%m-%d %H:%M:%S')}"
+            )
+
+        # ── Step 2: Get bracket relationships from ib.trades() ──
+        # This gives us parentPermId linkage (fills don't have it directly)
         trades = self.ib.trades()
+        logger.info(f"📊 ib.trades() returned {len(trades)} trade objects")
 
-        # DEBUGGING: Log critical info
-        logger.info(f"🔍 DEBUG - Session window: {start_time.strftime('%Y-%m-%d %H:%M:%S %Z')} → {end_time.strftime('%Y-%m-%d %H:%M:%S %Z')}")
-        logger.info(f"🔍 DEBUG - Total trades in ib.trades(): {len(trades)}")
-        logger.info(f"🔍 DEBUG - System timezone: {datetime.now().astimezone().tzinfo}")
-
-        # Log first few trades for inspection
-        for i, trade in enumerate(trades[:3]):
-            if trade.fills:
-                first_fill = trade.fills[0]
-                logger.info(f"🔍 DEBUG - Trade {i}: Symbol={trade.contract.symbol}, "
-                           f"Fill time={first_fill.time}, "
-                           f"Fill time tzinfo={first_fill.time.tzinfo}, "
-                           f"Status={trade.orderStatus.status}")
-
-        # Group trades by parent-child relationships
-        trade_groups = {}
-        child_to_parent = {}
-
-        # First pass: identify parent-child relationships
+        # Build permId → parentPermId map and permId → orderRef map
+        perm_to_parent = {}
+        perm_to_order_ref = {}
         for trade in trades:
-            if hasattr(trade.order, 'parentPermId') and trade.order.parentPermId:
-                child_to_parent[trade.order.permId] = trade.order.parentPermId
+            perm_id = trade.order.permId
+            parent_perm_id = getattr(trade.order, 'parentPermId', 0)
+            if parent_perm_id and parent_perm_id != 0:
+                perm_to_parent[perm_id] = parent_perm_id
+            perm_to_order_ref[perm_id] = trade.order.orderRef or ""
 
-        # Second pass: group ALL trades first (don't filter by time yet)
-        for trade in trades:
-            # Skip cancelled orders
-            if trade.orderStatus.status == 'Cancelled':
-                logger.debug(f"🔍 Skipped cancelled: {trade.contract.symbol}")
-                continue
+        # ── Step 3: Group fills into bracket groups ──
+        # Each fill has execution.permId → use perm_to_parent to find bracket root
+        bracket_groups = defaultdict(list)  # root_permId → [Fill, ...]
 
-            # If this is a child order, add to parent's group
-            if trade.order.permId in child_to_parent:
-                parent_id = child_to_parent[trade.order.permId]
-                if parent_id not in trade_groups:
-                    trade_groups[parent_id] = []
-                trade_groups[parent_id].append(trade)
-            else:
-                # This might be a parent or standalone trade
-                if trade.order.permId not in trade_groups:
-                    trade_groups[trade.order.permId] = [trade]
-                else:
-                    trade_groups[trade.order.permId].append(trade)
+        for fill in all_fills_deduped:
+            perm_id = fill.execution.permId
+            # Walk up to the bracket root
+            root_id = perm_id
+            if perm_id in perm_to_parent:
+                root_id = perm_to_parent[perm_id]
 
-        # DEBUG: Summary
-        logger.info(f"🔍 DEBUG SUMMARY - Trade groups created: {len(trade_groups)}")
+            bracket_groups[root_id].append(fill)
 
-        # Process each trade group
+        logger.info(f"📊 Bracket groups formed: {len(bracket_groups)}")
+
+        # ── Step 4: For each bracket group, identify entry/exit fills ──
         detailed_messages = []
-        trade_data = []  # (message, pnl, tag, symbol)
+        trade_data = []
         multipliers = self.MULTIPLIERS
 
-        logger.info(f"🔍 DEBUG - Processing {len(trade_groups)} trade groups...")
+        for root_id, fills in bracket_groups.items():
+            symbol = fills[0].contract.symbol
+            contract = fills[0].contract
 
-        for group_id, group_trades in trade_groups.items():
-            logger.debug(f"🔍 Processing group {group_id}: {len(group_trades)} trades")
+            # Separate BUY and SELL fills
+            buy_fills = [f for f in fills if f.execution.side == 'BOT']
+            sell_fills = [f for f in fills if f.execution.side == 'SLD']
 
-            # Find entry and exit trades
-            entry_trade = None
-            exit_trade = None
+            buy_qty = sum(f.execution.shares for f in buy_fills)
+            sell_qty = sum(f.execution.shares for f in sell_fills)
 
-            # Collect all filled trades
-            buy_trades = []
-            sell_trades = []
+            logger.info(
+                f"📊 Group {root_id} ({symbol}): "
+                f"BUY fills={len(buy_fills)} (qty={buy_qty}), "
+                f"SELL fills={len(sell_fills)} (qty={sell_qty})"
+            )
 
-            for trade in group_trades:
-                logger.debug(f"🔍   Trade: {trade.contract.symbol} {trade.order.action} "
-                            f"parentPermId={getattr(trade.order, 'parentPermId', None)} "
-                            f"fills={len(trade.fills) if trade.fills else 0} "
-                            f"status={trade.orderStatus.status}")
+            if not buy_fills or not sell_fills:
+                # Only one side → open position, not a completed trade
+                if buy_fills or sell_fills:
+                    side_fills = buy_fills or sell_fills
+                    logger.info(f"📊   → Open position (only {'BUY' if buy_fills else 'SELL'} side)")
+                continue
 
-                # Only consider filled trades
-                if trade.order.action in ['BUY', 'SELL'] and trade.fills and trade.orderStatus.status == 'Filled':
-                    if trade.order.action == 'BUY':
-                        buy_trades.append(trade)
-                    else:
-                        sell_trades.append(trade)
+            # Determine direction: the side with the EARLIEST fill is the entry
+            earliest_buy = min(self._ensure_utc(f.time) for f in buy_fills)
+            earliest_sell = min(self._ensure_utc(f.time) for f in sell_fills)
 
-            # Determine entry/exit based on action pairing
-            # LONG trade: BUY (entry) → SELL (exit)
-            # SHORT trade: SELL (entry) → BUY (exit)
-            if buy_trades and sell_trades:
-                # Both BUY and SELL exist → round trip completed
-                # Use earliest of each as entry/exit
-                entry_trade = min(buy_trades, key=lambda t: min(f.time for f in t.fills))
-                exit_trade = min(sell_trades, key=lambda t: min(f.time for f in t.fills))
-
-                # Determine direction by comparing times
-                entry_time = min(f.time for f in entry_trade.fills)
-                exit_time = min(f.time for f in exit_trade.fills)
-
-                if entry_time > exit_time:
-                    # SELL came before BUY → SHORT position
-                    entry_trade, exit_trade = exit_trade, entry_trade
-
-                logger.debug(f"🔍     → LONG: Entry=BUY, Exit=SELL")
-            elif len(buy_trades) >= 2:
-                # Multiple BUYs → SHORT trade (first SELL entry, second BUY exit)
-                # Sort by time
-                sorted_buys = sorted(buy_trades, key=lambda t: min(f.time for f in t.fills))
-                entry_trade = sorted_buys[1]  # Later BUY might be covering a short
-                exit_trade = sorted_buys[0]
-                # Actually this is ambiguous, skip it
-                entry_trade = None
-                exit_trade = None
-            elif len(sell_trades) >= 2:
-                # Multiple SELLs → LONG trade (first BUY entry, second SELL exit)
-                sorted_sells = sorted(sell_trades, key=lambda t: min(f.time for f in t.fills))
-                entry_trade = sorted_sells[0]
-                exit_trade = sorted_sells[1]
-                # Actually this is also ambiguous, skip it
-                entry_trade = None
-                exit_trade = None
+            if earliest_buy < earliest_sell:
+                direction = "LONG"
+                entry_fills = buy_fills
+                exit_fills = sell_fills
             else:
-                # Only one side filled → incomplete trade (still open)
-                entry_trade = None
-                exit_trade = None
+                direction = "SHORT"
+                entry_fills = sell_fills
+                exit_fills = buy_fills
 
-            # Debug: Report what was found
-            logger.info(f"🔍 Group {group_id}: BUYs={len(buy_trades)}, SELLs={len(sell_trades)}, "
-                       f"Entry={'✓' if entry_trade else '✗'}, Exit={'✓' if exit_trade else '✗'}")
+            # ── Session filter: exit must be within session window ──
+            latest_exit_utc = max(self._ensure_utc(f.time) for f in exit_fills)
 
-            # If we found both entry and exit, check time filter and format
-            if entry_trade and exit_trade and entry_trade.fills and exit_trade.fills:
-                # Filter by EXIT time (include if exit happened within session window)
-                exit_fills = exit_trade.fills
-                exit_time = max(fill.time for fill in exit_fills)
+            if latest_exit_utc < start_time_utc or latest_exit_utc > end_time_utc:
+                pt_tz = ZoneInfo("America/Los_Angeles")
+                logger.info(
+                    f"📊   → Skipping (exit {latest_exit_utc.strftime('%H:%M:%S')} UTC "
+                    f"/ {latest_exit_utc.astimezone(pt_tz).strftime('%H:%M:%S')} PT "
+                    f"outside session window)"
+                )
+                continue
 
-                # Ensure exit_time is timezone-aware
-                if exit_time.tzinfo is None:
-                    pt_tz = ZoneInfo("America/Los_Angeles")
-                    exit_time = exit_time.replace(tzinfo=pt_tz)
+            # Get order ref tag from the entry's permId
+            entry_perm_id = entry_fills[0].execution.permId
+            tag = perm_to_order_ref.get(entry_perm_id, "") or perm_to_order_ref.get(root_id, "") or symbol
 
-                # Check if exit is within session window
-                if exit_time < start_time or exit_time > end_time:
-                    logger.info(f"🔍   → ⏭️ Skipping - Exit outside session window: {exit_time.strftime('%Y-%m-%d %H:%M:%S %Z')}")
-                    continue
+            logger.info(
+                f"📊   → {direction} trade, exit at {latest_exit_utc.strftime('%H:%M:%S')} UTC, tag={tag}"
+            )
 
-                logger.info(f"🔍   → Formatting trade pair (exit at {exit_time.strftime('%Y-%m-%d %H:%M:%S %Z')})...")
-                result = self.format_detailed_trade(entry_trade, exit_trade, multipliers)
-                if result:
-                    message, net_pnl, tag, symbol = result
-                    detailed_messages.append(message)
-                    trade_data.append((message, net_pnl, tag, symbol))
-                    logger.info(f"🔍   → ✅ Trade formatted: {symbol} PnL=${net_pnl:+.2f}")
-                else:
-                    logger.warning(f"🔍   → ❌ format_detailed_trade returned None")
+            result = self._format_fill_based_trade(
+                entry_fills, exit_fills, symbol, contract, direction, tag, multipliers
+            )
+            if result:
+                message, net_pnl, tag, symbol = result
+                detailed_messages.append(message)
+                trade_data.append((message, net_pnl, tag, symbol))
+                logger.info(f"📊   → ✅ {symbol} {direction} PnL=${net_pnl:+.2f}")
             else:
-                logger.warning(f"🔍   → ❌ Incomplete pair - skipping (Entry={bool(entry_trade)}, Exit={bool(exit_trade)})")
+                logger.warning(f"📊   → ❌ format returned None for group {root_id}")
 
-        # Sort by entry time (extract from message)
+        # Sort by entry time
         def extract_datetime(msg):
-            # Extract from format like: 2026-02-13 20:59 @ 24,810.25 ➜ 2026-02-13 21:06 @ 24,780.25
             match = re.search(r'(\d{4}-\d{2}-\d{2}) (\d{2}:\d{2})', msg)
             if match:
                 date_str, time_str = match.groups()
-                dt = datetime.strptime(f"{date_str} {time_str}", "%Y-%m-%d %H:%M")
-                return dt
+                return datetime.strptime(f"{date_str} {time_str}", "%Y-%m-%d %H:%M")
             return datetime.min
 
-        # Sort messages by entry time
         if detailed_messages:
             paired = sorted(zip(detailed_messages, trade_data), key=lambda x: extract_datetime(x[0]))
             detailed_messages = [p[0] for p in paired]
             trade_data = [p[1] for p in paired]
 
-        logger.info(f"🔍 DEBUG FINAL - Successfully formatted {len(detailed_messages)} completed trades")
+        logger.info(f"📊 RESULT: {len(detailed_messages)} completed trades in session")
 
         return detailed_messages, trade_data

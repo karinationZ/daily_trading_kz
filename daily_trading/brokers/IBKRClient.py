@@ -465,13 +465,21 @@ class IBKRClient:
         if not self.ib.isConnected():
             return "Error: Not connected to IBKR."
 
-        # Session start
-        now_utc = datetime.now(ZoneInfo("UTC"))
-        start_date = now_utc.date() - timedelta(days=2) if now_utc.hour < 8 else now_utc.date()
-        start_utc = datetime(start_date.year, start_date.month, start_date.day, 8, 0, 0, tzinfo=ZoneInfo("UTC"))
+        # Session start - Trading day starts at 8 AM PT
         pt_tz = ZoneInfo("America/Los_Angeles")
-        start_pt = start_utc.astimezone(pt_tz)
-        end_pt = datetime.now(pt_tz)
+        now_pt = datetime.now(pt_tz)
+
+        # If before 8 AM PT, use previous day's session
+        if now_pt.hour < 8:
+            session_date = (now_pt.date() - timedelta(days=1))
+        else:
+            session_date = now_pt.date()
+
+        # Session starts at 8:00 AM PT
+        start_pt = datetime(session_date.year, session_date.month, session_date.day, 8, 0, 0, tzinfo=pt_tz)
+        end_pt = now_pt
+
+        logger.info(f"📅 Session window: {start_pt.strftime('%Y-%m-%d %H:%M %Z')} → {end_pt.strftime('%H:%M %Z')}")
 
         # Get account summary
         summary = await self.ib.accountSummaryAsync()
@@ -648,6 +656,13 @@ class IBKRClient:
             trade_time = None
             if trade.fills:
                 trade_time = min(fill.time for fill in trade.fills)
+
+                # Ensure trade_time is timezone-aware (IBKR returns in system timezone)
+                if trade_time.tzinfo is None:
+                    # Naive datetime - assume it's in PT (system timezone should be PT)
+                    pt_tz = ZoneInfo("America/Los_Angeles")
+                    trade_time = trade_time.replace(tzinfo=pt_tz)
+
                 if trade_time < start_time or trade_time > end_time:
                     continue
 

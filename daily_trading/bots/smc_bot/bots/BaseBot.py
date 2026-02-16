@@ -420,7 +420,7 @@ class SMCBotBase:
             if sig.action == TradeAction.EXIT:
                 # Determine Exit Price
                 if not recent_fill:
-                    strategy.log.warning("Tele: Exit fill not found in cache, using signal data.")
+                    strategy.log.warning("Exit fill not found in cache, using signal data.")
                     exit_price = sig.price
                     sig.size
                 else:

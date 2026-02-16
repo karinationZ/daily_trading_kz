@@ -133,6 +133,7 @@ class AITradeAssistant:
             Risk Logic (Static):
             Risk Per Trade: $250 USD (Static).
             Validation: Calculate the number of contracts allowed with $250 risk.
+            Position Size Calculation (CRITICAL - FOLLOW EXACTLY)
             Contracts = $250 / ( |Entry - SL| * Point_Value )
             If Contracts < 1 (Stop is too wide for $250 risk), REJECT the trade.
             C. Dynamic Take Profit (TP)
@@ -170,7 +171,7 @@ class AITradeAssistant:
         # OUTPUT FORMAT
         You must respond with a JSON object ONLY. No conversational filler.
         Use the input symbol exactly (do not output "Unknown"). Use UTC timestamps for `bos_ts` and `fvg_id`.
-        Always include `direction` and `size` inside `parameters`. """
+        Always include `direction` and calculated `size` inside `parameters`. """
             + """
         JSON Response Format (Strictly Follow):
         {
@@ -183,7 +184,7 @@ class AITradeAssistant:
             "stop_loss": 0.00,
             "take_profit": 0.00,
             "risk_reward_ratio": 1.2,
-            "size": 1,
+            "size": {size},
             "fvg_timestamp": "YYYY-MM-DD HH:MM:SS"},
           "metadata": {
                 "htf_bias": "BULLISH" | "BEARISH",

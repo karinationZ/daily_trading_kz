@@ -174,7 +174,7 @@ class MasterBot:
                             break
 
                         # 1H Summary Logic
-                    if current_hour_int % 4 == 0 and current_hour_int != last_logged_hour_summary:
+                    if current_hour_int % 2 == 0 and current_hour_int != last_logged_hour_summary:
                         report = await self.ib_client.get_daily_summary()
                         logger.info(f"1H Summary:\n{report}")
                         await self.orb_bot.telegram_main_channel.send_message(report)

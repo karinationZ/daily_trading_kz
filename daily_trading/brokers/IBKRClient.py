@@ -487,7 +487,7 @@ class IBKRClient:
                 elif v.tag == "UnrealizedPnL":
                     unrealized = float(v.value)
                 elif v.tag == "RealizedPnL":
-                    unrealized = float(v.value)  # Note: you had realized here but using unrealized
+                    realized = float(v.value)
 
         # Get detailed trades
         detailed_trades, trade_pnls = await self.get_detailed_trades(start_pt, end_pt)
@@ -692,24 +692,66 @@ class IBKRClient:
             entry_trade = None
             exit_trade = None
 
+            # Collect all filled trades
+            buy_trades = []
+            sell_trades = []
+
             for trade in group_trades:
                 logger.debug(f"🔍   Trade: {trade.contract.symbol} {trade.order.action} "
                             f"parentPermId={getattr(trade.order, 'parentPermId', None)} "
-                            f"fills={len(trade.fills) if trade.fills else 0}")
+                            f"fills={len(trade.fills) if trade.fills else 0} "
+                            f"status={trade.orderStatus.status}")
 
-                if trade.order.action in ['BUY', 'SELL'] and trade.fills:
-                    # Check if this is a parent or child
-                    if hasattr(trade.order, 'parentPermId') and trade.order.parentPermId:
-                        # This is likely the exit
-                        exit_trade = trade
-                        logger.debug(f"🔍     → Identified as EXIT trade")
+                # Only consider filled trades
+                if trade.order.action in ['BUY', 'SELL'] and trade.fills and trade.orderStatus.status == 'Filled':
+                    if trade.order.action == 'BUY':
+                        buy_trades.append(trade)
                     else:
-                        # This is likely the entry
-                        entry_trade = trade
-                        logger.debug(f"🔍     → Identified as ENTRY trade")
+                        sell_trades.append(trade)
+
+            # Determine entry/exit based on action pairing
+            # LONG trade: BUY (entry) → SELL (exit)
+            # SHORT trade: SELL (entry) → BUY (exit)
+            if buy_trades and sell_trades:
+                # Both BUY and SELL exist → round trip completed
+                # Use earliest of each as entry/exit
+                entry_trade = min(buy_trades, key=lambda t: min(f.time for f in t.fills))
+                exit_trade = min(sell_trades, key=lambda t: min(f.time for f in t.fills))
+
+                # Determine direction by comparing times
+                entry_time = min(f.time for f in entry_trade.fills)
+                exit_time = min(f.time for f in exit_trade.fills)
+
+                if entry_time > exit_time:
+                    # SELL came before BUY → SHORT position
+                    entry_trade, exit_trade = exit_trade, entry_trade
+
+                logger.debug(f"🔍     → LONG: Entry=BUY, Exit=SELL")
+            elif len(buy_trades) >= 2:
+                # Multiple BUYs → SHORT trade (first SELL entry, second BUY exit)
+                # Sort by time
+                sorted_buys = sorted(buy_trades, key=lambda t: min(f.time for f in t.fills))
+                entry_trade = sorted_buys[1]  # Later BUY might be covering a short
+                exit_trade = sorted_buys[0]
+                # Actually this is ambiguous, skip it
+                entry_trade = None
+                exit_trade = None
+            elif len(sell_trades) >= 2:
+                # Multiple SELLs → LONG trade (first BUY entry, second SELL exit)
+                sorted_sells = sorted(sell_trades, key=lambda t: min(f.time for f in t.fills))
+                entry_trade = sorted_sells[0]
+                exit_trade = sorted_sells[1]
+                # Actually this is also ambiguous, skip it
+                entry_trade = None
+                exit_trade = None
+            else:
+                # Only one side filled → incomplete trade (still open)
+                entry_trade = None
+                exit_trade = None
 
             # Debug: Report what was found
-            logger.info(f"🔍 Group {group_id}: Entry={'✓' if entry_trade else '✗'}, Exit={'✓' if exit_trade else '✗'}")
+            logger.info(f"🔍 Group {group_id}: BUYs={len(buy_trades)}, SELLs={len(sell_trades)}, "
+                       f"Entry={'✓' if entry_trade else '✗'}, Exit={'✓' if exit_trade else '✗'}")
 
             # If we found both entry and exit, check time filter and format
             if entry_trade and exit_trade and entry_trade.fills and exit_trade.fills:
